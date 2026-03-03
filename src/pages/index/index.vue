@@ -156,7 +156,10 @@
 	                @click="openCourseDialog(selectedWeek, dayIndex + 1, row.section)"
 	                @longpress="onCellLongPress(selectedWeek, dayIndex + 1, row.section)"
 	              >
-                <text v-if="cell.busy && cell.showLabel" class="cell-text">{{ renderCellTitle(cell.labels) }}</text>
+                <view v-if="cell.busy && cell.showLabel" class="cell-text">
+                  <text class="cell-title">{{ renderCellTitle(cell.labels) }}</text>
+                  <text v-if="cell.classroomLabel" class="cell-room">{{ cell.classroomLabel }}</text>
+                </view>
               </view>
             </view>
           </view>
@@ -368,6 +371,7 @@ interface GridRow {
   cells: Array<{
     busy: boolean;
     labels: string[];
+    classroomLabel: string;
     ownerIds: string[];
     showLabel: boolean;
     part: string;
@@ -425,6 +429,16 @@ const themePreviewMap: Record<ThemeKey, { start: string; end: string }> = {
   orange: { start: "#fbf5f1", end: "#c97235" },
 };
 
+const themeAccentMap: Record<ThemeKey, string> = {
+  black: "#2f55c8",
+  purple: "#7a56d8",
+  green: "#2f9a5f",
+  pink: "#c7568f",
+  blue: "#3f7bd1",
+  yellow: "#b6922d",
+  orange: "#c97235",
+};
+
 const ownerColorOrder: Record<string, number> = {
   caiziling: 0,
   mawanqing: 1,
@@ -441,6 +455,8 @@ const themeOwnerPaletteMap: Record<ThemeKey, string[]> = {
   yellow: ["#b6922d", "#c3a84b", "#d0be69", "#ddd487"],
   orange: ["#c97235", "#d5854d", "#e19766", "#eca97e"],
 };
+
+const courseOverlayPalette = ["#6f84d8", "#d99663", "#c7749e", "#6a9fcb", "#9c88d8", "#d6a35f"];
 
 interface FestivalCard {
   title: string;
@@ -588,6 +604,19 @@ const selectedWeekCellMap = computed(() => {
   return map;
 });
 
+const normalizeClassroomLabel = (classroom?: string | null) => {
+  const text = (classroom || "").replace(/\s+/g, "");
+  if (!text) {
+    return "";
+  }
+  return text.slice(0, 5);
+};
+
+const pickCellClassroomLabel = (courses: DisplayCourse[]) => {
+  const labels = Array.from(new Set(courses.map((course) => normalizeClassroomLabel(course.classroom)).filter((item) => item !== "")));
+  return labels[0] || "";
+};
+
 const gridRows = computed<GridRow[]>(() => {
   const getCellSignature = (courses: DisplayCourse[]) => {
     if (courses.length === 0) {
@@ -640,6 +669,7 @@ const gridRows = computed<GridRow[]>(() => {
       return {
         busy: courses.length > 0,
         labels: Array.from(new Set(courses.map((course) => course.name))),
+        classroomLabel: pickCellClassroomLabel(courses),
         ownerIds: Array.from(new Set(courses.map((course) => course.ownerId))),
         showLabel,
         part: slot.part,
@@ -1357,11 +1387,18 @@ const getOwnerDotStyle = (ownerId: string): CSSProperties => {
   };
 };
 
+const getCourseTone = (courseSeed: string, ownerSeed: string) => {
+  const accent = themeAccentMap[themeKey.value] || themeAccentMap.black;
+  const hashSource = `${courseSeed}::${ownerSeed}`;
+  const index = hashString(hashSource) % courseOverlayPalette.length;
+  return mixHex(accent, courseOverlayPalette[index], 0.36);
+};
+
 const getCourseCardStyle = (course: DisplayCourse): CSSProperties => {
-  const tone = getOwnerTone(course.ownerId);
+  const tone = getCourseTone(course.name, course.ownerId);
   return {
     borderColor: "var(--line)",
-    backgroundColor: hexToRgba(tone.dot, hasMultipleIncluded.value ? 0.1 : 0.14),
+    backgroundColor: hexToRgba(tone, hasMultipleIncluded.value ? 0.1 : 0.14),
     boxShadow: "none",
   };
 };
@@ -1371,12 +1408,58 @@ const getCellStyle = (cell: GridRow["cells"][number]): CSSProperties => {
     return {};
   }
 
-  const tones = cell.ownerIds.map((ownerId) => getOwnerTone(ownerId));
-  const primary = tones[0].dot;
+  const primaryLabel = cell.labels[0] || "course";
+  const ownerSeed = cell.ownerIds.join("|");
+  const primary = getCourseTone(primaryLabel, ownerSeed);
+  if (cell.labels.length > 1) {
+    const secondary = getCourseTone(cell.labels[1], ownerSeed);
+    return {
+      backgroundImage: `linear-gradient(140deg, ${hexToRgba(primary, 0.2)} 0%, ${hexToRgba(secondary, 0.2)} 100%)`,
+      backgroundColor: hexToRgba(primary, 0.18),
+    };
+  }
   return {
     backgroundImage: "none",
-    backgroundColor: hexToRgba(primary, hasMultipleIncluded.value && tones.length > 1 ? 0.16 : 0.2),
+    backgroundColor: hexToRgba(primary, 0.2),
   };
+};
+
+const hashString = (value: string) => {
+  let hash = 0;
+  for (const char of value) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+  return hash;
+};
+
+const mixHex = (base: string, overlay: string, weight: number) => {
+  const baseRgb = hexToRgb(base);
+  const overlayRgb = hexToRgb(overlay);
+  if (!baseRgb || !overlayRgb) {
+    return base;
+  }
+  const safeWeight = Math.min(1, Math.max(0, weight));
+  const r = Math.round(baseRgb.r * (1 - safeWeight) + overlayRgb.r * safeWeight);
+  const g = Math.round(baseRgb.g * (1 - safeWeight) + overlayRgb.g * safeWeight);
+  const b = Math.round(baseRgb.b * (1 - safeWeight) + overlayRgb.b * safeWeight);
+  return rgbToHex(r, g, b);
+};
+
+const hexToRgb = (hex: string) => {
+  const normalized = hex.replace("#", "");
+  if (normalized.length !== 6) {
+    return null;
+  }
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+};
+
+const rgbToHex = (r: number, g: number, b: number) => {
+  const toHex = (value: number) => `${Math.max(0, Math.min(255, value)).toString(16)}`.padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 
 const hexToRgba = (hex: string, alpha: number) => {
@@ -1460,9 +1543,7 @@ function formatIsoDate(date: Date) {
   --today-col-bg: #ececec;
   --today-head-bg: #e2e2e2;
   --muted-bg: #f7f7f7;
-  --part-morning: #f1f1f1;
-  --part-afternoon: #ececec;
-  --part-evening: #e7e7e7;
+  --time-col-bg: #f1f1f1;
   --mask-bg: rgba(0, 0, 0, 0.45);
   min-height: 100vh;
   background: var(--bg);
@@ -1477,9 +1558,7 @@ function formatIsoDate(date: Date) {
   --accent: #7a56d8;
   --today-col-bg: #e9e1fb;
   --today-head-bg: #e0d5f8;
-  --part-morning: #f0e9ff;
-  --part-afternoon: #e9defd;
-  --part-evening: #e2d4fa;
+  --time-col-bg: #ebe6f4;
 }
 
 .page.theme-green {
@@ -1490,9 +1569,7 @@ function formatIsoDate(date: Date) {
   --accent: #2f9a5f;
   --today-col-bg: #dcf0e4;
   --today-head-bg: #d0e9da;
-  --part-morning: #e9f5ee;
-  --part-afternoon: #def0e5;
-  --part-evening: #d4ebdd;
+  --time-col-bg: #e7efe9;
 }
 
 .page.theme-pink {
@@ -1503,9 +1580,7 @@ function formatIsoDate(date: Date) {
   --accent: #c7568f;
   --today-col-bg: #f6ddea;
   --today-head-bg: #f1d0e1;
-  --part-morning: #fbe8f2;
-  --part-afternoon: #f7dceb;
-  --part-evening: #f1d0e1;
+  --time-col-bg: #f2e6ec;
 }
 
 .page.theme-blue {
@@ -1516,9 +1591,7 @@ function formatIsoDate(date: Date) {
   --accent: #3f7bd1;
   --today-col-bg: #dae7fb;
   --today-head-bg: #cedff7;
-  --part-morning: #e7effd;
-  --part-afternoon: #dbe8fb;
-  --part-evening: #d1e2f8;
+  --time-col-bg: #e7ecf4;
 }
 
 .page.theme-yellow {
@@ -1529,9 +1602,7 @@ function formatIsoDate(date: Date) {
   --accent: #b6922d;
   --today-col-bg: #f3e6be;
   --today-head-bg: #ecdca8;
-  --part-morning: #f8efd0;
-  --part-afternoon: #f3e6be;
-  --part-evening: #ecdca8;
+  --time-col-bg: #f2ecd9;
 }
 
 .page.theme-orange {
@@ -1542,9 +1613,7 @@ function formatIsoDate(date: Date) {
   --accent: #c97235;
   --today-col-bg: #f5dece;
   --today-head-bg: #efd2bd;
-  --part-morning: #fae8dc;
-  --part-afternoon: #f5dece;
-  --part-evening: #efd2bd;
+  --time-col-bg: #f3e7df;
 }
 
 .page.modal-open {
@@ -1849,24 +1918,12 @@ function formatIsoDate(date: Date) {
 
 .time-col {
   width: 108rpx;
-  background: var(--part-morning);
+  background: var(--time-col-bg);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-}
-
-.table-row.row-morning .time-col {
-  background: var(--part-morning);
-}
-
-.table-row.row-afternoon .time-col {
-  background: var(--part-afternoon);
-}
-
-.table-row.row-evening .time-col {
-  background: var(--part-evening);
 }
 
 .day-col {
@@ -1880,6 +1937,10 @@ function formatIsoDate(date: Date) {
 
 .day-col:last-child {
   border-right: none;
+}
+
+.cell {
+  padding: 2rpx 4rpx;
 }
 
 .head {
@@ -1903,10 +1964,15 @@ function formatIsoDate(date: Date) {
 
 .cell.busy {
   color: var(--text-main);
+  background-clip: content-box;
 }
 
 .cell.busy.merge-prev {
-  box-shadow: none;
+  padding-top: 0;
+}
+
+.cell.busy.merge-next {
+  padding-bottom: 0;
 }
 
 .cell.marked {
@@ -1930,17 +1996,29 @@ function formatIsoDate(date: Date) {
 }
 
 .cell-text {
-  font-size: 19rpx;
-  line-height: 1.3;
-  color: var(--text-main);
   width: 100%;
   min-height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
+  gap: 4rpx;
   padding: 2rpx 4rpx;
   box-sizing: border-box;
+}
+
+.cell-title {
+  font-size: 19rpx;
+  line-height: 1.28;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.cell-room {
+  font-size: 15rpx;
+  line-height: 1.2;
+  color: var(--text-sub);
 }
 
 .day-col.today-column {
@@ -1955,6 +2033,10 @@ function formatIsoDate(date: Date) {
   background: var(--muted-bg);
   font-weight: 700;
   box-shadow: inset 0 2rpx 0 var(--accent);
+}
+
+.table-row:last-child .day-col.today-column {
+  border-bottom: 2rpx solid var(--accent);
 }
 
 .today-focus {
