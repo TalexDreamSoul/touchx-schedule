@@ -19,3 +19,13 @@ dist
 *.njsproj
 *.sln
 *.sw?
+
+# Python cache/runtime artifacts
+__pycache__/
+*.py[cod]
+ends/app/*.db
+ends/app/*.db-*
+
+# Local release/build outputs
+ends/.venv/
+ends-release*.zip

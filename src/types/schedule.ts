@@ -10,6 +10,7 @@ export interface CourseItem {
   parity?: WeekParity;
   classroom?: string | null;
   teacher?: string | null;
+  teachingClasses?: string | null;
 }
 
 export interface StudentSchedule {

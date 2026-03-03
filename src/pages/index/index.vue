@@ -166,6 +166,14 @@
 	                @longpress="onCellLongPress(selectedWeek, dayIndex + 1, row.section)"
 	              >
                 <view v-if="cell.busy && cell.showLabel" class="cell-text" :style="getCellTextStyle(cell)">
+                  <view v-if="hasMultipleIncluded" class="cell-owner-markers">
+                    <view
+                      v-for="(ownerId, ownerIndex) in cell.ownerIds"
+                      :key="`marker-${selectedWeek}-${row.section}-${dayIndex}-${ownerId}-${ownerIndex}`"
+                      class="cell-owner-dot"
+                      :style="getOwnerMarkerStyle(ownerId)"
+                    />
+                  </view>
                   <text class="cell-title">{{ renderCellTitle(cell.labels) }}</text>
                   <text v-if="cell.classroomLabel" class="cell-room">{{ cell.classroomLabel }}</text>
                 </view>
@@ -250,14 +258,13 @@
     <view v-if="showIncludePicker" class="dialog-mask" @click="closeIncludePicker">
       <view class="dialog-card" @click.stop>
         <view class="dialog-title">课程显示设置</view>
-        <view class="dialog-sub">勾选后将对应同学课程合并进课表（当前账号不可取消）</view>
+        <view class="dialog-sub">勾选后将对应同学课程合并进课表（可只看他人课表）</view>
         <checkbox-group @change="onIncludeChange">
           <label v-for="student in studentSchedules" :key="student.id" class="check-item">
             <view class="owner-dot small" :style="getOwnerDotStyle(student.id)" />
             <checkbox
               :value="student.id"
               :checked="includedStudentIds.includes(student.id)"
-              :disabled="student.id === activeStudentId"
               color="#111111"
             />
             <text>{{ student.name }}</text>
@@ -333,6 +340,7 @@
             <view class="dialog-meta">节次：{{ formatSectionRange(course.startSection, course.endSection) }}</view>
             <view class="dialog-meta">周次：{{ formatWeekRule(course) }}</view>
             <view class="dialog-meta">教室：{{ course.classroom || "待配置" }}</view>
+            <view class="dialog-meta">教学班：{{ formatCourseTeachingClasses(course) }}</view>
           </view>
         </view>
         <button class="dialog-btn" @click="closeCourseDialog">关闭</button>
@@ -402,6 +410,7 @@ const STORAGE_MARKED_COURSE_KEY = "touchx_marked_course_name";
 const STORAGE_INCLUDED_IDS_KEY = "touchx_included_student_ids";
 const STORAGE_BACKEND_BASE_URL_KEY = "touchx_backend_base_url";
 const STORAGE_SHOW_TODAY_ADVICE_KEY = "touchx_show_today_advice";
+const MAX_COMPARE_OWNERS = 7;
 const TERM_WEEK1_MONDAY = termMeta.week1Monday;
 const TERM_MAX_WEEK = termMeta.maxWeek;
 const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
@@ -449,22 +458,14 @@ const themeAccentMap: Record<ThemeKey, string> = {
   orange: "#f57b16",
 };
 
-const ownerColorOrder: Record<string, number> = {
-  caiziling: 0,
-  mawanqing: 1,
-  tangzixian: 2,
-  wuxinyu: 3,
+const ownerFixedColorMap: Record<string, string> = {
+  caiziling: "#2563eb",
+  mawanqing: "#dc2626",
+  tangzixian: "#ea580c",
+  wuxinyu: "#7c3aed",
 };
 
-const themeOwnerPaletteMap: Record<ThemeKey, string[]> = {
-  black: ["#2f2f2f", "#555555", "#767676", "#9a9a9a"],
-  purple: ["#a061ff", "#b279ff", "#c390ff", "#d4a8ff"],
-  green: ["#13c56a", "#33cf7e", "#52d893", "#73e2a8"],
-  pink: ["#ef45a5", "#f15fb2", "#f47ac0", "#f796ce"],
-  blue: ["#2e9dff", "#4faeff", "#6ebeff", "#8eceff"],
-  yellow: ["#d9a511", "#e1b42f", "#e8c34d", "#efd36d"],
-  orange: ["#f57b16", "#f88f36", "#faa257", "#fcb677"],
-};
+const compareOwnerPalette = ["#2563eb", "#dc2626", "#ea580c", "#7c3aed", "#16a34a", "#db2777", "#0891b2"];
 
 const courseOverlayPalette = ["#6f84d8", "#d99663", "#c7749e", "#6a9fcb", "#9c88d8", "#d6a35f"];
 
@@ -1025,6 +1026,10 @@ const formatCourseTeacher = (course: DisplayCourse) => {
   return (course.teacher || "").trim() || "待同步";
 };
 
+const formatCourseTeachingClasses = (course: DisplayCourse) => {
+  return (course.teachingClasses || "").trim() || "待同步";
+};
+
 const isTodayColumn = (day: number) => {
   return selectedWeek.value === currentWeek.value && day === todayWeekday.value;
 };
@@ -1240,6 +1245,14 @@ const closeIncludePicker = () => {
 };
 
 const onIncludeChange = (event: { detail: { value: string[] } }) => {
+  const rawValidIds = Array.from(new Set(event.detail.value)).filter((id) => studentSchedules.some((student) => student.id === id));
+  if (rawValidIds.length > MAX_COMPARE_OWNERS) {
+    uni.showToast({
+      title: `最多可同时对比 ${MAX_COMPARE_OWNERS} 人`,
+      icon: "none",
+      duration: 1800,
+    });
+  }
   setIncludedIds(event.detail.value);
 };
 
@@ -1304,7 +1317,7 @@ const setActiveStudent = (studentId: string) => {
   activeStudentId.value = studentId;
   markedCourseName.value = "";
   uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, studentId);
-  setIncludedIds([...includedStudentIds.value, studentId]);
+  setIncludedIds(includedStudentIds.value);
 };
 
 const selectFromModal = (studentId: string) => {
@@ -1433,17 +1446,21 @@ const getThemePreviewStyle = (key: ThemeKey): CSSProperties => {
 };
 
 const getOwnerTone = (ownerId: string) => {
-  const palette = themeOwnerPaletteMap[themeKey.value] || themeOwnerPaletteMap.black;
+  const fixed = ownerFixedColorMap[ownerId];
+  if (fixed) {
+    return { dot: fixed };
+  }
+
   if (!hasMultipleIncluded.value) {
     return {
-      dot: palette[0],
+      dot: compareOwnerPalette[0],
     };
   }
-  const knownIndex = ownerColorOrder[ownerId];
-  const index =
-    knownIndex === undefined ? Array.from(ownerId).reduce((acc, char) => acc + char.charCodeAt(0), 0) % palette.length : knownIndex;
+  const knownIndex = studentSchedules.findIndex((student) => student.id === ownerId);
+  const fallbackIndex = Array.from(ownerId).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const index = knownIndex >= 0 ? knownIndex : fallbackIndex;
   return {
-    dot: palette[index % palette.length],
+    dot: compareOwnerPalette[index % compareOwnerPalette.length],
   };
 };
 
@@ -1451,6 +1468,14 @@ const getOwnerDotStyle = (ownerId: string): CSSProperties => {
   const tone = getOwnerTone(ownerId);
   return {
     backgroundColor: tone.dot,
+  };
+};
+
+const getOwnerMarkerStyle = (ownerId: string): CSSProperties => {
+  const tone = getOwnerTone(ownerId);
+  return {
+    backgroundColor: tone.dot,
+    borderColor: "var(--card-bg)",
   };
 };
 
@@ -1553,10 +1578,7 @@ const hexToRgba = (hex: string, alpha: number) => {
 
 const normalizeIncludedIds = (ids: string[]) => {
   const validIds = ids.filter((id) => studentSchedules.some((student) => student.id === id));
-  if (!validIds.includes(activeStudentId.value)) {
-    validIds.unshift(activeStudentId.value);
-  }
-  return Array.from(new Set(validIds));
+  return Array.from(new Set(validIds)).slice(0, MAX_COMPARE_OWNERS);
 };
 
 const setIncludedIds = (ids: string[]) => {
@@ -2064,6 +2086,31 @@ function formatIsoDate(date: Date) {
 .cell {
   position: relative;
   padding: 2rpx 4rpx;
+}
+
+.cell-owner-markers {
+  position: absolute;
+  top: 8rpx;
+  right: 6rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5rpx;
+  max-width: calc(100% - 12rpx);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.part-start .cell-owner-markers {
+  top: 22rpx;
+}
+
+.cell-owner-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid var(--card-bg);
+  flex-shrink: 0;
 }
 
 .head {

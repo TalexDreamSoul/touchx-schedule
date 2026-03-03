@@ -101,7 +101,8 @@
           "endSection": 2,
           "weekExpr": "1-17",
           "classroom": "10-512",
-          "teacher": "郑莉萍"
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-02",
@@ -110,7 +111,8 @@
           "startSection": 3,
           "endSection": 4,
           "weekExpr": "1-8",
-          "classroom": "1-505"
+          "classroom": "1-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-03",
@@ -120,7 +122,8 @@
           "endSection": 7,
           "weekExpr": "9-16",
           "classroom": "1-306",
-          "teacher": "郭剑"
+          "teacher": "郭剑",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-04",
@@ -129,7 +132,8 @@
           "startSection": 2,
           "endSection": 4,
           "weekExpr": "9-16",
-          "classroom": "1-306"
+          "classroom": "1-306",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "czl-05",
@@ -139,7 +143,8 @@
           "endSection": 6,
           "weekExpr": "1-17",
           "classroom": "4-506",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-06",
@@ -149,7 +154,8 @@
           "endSection": 8,
           "weekExpr": "9-16",
           "classroom": "2-306",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "czl-07",
@@ -158,7 +164,8 @@
           "startSection": 9,
           "endSection": 10,
           "weekExpr": "1-4",
-          "classroom": "4-505"
+          "classroom": "4-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6);物联网工程23(1);英语23(4)"
         },
         {
           "id": "czl-08",
@@ -167,7 +174,8 @@
           "startSection": 2,
           "endSection": 4,
           "weekExpr": "1-8",
-          "classroom": "2-501"
+          "classroom": "2-501",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "czl-09",
@@ -177,7 +185,8 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "1-306",
-          "teacher": "盛腾"
+          "teacher": "盛腾",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-10",
@@ -187,7 +196,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "10-503",
-          "teacher": "游洪跃"
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-11",
@@ -196,7 +206,8 @@
           "startSection": 5,
           "endSection": 6,
           "weekExpr": "1-4",
-          "classroom": "1-505"
+          "classroom": "1-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-12",
@@ -206,7 +217,8 @@
           "endSection": 6,
           "weekExpr": "9-16",
           "classroom": "10-304",
-          "teacher": "郑莉萍"
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "czl-13",
@@ -216,7 +228,8 @@
           "endSection": 8,
           "weekExpr": "9-16",
           "classroom": "1-502",
-          "teacher": "游洪跃"
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "czl-14",
@@ -227,7 +240,8 @@
           "weekExpr": "6-12",
           "parity": "even",
           "classroom": "2-301",
-          "teacher": "张晓勇"
+          "teacher": "张晓勇",
+          "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-15",
@@ -237,7 +251,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "4-406",
-          "teacher": "未春凤"
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
         },
         {
           "id": "czl-16",
@@ -247,7 +262,8 @@
           "endSection": 7,
           "weekExpr": "9-16",
           "classroom": "10-301",
-          "teacher": "盛腾"
+          "teacher": "盛腾",
+          "teachingClasses": "软件工程23(5)"
         }
       ]
     },
@@ -263,7 +279,8 @@
           "endSection": 8,
           "weekExpr": "17",
           "classroom": "田径场北侧",
-          "teacher": "吕佳丽"
+          "teacher": "吕佳丽",
+          "teachingClasses": "体育教育23(2)"
         },
         {
           "id": "mwq-02",
@@ -273,7 +290,8 @@
           "endSection": 8,
           "weekExpr": "17",
           "classroom": "田径场北侧",
-          "teacher": "吕佳丽"
+          "teacher": "吕佳丽",
+          "teachingClasses": "体育教育23(2)"
         },
         {
           "id": "mwq-03",
@@ -283,7 +301,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "1-302B",
-          "teacher": "蒋琳"
+          "teacher": "蒋琳",
+          "teachingClasses": "体育教育23(1);体育教育23(2)"
         },
         {
           "id": "mwq-04",
@@ -293,7 +312,8 @@
           "endSection": 8,
           "weekExpr": "1-16",
           "classroom": "学生活动中心",
-          "teacher": "陆水萍"
+          "teacher": "陆水萍",
+          "teachingClasses": "体育教育23(2)"
         },
         {
           "id": "mwq-05",
@@ -303,7 +323,8 @@
           "endSection": 10,
           "weekExpr": "9-12",
           "classroom": "4-301",
-          "teacher": "梁晶"
+          "teacher": "梁晶",
+          "teachingClasses": "大数据管理与应用23(1);体育教育23(1);体育教育23(2);休闲体育23(1);休闲体育23(2)"
         },
         {
           "id": "mwq-06",
@@ -313,7 +334,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "5-305",
-          "teacher": "任婷"
+          "teacher": "任婷",
+          "teachingClasses": "体育教育23(1);体育教育23(2)"
         },
         {
           "id": "mwq-07",
@@ -323,7 +345,8 @@
           "endSection": 10,
           "weekExpr": "1-8",
           "classroom": "5-205",
-          "teacher": "刘金祥"
+          "teacher": "刘金祥",
+          "teachingClasses": "体育教育23(1);体育教育23(2)"
         },
         {
           "id": "mwq-08",
@@ -333,7 +356,8 @@
           "endSection": 2,
           "weekExpr": "1-16",
           "classroom": "5-205",
-          "teacher": "赵强"
+          "teacher": "赵强",
+          "teachingClasses": "体育教育23(1);体育教育23(2)"
         },
         {
           "id": "mwq-09",
@@ -344,7 +368,8 @@
           "weekExpr": "6-12",
           "parity": "even",
           "classroom": "7-101",
-          "teacher": "张勇"
+          "teacher": "张勇",
+          "teachingClasses": "环境设计23(2);环境设计23(3);体育教育23(2);休闲体育23(1);休闲体育23(2)"
         }
       ]
     },
@@ -360,7 +385,8 @@
           "endSection": 2,
           "weekExpr": "1-17",
           "classroom": "10-511",
-          "teacher": "王站东"
+          "teacher": "王站东",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-02",
@@ -370,7 +396,8 @@
           "endSection": 4,
           "weekExpr": "1-17",
           "classroom": "10-511",
-          "teacher": "付春龍"
+          "teacher": "付春龍",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-03",
@@ -380,7 +407,8 @@
           "endSection": 7,
           "weekExpr": "1-8",
           "classroom": "IT实训工作坊(I)",
-          "teacher": "刘国芳"
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
           "id": "tzx-04",
@@ -390,7 +418,8 @@
           "endSection": 6,
           "weekExpr": "9-16",
           "classroom": "10-305",
-          "teacher": "张毅"
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-05",
@@ -400,7 +429,8 @@
           "endSection": 10,
           "weekExpr": "1-16",
           "classroom": "5-509",
-          "teacher": "张毅"
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
         },
         {
           "id": "tzx-06",
@@ -410,7 +440,8 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "IT实训工作坊(I)",
-          "teacher": "段鹏"
+          "teacher": "段鹏",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-07",
@@ -420,7 +451,8 @@
           "endSection": 6,
           "weekExpr": "9-16",
           "classroom": "10-304",
-          "teacher": "付春龍"
+          "teacher": "付春龍",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
           "id": "tzx-08",
@@ -430,7 +462,8 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "3-501",
-          "teacher": "王站东"
+          "teacher": "王站东",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
           "id": "tzx-09",
@@ -440,7 +473,8 @@
           "endSection": 10,
           "weekExpr": "5-8",
           "classroom": "5-401",
-          "teacher": "胡思敏"
+          "teacher": "胡思敏",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3)"
         },
         {
           "id": "tzx-10",
@@ -450,7 +484,8 @@
           "endSection": 11,
           "weekExpr": "9-16",
           "classroom": "IT实训工作坊(Ⅱ)",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
           "id": "tzx-11",
@@ -460,7 +495,8 @@
           "endSection": 4,
           "weekExpr": "1-8",
           "classroom": "IT实训工作坊(I)",
-          "teacher": "刘国芳"
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-12",
@@ -470,7 +506,8 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "IT实训工作坊(I)",
-          "teacher": "段鹏"
+          "teacher": "段鹏",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
           "id": "tzx-13",
@@ -480,7 +517,8 @@
           "endSection": 7,
           "weekExpr": "9-16",
           "classroom": "1-505",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
           "id": "tzx-14",
@@ -491,7 +529,8 @@
           "weekExpr": "7-13",
           "classroom": "7-401",
           "parity": "odd",
-          "teacher": "张琪"
+          "teacher": "张琪",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);物联网工程23(3)"
         },
         {
           "id": "tzx-15",
@@ -501,7 +540,8 @@
           "endSection": 8,
           "weekExpr": "1-16",
           "classroom": "5-202",
-          "teacher": "蒋琦"
+          "teacher": "蒋琦",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         }
       ]
     },
@@ -517,7 +557,8 @@
           "endSection": 2,
           "weekExpr": "1-17",
           "classroom": "10-512",
-          "teacher": "郑莉萍"
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-02",
@@ -526,7 +567,8 @@
           "startSection": 3,
           "endSection": 4,
           "weekExpr": "1-8",
-          "classroom": "1-505"
+          "classroom": "1-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-03",
@@ -536,7 +578,8 @@
           "endSection": 7,
           "weekExpr": "9-16",
           "classroom": "1-306",
-          "teacher": "郭剑"
+          "teacher": "郭剑",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-04",
@@ -545,7 +588,8 @@
           "startSection": 2,
           "endSection": 4,
           "weekExpr": "9-16",
-          "classroom": "1-306"
+          "classroom": "1-306",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "wxy-05",
@@ -555,7 +599,8 @@
           "endSection": 6,
           "weekExpr": "1-17",
           "classroom": "4-506",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-06",
@@ -565,7 +610,8 @@
           "endSection": 8,
           "weekExpr": "9-16",
           "classroom": "2-306",
-          "teacher": "薛丽莹"
+          "teacher": "薛丽莹",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "wxy-07",
@@ -574,7 +620,8 @@
           "startSection": 9,
           "endSection": 10,
           "weekExpr": "1-4",
-          "classroom": "4-505"
+          "classroom": "4-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6);物联网工程23(1);英语23(4)"
         },
         {
           "id": "wxy-08",
@@ -583,7 +630,8 @@
           "startSection": 2,
           "endSection": 4,
           "weekExpr": "1-8",
-          "classroom": "2-501"
+          "classroom": "2-501",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "wxy-09",
@@ -593,7 +641,8 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "1-306",
-          "teacher": "盛腾"
+          "teacher": "盛腾",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-10",
@@ -603,7 +652,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "10-503",
-          "teacher": "游洪跃"
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-11",
@@ -612,7 +662,8 @@
           "startSection": 5,
           "endSection": 6,
           "weekExpr": "1-4",
-          "classroom": "1-505"
+          "classroom": "1-505",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-12",
@@ -622,7 +673,8 @@
           "endSection": 6,
           "weekExpr": "9-16",
           "classroom": "10-304",
-          "teacher": "郑莉萍"
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "wxy-13",
@@ -632,7 +684,8 @@
           "endSection": 8,
           "weekExpr": "9-16",
           "classroom": "1-502",
-          "teacher": "游洪跃"
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5)"
         },
         {
           "id": "wxy-14",
@@ -643,7 +696,8 @@
           "weekExpr": "6-12",
           "parity": "even",
           "classroom": "2-301",
-          "teacher": "张晓勇"
+          "teacher": "张晓勇",
+          "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-15",
@@ -653,7 +707,8 @@
           "endSection": 4,
           "weekExpr": "1-16",
           "classroom": "4-406",
-          "teacher": "未春凤"
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
         },
         {
           "id": "wxy-16",
@@ -663,7 +718,8 @@
           "endSection": 7,
           "weekExpr": "9-16",
           "classroom": "10-301",
-          "teacher": "盛腾"
+          "teacher": "盛腾",
+          "teachingClasses": "软件工程23(5)"
         }
       ]
     }

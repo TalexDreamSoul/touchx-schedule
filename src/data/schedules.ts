@@ -11,6 +11,7 @@ interface NormalizedCourse extends CourseItem {
   parity?: WeekParity;
   classroom?: string | null;
   teacher?: string | null;
+  teachingClasses?: string | null;
 }
 
 interface NormalizedStudent extends Omit<StudentSchedule, "courses"> {
@@ -39,6 +40,7 @@ const baseStudentSchedules: StudentSchedule[] = payload.students.map((student) =
     parity: course.parity ?? undefined,
     classroom: course.classroom ?? null,
     teacher: course.teacher ?? null,
+    teachingClasses: course.teachingClasses ?? null,
   })),
 }));
 

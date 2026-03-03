@@ -165,6 +165,7 @@ def load_course_overrides_from_csv(path: Path) -> Dict[str, List[Dict[str, str]]
                     "parity": ((row.get("parity") or "").strip() or "all"),
                     "classroom": (row.get("classroom") or "").strip(),
                     "teacher": (row.get("teacher") or "").strip(),
+                    "teaching_classes": (row.get("teaching_classes") or "").strip(),
                 }
             )
     return overrides
@@ -216,6 +217,11 @@ def apply_course_overrides_to_schedules(overrides: Dict[str, List[Dict[str, str]
                 course["teacher"] = teacher
             else:
                 course.pop("teacher", None)
+            teaching_classes = override.get("teaching_classes")
+            if teaching_classes:
+                course["teachingClasses"] = teaching_classes
+            else:
+                course.pop("teachingClasses", None)
             parity = override.get("parity", "all")
             if parity in {"odd", "even"}:
                 course["parity"] = parity

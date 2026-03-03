@@ -150,7 +150,7 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
         day = day_for_x(token["x"])
         if day is None:
             continue
-        if not (10 < token["y"] < 560):
+        if not (10 < token["y"] < 580):
             continue
         by_day[day].append(token)
 
@@ -158,7 +158,7 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
     detail_pattern = re.compile(r"^\((\d+)-(\d+)节\)([^/]*?)周(?:\((单|双)\))?")
 
     for day in range(1, 8):
-        day_tokens = sorted(by_day[day], key=lambda item: (-item["y"], item["order"]))
+        day_tokens = sorted(by_day[day], key=lambda item: item["order"])
         title_lines: list[str] = []
         index = 0
 
@@ -184,7 +184,7 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
                 if detail_pattern.search(candidate) or looks_like_title(candidate):
                     break
                 detail_blob += candidate
-                if "/教师" in detail_blob or "周学时" in detail_blob:
+                if "周学时" in detail_blob:
                     next_index += 1
                     break
                 next_index += 1
@@ -208,6 +208,10 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
             teacher_match = re.search(r"教师:([^/]+)", detail_blob)
             if teacher_match:
                 course["teacher"] = teacher_match.group(1).strip()
+
+            teaching_classes_match = re.search(r"教学班组成:([^/]+)", detail_blob)
+            if teaching_classes_match:
+                course["teachingClasses"] = teaching_classes_match.group(1).strip()
 
             courses.append(course)
             index = next_index
