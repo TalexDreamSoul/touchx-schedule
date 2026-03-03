@@ -1,0 +1,671 @@
+{
+  "term": {
+    "name": "2025-2026-2",
+    "week1Monday": "2026-03-02",
+    "maxWeek": 25
+  },
+  "sectionTimes": [
+    {
+      "section": 1,
+      "start": "08:30",
+      "end": "09:15",
+      "part": "上午"
+    },
+    {
+      "section": 2,
+      "start": "09:20",
+      "end": "10:05",
+      "part": "上午"
+    },
+    {
+      "section": 3,
+      "start": "10:25",
+      "end": "11:10",
+      "part": "上午"
+    },
+    {
+      "section": 4,
+      "start": "11:15",
+      "end": "12:00",
+      "part": "上午"
+    },
+    {
+      "section": 5,
+      "start": "14:30",
+      "end": "15:15",
+      "part": "下午"
+    },
+    {
+      "section": 6,
+      "start": "15:20",
+      "end": "16:05",
+      "part": "下午"
+    },
+    {
+      "section": 7,
+      "start": "16:25",
+      "end": "17:10",
+      "part": "下午"
+    },
+    {
+      "section": 8,
+      "start": "17:15",
+      "end": "18:00",
+      "part": "下午"
+    },
+    {
+      "section": 9,
+      "start": "19:00",
+      "end": "19:45",
+      "part": "晚上"
+    },
+    {
+      "section": 10,
+      "start": "19:50",
+      "end": "20:35",
+      "part": "晚上"
+    },
+    {
+      "section": 11,
+      "start": "20:50",
+      "end": "21:35",
+      "part": "晚上"
+    },
+    {
+      "section": 12,
+      "start": "21:40",
+      "end": "22:25",
+      "part": "晚上"
+    }
+  ],
+  "weekdayLabels": [
+    "周一",
+    "周二",
+    "周三",
+    "周四",
+    "周五",
+    "周六",
+    "周日"
+  ],
+  "students": [
+    {
+      "id": "caiziling",
+      "name": "蔡子菱",
+      "studentNo": "2305200101",
+      "courses": [
+        {
+          "id": "czl-01",
+          "name": "人工智能导论",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "1-17",
+          "classroom": "10-512",
+          "teacher": "郑莉萍"
+        },
+        {
+          "id": "czl-02",
+          "name": "游戏建模",
+          "day": 1,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "1-505"
+        },
+        {
+          "id": "czl-03",
+          "name": "Unity 3D 引擎技术应用",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "9-16",
+          "classroom": "1-306",
+          "teacher": "郭剑"
+        },
+        {
+          "id": "czl-04",
+          "name": "Unity 3D 引擎技术应用",
+          "day": 2,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "1-306"
+        },
+        {
+          "id": "czl-05",
+          "name": "软件质量保证与测试",
+          "day": 2,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "1-17",
+          "classroom": "4-506",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "czl-06",
+          "name": "软件质量保证与测试",
+          "day": 2,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "9-16",
+          "classroom": "2-306",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "czl-07",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 2,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "1-4",
+          "classroom": "4-505"
+        },
+        {
+          "id": "czl-08",
+          "name": "游戏建模",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "2-501"
+        },
+        {
+          "id": "czl-09",
+          "name": "游戏运营管理",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "1-306",
+          "teacher": "盛腾"
+        },
+        {
+          "id": "czl-10",
+          "name": "C++程序设计",
+          "day": 4,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "10-503",
+          "teacher": "游洪跃"
+        },
+        {
+          "id": "czl-11",
+          "name": "游戏建模",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "1-4",
+          "classroom": "1-505"
+        },
+        {
+          "id": "czl-12",
+          "name": "人工智能导论",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "9-16",
+          "classroom": "10-304",
+          "teacher": "郑莉萍"
+        },
+        {
+          "id": "czl-13",
+          "name": "C++程序设计",
+          "day": 4,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "9-16",
+          "classroom": "1-502",
+          "teacher": "游洪跃"
+        },
+        {
+          "id": "czl-14",
+          "name": "形势与政策-6",
+          "day": 5,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "6-12",
+          "parity": "even",
+          "classroom": "2-301",
+          "teacher": "张晓勇"
+        },
+        {
+          "id": "czl-15",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "4-406",
+          "teacher": "未春凤"
+        },
+        {
+          "id": "czl-16",
+          "name": "游戏运营管理",
+          "day": 5,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "9-16",
+          "classroom": "10-301",
+          "teacher": "盛腾"
+        }
+      ]
+    },
+    {
+      "id": "mawanqing",
+      "name": "马晚晴",
+      "courses": [
+        {
+          "id": "mwq-01",
+          "name": "认知见习",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 8,
+          "weekExpr": "17",
+          "classroom": "田径场北侧",
+          "teacher": "吕佳丽"
+        },
+        {
+          "id": "mwq-02",
+          "name": "认知见习",
+          "day": 2,
+          "startSection": 1,
+          "endSection": 8,
+          "weekExpr": "17",
+          "classroom": "田径场北侧",
+          "teacher": "吕佳丽"
+        },
+        {
+          "id": "mwq-03",
+          "name": "现代教育技术应用",
+          "day": 2,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "1-302B",
+          "teacher": "蒋琳"
+        },
+        {
+          "id": "mwq-04",
+          "name": "运动表演专项理论与实践-4",
+          "day": 2,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "1-16",
+          "classroom": "学生活动中心",
+          "teacher": "陆水萍"
+        },
+        {
+          "id": "mwq-05",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 2,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "9-12",
+          "classroom": "4-301",
+          "teacher": "梁晶"
+        },
+        {
+          "id": "mwq-06",
+          "name": "体育社会学",
+          "day": 3,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "5-305",
+          "teacher": "任婷"
+        },
+        {
+          "id": "mwq-07",
+          "name": "体育与健康课程标准解读",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "1-8",
+          "classroom": "5-205",
+          "teacher": "刘金祥"
+        },
+        {
+          "id": "mwq-08",
+          "name": "班级管理",
+          "day": 4,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "1-16",
+          "classroom": "5-205",
+          "teacher": "赵强"
+        },
+        {
+          "id": "mwq-09",
+          "name": "形势与政策-6",
+          "day": 4,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "6-12",
+          "parity": "even",
+          "classroom": "7-101",
+          "teacher": "张勇"
+        }
+      ]
+    },
+    {
+      "id": "tangzixian",
+      "name": "唐子贤",
+      "courses": [
+        {
+          "id": "tzx-01",
+          "name": "并行与分布式计算",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "1-17",
+          "classroom": "10-511",
+          "teacher": "王站东"
+        },
+        {
+          "id": "tzx-02",
+          "name": "人工智能导论",
+          "day": 1,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-17",
+          "classroom": "10-511",
+          "teacher": "付春龍"
+        },
+        {
+          "id": "tzx-03",
+          "name": "web 应用开发-II",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "1-8",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "刘国芳"
+        },
+        {
+          "id": "tzx-04",
+          "name": "信息安全工程",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "9-16",
+          "classroom": "10-305",
+          "teacher": "张毅"
+        },
+        {
+          "id": "tzx-05",
+          "name": "信息安全工程",
+          "day": 1,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "1-16",
+          "classroom": "5-509",
+          "teacher": "张毅"
+        },
+        {
+          "id": "tzx-06",
+          "name": "网站实现、维护和管理",
+          "day": 2,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "段鹏"
+        },
+        {
+          "id": "tzx-07",
+          "name": "人工智能导论",
+          "day": 2,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "9-16",
+          "classroom": "10-304",
+          "teacher": "付春龍"
+        },
+        {
+          "id": "tzx-08",
+          "name": "并行与分布式计算",
+          "day": 3,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "3-501",
+          "teacher": "王站东"
+        },
+        {
+          "id": "tzx-09",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "5-8",
+          "classroom": "5-401",
+          "teacher": "胡思敏"
+        },
+        {
+          "id": "tzx-10",
+          "name": "软件质量保证与测试",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 11,
+          "weekExpr": "9-16",
+          "classroom": "IT实训工作坊(Ⅱ)",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "tzx-11",
+          "name": "web 应用开发-II",
+          "day": 4,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "刘国芳"
+        },
+        {
+          "id": "tzx-12",
+          "name": "网站实现、维护和管理",
+          "day": 4,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "段鹏"
+        },
+        {
+          "id": "tzx-13",
+          "name": "软件质量保证与测试",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "9-16",
+          "classroom": "1-505",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "tzx-14",
+          "name": "形势与政策-6",
+          "day": 4,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "7-13",
+          "classroom": "7-401",
+          "parity": "odd",
+          "teacher": "张琪"
+        },
+        {
+          "id": "tzx-15",
+          "name": "IT 领域社会与职业问题",
+          "day": 5,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "1-16",
+          "classroom": "5-202",
+          "teacher": "蒋琦"
+        }
+      ]
+    },
+    {
+      "id": "wuxinyu",
+      "name": "伍鑫宇",
+      "courses": [
+        {
+          "id": "wxy-01",
+          "name": "人工智能导论",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "1-17",
+          "classroom": "10-512",
+          "teacher": "郑莉萍"
+        },
+        {
+          "id": "wxy-02",
+          "name": "游戏建模",
+          "day": 1,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "1-505"
+        },
+        {
+          "id": "wxy-03",
+          "name": "Unity 3D 引擎技术应用",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "9-16",
+          "classroom": "1-306",
+          "teacher": "郭剑"
+        },
+        {
+          "id": "wxy-04",
+          "name": "Unity 3D 引擎技术应用",
+          "day": 2,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "1-306"
+        },
+        {
+          "id": "wxy-05",
+          "name": "软件质量保证与测试",
+          "day": 2,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "1-17",
+          "classroom": "4-506",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "wxy-06",
+          "name": "软件质量保证与测试",
+          "day": 2,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "9-16",
+          "classroom": "2-306",
+          "teacher": "薛丽莹"
+        },
+        {
+          "id": "wxy-07",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 2,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "1-4",
+          "classroom": "4-505"
+        },
+        {
+          "id": "wxy-08",
+          "name": "游戏建模",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "2-501"
+        },
+        {
+          "id": "wxy-09",
+          "name": "游戏运营管理",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "1-306",
+          "teacher": "盛腾"
+        },
+        {
+          "id": "wxy-10",
+          "name": "C++程序设计",
+          "day": 4,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "10-503",
+          "teacher": "游洪跃"
+        },
+        {
+          "id": "wxy-11",
+          "name": "游戏建模",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "1-4",
+          "classroom": "1-505"
+        },
+        {
+          "id": "wxy-12",
+          "name": "人工智能导论",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "9-16",
+          "classroom": "10-304",
+          "teacher": "郑莉萍"
+        },
+        {
+          "id": "wxy-13",
+          "name": "C++程序设计",
+          "day": 4,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "9-16",
+          "classroom": "1-502",
+          "teacher": "游洪跃"
+        },
+        {
+          "id": "wxy-14",
+          "name": "形势与政策-6",
+          "day": 5,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "6-12",
+          "parity": "even",
+          "classroom": "2-301",
+          "teacher": "张晓勇"
+        },
+        {
+          "id": "wxy-15",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-16",
+          "classroom": "4-406",
+          "teacher": "未春凤"
+        },
+        {
+          "id": "wxy-16",
+          "name": "游戏运营管理",
+          "day": 5,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "9-16",
+          "classroom": "10-301",
+          "teacher": "盛腾"
+        }
+      ]
+    }
+  ]
+}

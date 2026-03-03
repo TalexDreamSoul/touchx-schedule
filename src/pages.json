@@ -1,0 +1,16 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "课程表助手"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "课程表助手",
+    "navigationBarBackgroundColor": "#F2F6FF",
+    "backgroundColor": "#F2F6FF"
+  }
+}
