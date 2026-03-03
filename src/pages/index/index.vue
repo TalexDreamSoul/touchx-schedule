@@ -1946,26 +1946,9 @@ function formatIsoDate(date: Date) {
 .day-col.today-column {
   background: transparent;
   position: relative;
-}
-
-.day-col.today-column::before,
-.day-col.today-column::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2rpx;
-  background: var(--accent);
-  opacity: 0.62;
-  pointer-events: none;
-}
-
-.day-col.today-column::before {
-  left: 0;
-}
-
-.day-col.today-column::after {
-  right: 0;
+  z-index: 3;
+  border-left: 2rpx solid var(--accent);
+  border-right: 2rpx solid var(--accent);
 }
 
 .head.today-column {
