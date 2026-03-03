@@ -11,8 +11,15 @@ fi
 source .venv/bin/activate
 pip install -r requirements.txt
 
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
 if [ "$#" -eq 0 ]; then
-  ./reminder serve --reload --port 8080
+  ./reminder serve --reload --port 9986
 else
   ./reminder serve "$@"
 fi

@@ -1,5 +1,31 @@
 <template>
   <view class="page" :class="[ `theme-${themeKey}`, { 'modal-open': isAnyModalOpen } ]">
+    <view class="top-safe-bar" :style="{ height: `${topSafeInset}px`, paddingTop: `${capsuleTopOffset}px` }">
+      <view
+        v-if="activeTab === 'schedule'"
+        class="safe-week-row"
+        :style="{ gridTemplateColumns: `${leftActionsReserve}px 1fr ${capsuleReserveRight}px`, minHeight: `${capsuleHeight}px` }"
+      >
+        <view class="safe-left-actions">
+          <view class="week-nav-btn prev" @click="shiftWeek(-1)">
+            <view class="nav-chevron left" />
+          </view>
+          <view class="week-nav-btn next" @click="shiftWeek(1)">
+            <view class="nav-chevron right" />
+          </view>
+          <view class="setting-btn inline" @click="openIncludePicker">
+            <view class="gear-icon" />
+          </view>
+        </view>
+        <view class="safe-week-center">
+          <view class="safe-week-info">
+            <text class="week-main compact" @click="openWeekPicker">第 {{ selectedWeek }} 周</text>
+            <text class="week-sub compact">{{ getWeekDateRangeLabel(selectedWeek) }}</text>
+          </view>
+        </view>
+        <view class="safe-right-spacer" />
+      </view>
+    </view>
     <view class="content">
       <template v-if="activeTab === 'today'">
         <view class="card">
@@ -22,7 +48,7 @@
           </view>
         </view>
 
-        <view class="card">
+        <view v-if="shouldShowStudyCard" class="card">
           <view class="section-title">学习提醒</view>
           <view v-if="todayFocusCourse" class="today-focus accent" :style="getCourseCardStyle(todayFocusCourse)">
             <view class="today-focus-top">
@@ -81,23 +107,6 @@
 
       <template v-else-if="activeTab === 'schedule'">
         <view class="card schedule-card">
-          <view class="top-bar">
-            <view class="week-toolbar">
-              <view class="week-nav-btn prev" @click="shiftWeek(-1)">
-                <view class="nav-chevron left" />
-              </view>
-              <view class="week-center-group">
-                <text class="week-main" @click="openWeekPicker">第 {{ selectedWeek }} 周</text>
-                <view class="setting-btn inline" @click="openIncludePicker">
-                  <view class="gear-icon" />
-                </view>
-              </view>
-              <view class="week-nav-btn next" @click="shiftWeek(1)">
-                <view class="nav-chevron right" />
-              </view>
-            </view>
-            <text class="week-sub">{{ getWeekDateRangeLabel(selectedWeek) }}</text>
-          </view>
           <view v-if="hasMultipleIncluded" class="owner-legend">
             <view v-for="student in includedSchedules" :key="`owner-${student.id}`" class="owner-item">
               <view class="owner-dot" :style="getOwnerDotStyle(student.id)" />
@@ -156,7 +165,7 @@
 	                @click="openCourseDialog(selectedWeek, dayIndex + 1, row.section)"
 	                @longpress="onCellLongPress(selectedWeek, dayIndex + 1, row.section)"
 	              >
-                <view v-if="cell.busy && cell.showLabel" class="cell-text">
+                <view v-if="cell.busy && cell.showLabel" class="cell-text" :style="getCellTextStyle(cell)">
                   <text class="cell-title">{{ renderCellTitle(cell.labels) }}</text>
                   <text v-if="cell.classroomLabel" class="cell-room">{{ cell.classroomLabel }}</text>
                 </view>
@@ -374,6 +383,7 @@ interface GridRow {
     classroomLabel: string;
     ownerIds: string[];
     showLabel: boolean;
+    labelSpan: number;
     part: string;
     mergeWithPrev: boolean;
     mergeWithNext: boolean;
@@ -421,22 +431,22 @@ const navItems: Array<{ key: TabKey; label: string }> = [
 
 const themePreviewMap: Record<ThemeKey, { start: string; end: string }> = {
   black: { start: "#f3f3f3", end: "#121212" },
-  purple: { start: "#f6f3fb", end: "#7a56d8" },
-  green: { start: "#f2f7f3", end: "#2f9a5f" },
-  pink: { start: "#fbf3f6", end: "#c7568f" },
-  blue: { start: "#f2f6fb", end: "#3f7bd1" },
-  yellow: { start: "#fbf8ee", end: "#b6922d" },
-  orange: { start: "#fbf5f1", end: "#c97235" },
+  purple: { start: "#f5eeff", end: "#a061ff" },
+  green: { start: "#edf9f3", end: "#13c56a" },
+  pink: { start: "#fff0f8", end: "#ef45a5" },
+  blue: { start: "#eff6ff", end: "#2e9dff" },
+  yellow: { start: "#fdf8eb", end: "#d9a511" },
+  orange: { start: "#fdf4ed", end: "#f57b16" },
 };
 
 const themeAccentMap: Record<ThemeKey, string> = {
   black: "#2f55c8",
-  purple: "#7a56d8",
-  green: "#2f9a5f",
-  pink: "#c7568f",
-  blue: "#3f7bd1",
-  yellow: "#b6922d",
-  orange: "#c97235",
+  purple: "#a061ff",
+  green: "#13c56a",
+  pink: "#ef45a5",
+  blue: "#2e9dff",
+  yellow: "#d9a511",
+  orange: "#f57b16",
 };
 
 const ownerColorOrder: Record<string, number> = {
@@ -448,12 +458,12 @@ const ownerColorOrder: Record<string, number> = {
 
 const themeOwnerPaletteMap: Record<ThemeKey, string[]> = {
   black: ["#2f2f2f", "#555555", "#767676", "#9a9a9a"],
-  purple: ["#7a56d8", "#8f6ee0", "#a486e8", "#b99df0"],
-  green: ["#2f9a5f", "#44ab72", "#58bc84", "#70cb97"],
-  pink: ["#c7568f", "#d26da0", "#dd85b2", "#e89cc3"],
-  blue: ["#3f7bd1", "#598fd9", "#73a4e1", "#8db8e9"],
-  yellow: ["#b6922d", "#c3a84b", "#d0be69", "#ddd487"],
-  orange: ["#c97235", "#d5854d", "#e19766", "#eca97e"],
+  purple: ["#a061ff", "#b279ff", "#c390ff", "#d4a8ff"],
+  green: ["#13c56a", "#33cf7e", "#52d893", "#73e2a8"],
+  pink: ["#ef45a5", "#f15fb2", "#f47ac0", "#f796ce"],
+  blue: ["#2e9dff", "#4faeff", "#6ebeff", "#8eceff"],
+  yellow: ["#d9a511", "#e1b42f", "#e8c34d", "#efd36d"],
+  orange: ["#f57b16", "#f88f36", "#faa257", "#fcb677"],
 };
 
 const courseOverlayPalette = ["#6f84d8", "#d99663", "#c7749e", "#6a9fcb", "#9c88d8", "#d6a35f"];
@@ -541,6 +551,11 @@ const dialogSection = ref(1);
 const dialogCourses = ref<DisplayCourse[]>([]);
 const currentWeek = ref(resolveWeekByDate(new Date()));
 const todayWeekday = ref(resolveWeekday(new Date()));
+const topSafeInset = ref(0);
+const capsuleReserveRight = ref(0);
+const leftActionsReserve = ref(0);
+const capsuleTopOffset = ref(0);
+const capsuleHeight = ref(32);
 
 const isAnyModalOpen = computed(() => {
   return (
@@ -609,7 +624,7 @@ const normalizeClassroomLabel = (classroom?: string | null) => {
   if (!text) {
     return "";
   }
-  return text.slice(0, 5);
+  return text.slice(0, 6);
 };
 
 const pickCellClassroomLabel = (courses: DisplayCourse[]) => {
@@ -640,6 +655,7 @@ const gridRows = computed<GridRow[]>(() => {
       const prevSignature = getCellSignature(prevCourses);
       const nextSignature = getCellSignature(nextCourses);
       let showLabel = false;
+      let labelSpan = 1;
 
       if (signature !== "") {
         let groupStart = slot.section;
@@ -662,8 +678,8 @@ const gridRows = computed<GridRow[]>(() => {
           groupEnd += 1;
         }
 
-        const anchorSection = Math.floor((groupStart + groupEnd) / 2);
-        showLabel = slot.section === anchorSection;
+        labelSpan = groupEnd - groupStart + 1;
+        showLabel = slot.section === groupStart;
       }
 
       return {
@@ -672,6 +688,7 @@ const gridRows = computed<GridRow[]>(() => {
         classroomLabel: pickCellClassroomLabel(courses),
         ownerIds: Array.from(new Set(courses.map((course) => course.ownerId))),
         showLabel,
+        labelSpan,
         part: slot.part,
         mergeWithPrev: signature !== "" && prevPart === slot.part && prevSignature === signature,
         mergeWithNext: signature !== "" && nextPart === slot.part && nextSignature === signature,
@@ -979,6 +996,19 @@ const departureReminder = computed(() => {
   };
 });
 
+const shouldShowStudyCard = computed(() => {
+  if (todayCourses.value.length > 0) {
+    return true;
+  }
+  if (todayFocusCourse.value) {
+    return true;
+  }
+  if (departureReminder.value) {
+    return true;
+  }
+  return false;
+});
+
 const isFocusCourse = (course: DisplayCourse) => {
   const focus = todayFocusCourse.value;
   if (!focus) {
@@ -1022,6 +1052,41 @@ const autoScrollToCurrentPart = () => {
       duration: 260,
     });
   });
+};
+
+const resolveTopSafeInset = () => {
+  const systemInfo = uni.getSystemInfoSync();
+  const statusBar = Number(systemInfo.statusBarHeight || 0);
+  const windowWidth = Number(systemInfo.windowWidth || 375);
+  let safeInset = statusBar;
+  capsuleReserveRight.value = 0;
+  leftActionsReserve.value = Math.ceil((212 / 750) * windowWidth);
+  capsuleTopOffset.value = Math.max(0, statusBar + 4);
+  capsuleHeight.value = 32;
+  const getMenuRect = (uni as unknown as {
+    getMenuButtonBoundingClientRect?: () => { top?: number; bottom?: number; left?: number; width?: number; height?: number };
+  }).getMenuButtonBoundingClientRect;
+  if (typeof getMenuRect === "function") {
+    const menuRect = getMenuRect();
+    const menuTop = Number(menuRect?.top || 0);
+    const menuBottom = Number(menuRect?.bottom || 0);
+    const menuWidth = Number(menuRect?.width || 0);
+    const menuHeight = Number(menuRect?.height || 0);
+    if (menuRect && Number.isFinite(menuBottom) && menuBottom > 0) {
+      safeInset = Math.max(safeInset, Math.ceil(menuBottom + 2));
+      capsuleReserveRight.value = Math.ceil((menuWidth || 96) + 12);
+      if (Number.isFinite(menuTop) && menuTop > 0) {
+        capsuleTopOffset.value = Math.ceil(menuTop);
+      }
+      if (Number.isFinite(menuHeight) && menuHeight > 0) {
+        capsuleHeight.value = Math.ceil(menuHeight);
+      }
+    }
+  }
+  if (safeInset <= 0) {
+    safeInset = 44 + capsuleHeight.value;
+  }
+  topSafeInset.value = safeInset;
 };
 
 const normalizeBackendBaseUrl = (value: string) => {
@@ -1086,6 +1151,8 @@ const refreshTodayBrief = async () => {
 };
 
 onMounted(() => {
+  resolveTopSafeInset();
+
   const savedStudentId = uni.getStorageSync(STORAGE_SELECTED_STUDENT_KEY);
   if (savedStudentId && studentSchedules.some((item) => item.id === savedStudentId)) {
     activeStudentId.value = savedStudentId;
@@ -1391,14 +1458,14 @@ const getCourseTone = (courseSeed: string, ownerSeed: string) => {
   const accent = themeAccentMap[themeKey.value] || themeAccentMap.black;
   const hashSource = `${courseSeed}::${ownerSeed}`;
   const index = hashString(hashSource) % courseOverlayPalette.length;
-  return mixHex(accent, courseOverlayPalette[index], 0.36);
+  return mixHex(accent, courseOverlayPalette[index], 0.42);
 };
 
 const getCourseCardStyle = (course: DisplayCourse): CSSProperties => {
   const tone = getCourseTone(course.name, course.ownerId);
   return {
     borderColor: "var(--line)",
-    backgroundColor: hexToRgba(tone, hasMultipleIncluded.value ? 0.1 : 0.14),
+    backgroundColor: hexToRgba(tone, hasMultipleIncluded.value ? 0.12 : 0.18),
     boxShadow: "none",
   };
 };
@@ -1414,13 +1481,24 @@ const getCellStyle = (cell: GridRow["cells"][number]): CSSProperties => {
   if (cell.labels.length > 1) {
     const secondary = getCourseTone(cell.labels[1], ownerSeed);
     return {
-      backgroundImage: `linear-gradient(140deg, ${hexToRgba(primary, 0.2)} 0%, ${hexToRgba(secondary, 0.2)} 100%)`,
-      backgroundColor: hexToRgba(primary, 0.18),
+      backgroundImage: `linear-gradient(140deg, ${hexToRgba(primary, 0.21)} 0%, ${hexToRgba(secondary, 0.21)} 100%)`,
+      backgroundColor: hexToRgba(primary, 0.19),
     };
   }
   return {
     backgroundImage: "none",
-    backgroundColor: hexToRgba(primary, 0.2),
+    backgroundColor: hexToRgba(primary, 0.21),
+  };
+};
+
+const getCellTextStyle = (cell: GridRow["cells"][number]): CSSProperties => {
+  if (cell.labelSpan <= 1) {
+    return {};
+  }
+  return {
+    top: "0",
+    transform: "none",
+    height: `calc(${cell.labelSpan} * 100%)`,
   };
 };
 
@@ -1543,7 +1621,7 @@ function formatIsoDate(date: Date) {
   --today-col-bg: #ececec;
   --today-head-bg: #e2e2e2;
   --muted-bg: #f7f7f7;
-  --time-col-bg: #f1f1f1;
+  --time-col-bg: #eef1f7;
   --mask-bg: rgba(0, 0, 0, 0.45);
   min-height: 100vh;
   background: var(--bg);
@@ -1553,67 +1631,67 @@ function formatIsoDate(date: Date) {
 .page.theme-purple {
   --bg: #f5f1ff;
   --card-bg: #fcfaff;
-  --muted-bg: #f0e9ff;
+  --muted-bg: #f5edff;
   --line: #d9cfef;
-  --accent: #7a56d8;
-  --today-col-bg: #e9e1fb;
-  --today-head-bg: #e0d5f8;
-  --time-col-bg: #ebe6f4;
+  --accent: #a061ff;
+  --today-col-bg: #f0e4ff;
+  --today-head-bg: #eadbff;
+  --time-col-bg: #ede4fb;
 }
 
 .page.theme-green {
   --bg: #eef8f2;
   --card-bg: #f9fffb;
-  --muted-bg: #e6f4ec;
+  --muted-bg: #ebf9f0;
   --line: #cde2d6;
-  --accent: #2f9a5f;
-  --today-col-bg: #dcf0e4;
-  --today-head-bg: #d0e9da;
-  --time-col-bg: #e7efe9;
+  --accent: #13c56a;
+  --today-col-bg: #e2f8eb;
+  --today-head-bg: #d4f2e0;
+  --time-col-bg: #e6f3ea;
 }
 
 .page.theme-pink {
   --bg: #fff1f7;
   --card-bg: #fffafe;
-  --muted-bg: #fbe7f1;
+  --muted-bg: #fdebf5;
   --line: #ebcede;
-  --accent: #c7568f;
-  --today-col-bg: #f6ddea;
-  --today-head-bg: #f1d0e1;
-  --time-col-bg: #f2e6ec;
+  --accent: #ef45a5;
+  --today-col-bg: #fbdded;
+  --today-head-bg: #f6d1e5;
+  --time-col-bg: #f5e4ed;
 }
 
 .page.theme-blue {
   --bg: #eef5ff;
   --card-bg: #fafdff;
-  --muted-bg: #e4eefc;
+  --muted-bg: #eaf3ff;
   --line: #cddcf3;
-  --accent: #3f7bd1;
-  --today-col-bg: #dae7fb;
-  --today-head-bg: #cedff7;
-  --time-col-bg: #e7ecf4;
+  --accent: #2e9dff;
+  --today-col-bg: #e0eeff;
+  --today-head-bg: #d2e7ff;
+  --time-col-bg: #e4edf9;
 }
 
 .page.theme-yellow {
   --bg: #fff9ea;
   --card-bg: #fffdf4;
-  --muted-bg: #f8efd0;
+  --muted-bg: #fbf2d8;
   --line: #eadba8;
-  --accent: #b6922d;
-  --today-col-bg: #f3e6be;
-  --today-head-bg: #ecdca8;
-  --time-col-bg: #f2ecd9;
+  --accent: #d9a511;
+  --today-col-bg: #f9ecc0;
+  --today-head-bg: #f3e2a9;
+  --time-col-bg: #f4ecd7;
 }
 
 .page.theme-orange {
   --bg: #fff3ec;
   --card-bg: #fffaf6;
-  --muted-bg: #fae8dc;
+  --muted-bg: #fdebe0;
   --line: #edd3c2;
-  --accent: #c97235;
-  --today-col-bg: #f5dece;
-  --today-head-bg: #efd2bd;
-  --time-col-bg: #f3e7df;
+  --accent: #f57b16;
+  --today-col-bg: #fbe2cd;
+  --today-head-bg: #f6d4b9;
+  --time-col-bg: #f5e6de;
 }
 
 .page.modal-open {
@@ -1621,8 +1699,49 @@ function formatIsoDate(date: Date) {
   overflow: hidden;
 }
 
+.top-safe-bar {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 16rpx;
+  padding-right: 16rpx;
+}
+
+.safe-week-row {
+  width: 100%;
+  display: grid;
+  align-items: center;
+  column-gap: 10rpx;
+}
+
+.safe-left-actions {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+
+.safe-week-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.safe-week-info {
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  white-space: nowrap;
+}
+
+.safe-right-spacer {
+  min-height: 1px;
+}
+
 .content {
-  padding: 20rpx 20rpx 150rpx;
+  padding: 20rpx 20rpx calc(130rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 20rpx calc(130rpx + constant(safe-area-inset-bottom));
 }
 
 .card {
@@ -1748,14 +1867,7 @@ function formatIsoDate(date: Date) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 10rpx;
-}
-
-.week-toolbar {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
+  margin-bottom: 8rpx;
 }
 
 .week-nav-btn {
@@ -1770,13 +1882,6 @@ function formatIsoDate(date: Date) {
   justify-content: center;
 }
 
-.week-center-group {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10rpx;
-}
-
 .week-main {
   padding: 4rpx 6rpx;
   text-align: center;
@@ -1785,12 +1890,20 @@ function formatIsoDate(date: Date) {
   color: var(--text-main);
 }
 
-.week-nav-btn.prev {
-  justify-self: start;
+.week-main.compact {
+  font-size: 42rpx;
+  line-height: 1.05;
+  padding: 0;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
-.week-nav-btn.next {
-  justify-self: end;
+.week-sub.compact {
+  margin-top: 0;
+  font-size: 20rpx;
+  line-height: 1.1;
+  color: var(--text-sub);
+  white-space: nowrap;
 }
 
 .setting-btn.inline {
@@ -1846,7 +1959,7 @@ function formatIsoDate(date: Date) {
 }
 
 .week-sub {
-  margin-top: 8rpx;
+  margin-top: 2rpx;
   font-size: 22rpx;
   color: var(--text-sub);
 }
@@ -1893,11 +2006,20 @@ function formatIsoDate(date: Date) {
   border-radius: 0;
   overflow: hidden;
   background: transparent;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 520rpx - env(safe-area-inset-bottom));
+  min-height: calc(100vh - 520rpx - constant(safe-area-inset-bottom));
 }
 
 .table-row {
   display: flex;
-  min-height: 86rpx;
+  min-height: 88rpx;
+  flex: 1 1 auto;
+}
+
+.head-row {
+  flex: 0 0 84rpx;
 }
 
 .time-col,
@@ -1913,7 +2035,7 @@ function formatIsoDate(date: Date) {
 
 .part-start .time-col,
 .part-start .day-col {
-  box-shadow: inset 0 10rpx 0 rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 18rpx 0 rgba(255, 255, 255, 0.72);
 }
 
 .time-col {
@@ -1940,6 +2062,7 @@ function formatIsoDate(date: Date) {
 }
 
 .cell {
+  position: relative;
   padding: 2rpx 4rpx;
 }
 
@@ -1996,16 +2119,20 @@ function formatIsoDate(date: Date) {
 }
 
 .cell-text {
-  width: 100%;
-  min-height: 100%;
+  position: absolute;
+  left: 4rpx;
+  right: 4rpx;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
   gap: 4rpx;
-  padding: 2rpx 4rpx;
+  padding: 0;
   box-sizing: border-box;
+  pointer-events: none;
 }
 
 .cell-title {
@@ -2289,8 +2416,11 @@ function formatIsoDate(date: Date) {
   bottom: 0;
   display: flex;
   align-items: center;
-  height: 112rpx;
+  height: calc(108rpx + env(safe-area-inset-bottom));
+  height: calc(108rpx + constant(safe-area-inset-bottom));
+  box-sizing: border-box;
   padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: constant(safe-area-inset-bottom);
   background: var(--card-bg);
   border-top: 1rpx solid var(--line);
   z-index: 60;

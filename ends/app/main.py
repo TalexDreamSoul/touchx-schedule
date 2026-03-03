@@ -1,24 +1,32 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import csv
 import hashlib
 import json
 import os
 import re
 import sqlite3
+import struct
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
+
+try:
+    from Crypto.Cipher import AES
+except ImportError:  # pragma: no cover
+    AES = None
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("TOUCHX_DB_PATH", str(BASE_DIR / "touchx.db")))
@@ -28,8 +36,15 @@ REMINDER_OFFSETS = [30, 15]
 REMINDER_TRIGGER_WINDOW_SECONDS = int(os.getenv("REMINDER_TRIGGER_WINDOW_SECONDS", "120"))
 SCAN_INTERVAL_SECONDS = int(os.getenv("REMINDER_SCAN_INTERVAL_SECONDS", "60"))
 ENABLE_REMINDER_WORKER = os.getenv("ENABLE_REMINDER_WORKER", "1") == "1"
-PUSH_MODE = os.getenv("PUSH_MODE", "xizhi")  # xizhi | mock
+PUSH_MODE = os.getenv("PUSH_MODE", "xizhi")  # xizhi | wecom | mock
 XIZHI_DEFAULT_CHANNEL_URL = os.getenv("XIZHI_DEFAULT_CHANNEL_URL", "")
+WECOM_API_BASE = os.getenv("WECOM_API_BASE", "https://qyapi.weixin.qq.com").rstrip("/")
+WECOM_CORP_ID = os.getenv("WECOM_CORP_ID", "").strip()
+WECOM_AGENT_ID = os.getenv("WECOM_AGENT_ID", "").strip()
+WECOM_CORP_SECRET = os.getenv("WECOM_CORP_SECRET", "").strip()
+WECOM_DEFAULT_TOUSER = os.getenv("WECOM_DEFAULT_TOUSER", "").strip()
+WECOM_CALLBACK_TOKEN = os.getenv("WECOM_CALLBACK_TOKEN", "").strip()
+WECOM_CALLBACK_AES_KEY = os.getenv("WECOM_CALLBACK_AES_KEY", "").strip()
 CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "*")
 COURSE_CSV_PATH = Path(os.getenv("COURSE_CSV_PATH", str(BASE_DIR.parent.parent / "src/data/normalized/courses.normalized.csv")))
 
@@ -230,6 +245,15 @@ DEFAULT_TEST_CONTENT_TEMPLATE = "\n".join(
         "发送时间：{now_text}",
     ]
 )
+WECOM_CHANNEL_PREFIX = "wecom://"
+WECOM_HELP_TEXT = "\n".join(
+    [
+        "课表提醒菜单：",
+        "1) help - 查看菜单",
+        "2) bind 姓名 - 绑定课表（例：bind 唐子贤）",
+        "3) test - 测试推送",
+    ]
+)
 
 
 class RegisterSubscriberRequest(BaseModel):
@@ -261,8 +285,20 @@ class SaveTemplatesRequest(BaseModel):
     test_content_template: str = Field(..., min_length=1)
 
 
+class SaveWecomConfigRequest(BaseModel):
+    corp_id: str = Field(..., min_length=1)
+    agent_id: str = Field(..., min_length=1)
+    corp_secret: Optional[str] = None
+    default_touser: Optional[str] = None
+    callback_token: Optional[str] = None
+    callback_aes_key: Optional[str] = None
+    api_base: Optional[str] = None
+
+
 app = FastAPI(title="touchx-third-party-reminder", version="0.3.0")
 app.state.worker_task = None
+app.state.wecom_token = None
+app.state.wecom_token_expire_at = 0
 
 allow_origins = [item.strip() for item in CORS_ALLOW_ORIGINS.split(",") if item.strip()]
 if not allow_origins:
@@ -323,6 +359,23 @@ def make_subscriber_key(student_id: str, channel_url: str) -> str:
     return hashlib.sha1(source).hexdigest()[:20]
 
 
+def build_wecom_channel(user_id: str) -> str:
+    return f"{WECOM_CHANNEL_PREFIX}{user_id.strip()}"
+
+
+def is_wecom_channel_url(channel_url: str) -> bool:
+    return (channel_url or "").strip().startswith(WECOM_CHANNEL_PREFIX)
+
+
+def parse_wecom_userid(channel_url: str) -> str:
+    value = (channel_url or "").strip()
+    if value.startswith(WECOM_CHANNEL_PREFIX):
+        return value[len(WECOM_CHANNEL_PREFIX) :].strip()
+    if value.startswith("http://") or value.startswith("https://"):
+        return ""
+    return value
+
+
 def normalize_display_name(display_name: Optional[str], fallback: str) -> str:
     value = (display_name or "").strip()
     return value or fallback
@@ -378,35 +431,19 @@ def serialize_subscriber_row(row: sqlite3.Row) -> Dict[str, Any]:
     return item
 
 
-def get_push_templates() -> Dict[str, str]:
-    defaults = {
-        "title_template": DEFAULT_TITLE_TEMPLATE,
-        "content_template": DEFAULT_CONTENT_TEMPLATE,
-        "test_title_template": DEFAULT_TEST_TITLE_TEMPLATE,
-        "test_content_template": DEFAULT_TEST_CONTENT_TEMPLATE,
-    }
+def get_setting_values(keys: List[str]) -> Dict[str, str]:
+    if not keys:
+        return {}
+    placeholders = ",".join("?" for _ in keys)
     with db_connection() as conn:
-        rows = conn.execute(
-            "SELECT key, value FROM app_settings WHERE key IN ('title_template', 'content_template', 'test_title_template', 'test_content_template')"
-        ).fetchall()
-    result = dict(defaults)
-    for row in rows:
-        result[row["key"]] = row["value"]
-    return result
+        rows = conn.execute(f"SELECT key, value FROM app_settings WHERE key IN ({placeholders})", tuple(keys)).fetchall()
+    return {row["key"]: row["value"] for row in rows}
 
 
-def save_push_templates(payload: SaveTemplatesRequest) -> None:
+def set_setting_values(data: Dict[str, str]) -> None:
     now_ts = int(time.time())
-    entries = {
-        "title_template": payload.title_template.strip(),
-        "content_template": payload.content_template.strip(),
-        "test_title_template": payload.test_title_template.strip(),
-        "test_content_template": payload.test_content_template.strip(),
-    }
-    if not all(entries.values()):
-        raise HTTPException(status_code=400, detail="模板内容不能为空")
     with db_connection() as conn:
-        for key, value in entries.items():
+        for key, value in data.items():
             conn.execute(
                 """
                 INSERT INTO app_settings (key, value, updated_at)
@@ -417,6 +454,125 @@ def save_push_templates(payload: SaveTemplatesRequest) -> None:
                 """,
                 (key, value, now_ts),
             )
+
+
+def get_push_templates() -> Dict[str, str]:
+    defaults = {
+        "title_template": DEFAULT_TITLE_TEMPLATE,
+        "content_template": DEFAULT_CONTENT_TEMPLATE,
+        "test_title_template": DEFAULT_TEST_TITLE_TEMPLATE,
+        "test_content_template": DEFAULT_TEST_CONTENT_TEMPLATE,
+    }
+    result = dict(defaults)
+    result.update(get_setting_values(list(defaults.keys())))
+    return result
+
+
+def save_push_templates(payload: SaveTemplatesRequest) -> None:
+    entries = {
+        "title_template": payload.title_template.strip(),
+        "content_template": payload.content_template.strip(),
+        "test_title_template": payload.test_title_template.strip(),
+        "test_content_template": payload.test_content_template.strip(),
+    }
+    if not all(entries.values()):
+        raise HTTPException(status_code=400, detail="模板内容不能为空")
+    set_setting_values(entries)
+
+
+def get_wecom_config() -> Dict[str, str]:
+    defaults = {
+        "api_base": WECOM_API_BASE,
+        "corp_id": WECOM_CORP_ID,
+        "agent_id": WECOM_AGENT_ID,
+        "corp_secret": WECOM_CORP_SECRET,
+        "default_touser": WECOM_DEFAULT_TOUSER,
+        "callback_token": WECOM_CALLBACK_TOKEN,
+        "callback_aes_key": WECOM_CALLBACK_AES_KEY,
+    }
+    saved = get_setting_values(
+        [
+            "wecom_api_base",
+            "wecom_corp_id",
+            "wecom_agent_id",
+            "wecom_corp_secret",
+            "wecom_default_touser",
+            "wecom_callback_token",
+            "wecom_callback_aes_key",
+        ]
+    )
+    return {
+        "api_base": saved.get("wecom_api_base", defaults["api_base"]).strip().rstrip("/"),
+        "corp_id": saved.get("wecom_corp_id", defaults["corp_id"]).strip(),
+        "agent_id": saved.get("wecom_agent_id", defaults["agent_id"]).strip(),
+        "corp_secret": saved.get("wecom_corp_secret", defaults["corp_secret"]).strip(),
+        "default_touser": saved.get("wecom_default_touser", defaults["default_touser"]).strip(),
+        "callback_token": saved.get("wecom_callback_token", defaults["callback_token"]).strip(),
+        "callback_aes_key": saved.get("wecom_callback_aes_key", defaults["callback_aes_key"]).strip(),
+    }
+
+
+def save_wecom_config(payload: SaveWecomConfigRequest) -> Dict[str, str]:
+    existing = get_wecom_config()
+    api_base = (payload.api_base or "").strip().rstrip("/") or existing.get("api_base") or WECOM_API_BASE
+    if not api_base.startswith("http://") and not api_base.startswith("https://"):
+        raise HTTPException(status_code=400, detail="api_base 必须是 http(s) 地址")
+
+    callback_aes_key = (payload.callback_aes_key or "").strip() or existing.get("callback_aes_key", "")
+    if callback_aes_key and len(callback_aes_key) != 43:
+        raise HTTPException(status_code=400, detail="callback_aes_key 长度必须是 43")
+
+    values = {
+        "api_base": api_base,
+        "corp_id": payload.corp_id.strip(),
+        "agent_id": payload.agent_id.strip(),
+        "corp_secret": (payload.corp_secret or "").strip() or existing.get("corp_secret", ""),
+        "default_touser": (payload.default_touser or "").strip() or existing.get("default_touser", ""),
+        "callback_token": (payload.callback_token or "").strip() or existing.get("callback_token", ""),
+        "callback_aes_key": callback_aes_key,
+    }
+    for key in ["api_base", "corp_id", "agent_id", "corp_secret", "default_touser"]:
+        if not values[key]:
+            raise HTTPException(status_code=400, detail=f"企业微信配置不完整：{key} 不能为空")
+    if bool(values["callback_token"]) != bool(values["callback_aes_key"]):
+        raise HTTPException(status_code=400, detail="callback_token 和 callback_aes_key 需同时配置")
+    set_setting_values(
+        {
+            "wecom_api_base": values["api_base"],
+            "wecom_corp_id": values["corp_id"],
+            "wecom_agent_id": values["agent_id"],
+            "wecom_corp_secret": values["corp_secret"],
+            "wecom_default_touser": values["default_touser"],
+            "wecom_callback_token": values["callback_token"],
+            "wecom_callback_aes_key": values["callback_aes_key"],
+        }
+    )
+    app.state.wecom_token = None
+    app.state.wecom_token_expire_at = 0
+    return values
+
+
+def mask_secret(value: str, prefix: int = 4, suffix: int = 4) -> str:
+    if not value:
+        return ""
+    if len(value) <= prefix + suffix:
+        return "*" * len(value)
+    return f"{value[:prefix]}****{value[-suffix:]}"
+
+
+def get_wecom_config_public() -> Dict[str, Any]:
+    config = get_wecom_config()
+    return {
+        "api_base": config["api_base"],
+        "corp_id": config["corp_id"],
+        "agent_id": config["agent_id"],
+        "default_touser": config["default_touser"],
+        "corp_secret_masked": mask_secret(config["corp_secret"]),
+        "callback_token_masked": mask_secret(config["callback_token"]),
+        "callback_aes_key_masked": mask_secret(config["callback_aes_key"], prefix=6, suffix=6),
+        "configured": bool(config["corp_id"] and config["agent_id"] and config["corp_secret"] and config["default_touser"]),
+        "callback_configured": bool(config["callback_token"] and config["callback_aes_key"]),
+    }
 
 
 def init_db() -> None:
@@ -483,6 +639,25 @@ def init_db() -> None:
                 VALUES (?, ?, ?)
                 """,
                 (key, default_value, now_ts),
+            )
+
+        for key, value in {
+            "wecom_api_base": WECOM_API_BASE,
+            "wecom_corp_id": WECOM_CORP_ID,
+            "wecom_agent_id": WECOM_AGENT_ID,
+            "wecom_corp_secret": WECOM_CORP_SECRET,
+            "wecom_default_touser": WECOM_DEFAULT_TOUSER,
+            "wecom_callback_token": WECOM_CALLBACK_TOKEN,
+            "wecom_callback_aes_key": WECOM_CALLBACK_AES_KEY,
+        }.items():
+            if not value:
+                continue
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO app_settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                """,
+                (key, value, now_ts),
             )
 
 
@@ -568,6 +743,18 @@ def get_subscriber_by_key(subscriber_key: str) -> Optional[Dict[str, Any]]:
     if row is None:
         return None
     return serialize_subscriber_row(row)
+
+
+def list_wecom_bindings() -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for subscriber in list_subscribers():
+        channel_url = str(subscriber.get("channel_url", ""))
+        if not is_wecom_channel_url(channel_url):
+            continue
+        row = dict(subscriber)
+        row["wecom_userid"] = parse_wecom_userid(channel_url)
+        items.append(row)
+    return items
 
 
 def notification_sent(subscriber_key: str, week_no: int, day_no: int, start_section: int, reminder_minutes: int) -> bool:
@@ -927,6 +1114,144 @@ def build_test_push_payload(subscriber: Dict[str, Any]) -> Tuple[str, str]:
     return title, content
 
 
+def compute_wecom_signature(token: str, timestamp: str, nonce: str, encrypted: str) -> str:
+    data = [token, timestamp, nonce, encrypted]
+    data.sort()
+    return hashlib.sha1("".join(data).encode("utf-8")).hexdigest()
+
+
+def decode_wecom_aes_key(encoding_aes_key: str) -> bytes:
+    key = encoding_aes_key.strip()
+    if len(key) != 43:
+        raise RuntimeError("WECOM_CALLBACK_AES_KEY 长度必须是 43 位")
+    try:
+        return base64.b64decode(f"{key}=")
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("WECOM_CALLBACK_AES_KEY 非法，无法 base64 解码") from exc
+
+
+def pkcs7_unpad(data: bytes) -> bytes:
+    if not data:
+        raise RuntimeError("企业微信回调解密失败：空数据")
+    pad_len = data[-1]
+    if pad_len < 1 or pad_len > 32:
+        raise RuntimeError("企业微信回调解密失败：padding 非法")
+    return data[:-pad_len]
+
+
+def decrypt_wecom_echostr(echostr: str, encoding_aes_key: str) -> Tuple[str, str]:
+    if AES is None:  # pragma: no cover
+        raise RuntimeError("缺少 pycryptodome 依赖，请安装 requirements.txt")
+    aes_key = decode_wecom_aes_key(encoding_aes_key)
+    iv = aes_key[:16]
+    try:
+        encrypted = base64.b64decode(echostr)
+    except Exception as exc:
+        raise RuntimeError("echostr 非法，base64 解码失败") from exc
+
+    cipher = AES.new(aes_key, AES.MODE_CBC, iv)
+    decrypted = pkcs7_unpad(cipher.decrypt(encrypted))
+    if len(decrypted) < 20:
+        raise RuntimeError("企业微信回调解密失败：数据长度异常")
+
+    msg_len = struct.unpack(">I", decrypted[16:20])[0]
+    msg_start = 20
+    msg_end = msg_start + msg_len
+    if msg_end > len(decrypted):
+        raise RuntimeError("企业微信回调解密失败：消息长度越界")
+
+    msg = decrypted[msg_start:msg_end].decode("utf-8")
+    receive_id = decrypted[msg_end:].decode("utf-8")
+    return msg, receive_id
+
+
+def parse_xml_message(xml_text: str) -> Dict[str, str]:
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise RuntimeError("企业微信消息 XML 解析失败") from exc
+    data: Dict[str, str] = {}
+    for child in root:
+        data[child.tag] = (child.text or "").strip()
+    return data
+
+
+def find_subscriber_by_wecom_userid(user_id: str) -> Optional[Dict[str, Any]]:
+    channel = build_wecom_channel(user_id)
+    with db_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT subscriber_key, name, student_id, channel_url, display_name, disabled_days, active
+            FROM subscribers
+            WHERE channel_url=?
+            LIMIT 1
+            """,
+            (channel,),
+        ).fetchone()
+    if row is None:
+        return None
+    return serialize_subscriber_row(row)
+
+
+def bind_wecom_user_to_student(user_id: str, name: str) -> Dict[str, Any]:
+    student_id = resolve_student_id_by_name(name)
+    if not student_id:
+        raise RuntimeError("未找到该姓名，请发送：bind 蔡子菱 / 马晚晴 / 唐子贤 / 伍鑫宇")
+
+    canonical_name = SCHEDULES[student_id]["name"]
+    subscriber_key = f"wecom-{user_id.strip()}"
+    existing = get_subscriber_by_key(subscriber_key)
+    display_name = normalize_display_name(existing.get("display_name") if existing else canonical_name, canonical_name)
+    disabled_days = parse_disabled_days(existing.get("disabled_days") if existing else [])
+    upsert_subscriber(
+        subscriber_key=subscriber_key,
+        name=canonical_name,
+        student_id=student_id,
+        channel_url=build_wecom_channel(user_id),
+        display_name=display_name,
+        disabled_days=disabled_days,
+    )
+    bound = get_subscriber_by_key(subscriber_key)
+    if bound is None:
+        raise RuntimeError("绑定失败，请稍后重试")
+    return bound
+
+
+def build_bound_text(subscriber: Dict[str, Any]) -> str:
+    return f"{subscriber['name']}（student_id: {subscriber['student_id']}）"
+
+
+def handle_wecom_text_command(user_id: str, content: str) -> str:
+    cmd = (content or "").strip()
+    if not cmd:
+        return "未识别到内容，请发送 help 查看命令。"
+
+    lowered = cmd.lower()
+    if lowered == "help":
+        current = find_subscriber_by_wecom_userid(user_id)
+        if current:
+            return f"{WECOM_HELP_TEXT}\n\n当前绑定：{build_bound_text(current)}"
+        return f"{WECOM_HELP_TEXT}\n\n当前未绑定课表。"
+
+    bind_match = re.match(r"^bind\s*(.+)$", cmd, flags=re.IGNORECASE)
+    if bind_match:
+        target_name = bind_match.group(1).strip()
+        if not target_name:
+            return "绑定格式错误，请发送：bind 姓名（例：bind 唐子贤）"
+        bound = bind_wecom_user_to_student(user_id, target_name)
+        return f"已绑定：{build_bound_text(bound)}\n发送 test 可测试推送。"
+
+    if lowered == "test":
+        sub = find_subscriber_by_wecom_userid(user_id)
+        if not sub:
+            return "你还没绑定课表，请先发送：bind 姓名"
+        title, msg_content = build_test_push_payload(sub)
+        send_wecom_text(title=title, content=msg_content, touser=user_id)
+        return f"测试推送已发送。\n当前绑定：{build_bound_text(sub)}"
+
+    return "未识别命令，请发送 help 查看菜单。"
+
+
 def send_xizhi(channel_url: str, title: str, content: str) -> None:
     payload = urllib.parse.urlencode({"title": title, "content": content}).encode("utf-8")
     request = urllib.request.Request(
@@ -952,12 +1277,141 @@ def send_xizhi(channel_url: str, title: str, content: str) -> None:
         raise RuntimeError(f"xizhi 网络错误: {exc.reason}") from exc
 
 
+def wecom_request_json(url: str, method: str = "GET", payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    data: Optional[bytes] = None
+    headers: Dict[str, str] = {}
+    if payload is not None:
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(url=url, data=data, method=method.upper(), headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            body = response.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"wecom 请求失败: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"wecom 网络错误: {exc.reason}") from exc
+
+    if not body:
+        return {}
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("wecom 返回了非 JSON 响应") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError("wecom 返回格式异常")
+    return parsed
+
+
+def fetch_wecom_access_token(force_refresh: bool = False) -> str:
+    now_ts = int(time.time())
+    cached_token = getattr(app.state, "wecom_token", None)
+    cached_expire_at = int(getattr(app.state, "wecom_token_expire_at", 0))
+    if cached_token and not force_refresh and cached_expire_at - now_ts > 120:
+        return str(cached_token)
+
+    config = get_wecom_config()
+    api_base = config["api_base"] or WECOM_API_BASE
+    corp_id = config["corp_id"]
+    corp_secret = config["corp_secret"]
+    if not corp_id or not corp_secret:
+        raise RuntimeError("企业微信未配置 corp_id/corp_secret")
+
+    query = urllib.parse.urlencode({"corpid": corp_id, "corpsecret": corp_secret})
+    url = f"{api_base}/cgi-bin/gettoken?{query}"
+    parsed = wecom_request_json(url=url, method="GET")
+    errcode = int(parsed.get("errcode", -1))
+    if errcode != 0:
+        errmsg = parsed.get("errmsg", "unknown")
+        raise RuntimeError(f"企业微信鉴权失败: errcode={errcode}, errmsg={errmsg}")
+
+    token = str(parsed.get("access_token", "")).strip()
+    expires_in = int(parsed.get("expires_in", 7200))
+    if not token:
+        raise RuntimeError("企业微信鉴权成功但 access_token 为空")
+
+    app.state.wecom_token = token
+    app.state.wecom_token_expire_at = now_ts + max(300, expires_in - 60)
+    return token
+
+
+def send_wecom_text(title: str, content: str, touser: Optional[str] = None) -> None:
+    config = get_wecom_config()
+    api_base = config["api_base"] or WECOM_API_BASE
+    agent_id = config["agent_id"]
+    if not agent_id:
+        raise RuntimeError("企业微信未配置 agent_id")
+    try:
+        agent_id_value = int(agent_id)
+    except ValueError as exc:
+        raise RuntimeError("企业微信 agent_id 必须是数字") from exc
+
+    target_user = (touser or config.get("default_touser") or WECOM_DEFAULT_TOUSER).strip()
+    if not target_user:
+        raise RuntimeError("企业微信接收人为空")
+
+    message_content = f"{title}\n{content}".strip()
+    payload = {
+        "touser": target_user,
+        "msgtype": "text",
+        "agentid": agent_id_value,
+        "text": {"content": message_content},
+        "safe": 0,
+        "enable_duplicate_check": 1,
+        "duplicate_check_interval": 1800,
+    }
+
+    refresh_codes = {40014, 42001, 42007, 42009}
+    last_error: Optional[RuntimeError] = None
+    for force_refresh in (False, True):
+        try:
+            token = fetch_wecom_access_token(force_refresh=force_refresh)
+            url = f"{api_base}/cgi-bin/message/send?access_token={urllib.parse.quote(token)}"
+            parsed = wecom_request_json(url=url, method="POST", payload=payload)
+            errcode = int(parsed.get("errcode", -1))
+            if errcode == 0:
+                return
+            errmsg = parsed.get("errmsg", "unknown")
+            if errcode in refresh_codes and not force_refresh:
+                continue
+            raise RuntimeError(f"企业微信发送失败: errcode={errcode}, errmsg={errmsg}")
+        except RuntimeError as exc:
+            last_error = exc
+            if not force_refresh:
+                continue
+            break
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("企业微信发送失败")
+
+
+def test_wecom_connection() -> Dict[str, Any]:
+    token = fetch_wecom_access_token(force_refresh=True)
+    return {
+        "ok": True,
+        "access_token_preview": f"{token[:8]}...",
+        "expire_at": int(getattr(app.state, "wecom_token_expire_at", 0)),
+    }
+
+
 def send_message(channel_url: str, title: str, content: str) -> None:
     if PUSH_MODE == "mock":
         print(f"[MOCK PUSH] channel={channel_url} title={title} content={content}")
         return
+
+    channel = (channel_url or "").strip()
+    if is_wecom_channel_url(channel):
+        send_wecom_text(title=title, content=content, touser=parse_wecom_userid(channel))
+        return
+    if channel.startswith("http://") or channel.startswith("https://"):
+        send_xizhi(channel, title, content)
+        return
+
     if PUSH_MODE == "xizhi":
         send_xizhi(channel_url, title, content)
+        return
+    if PUSH_MODE == "wecom":
+        send_wecom_text(title=title, content=content, touser=parse_wecom_userid(channel_url))
         return
     raise RuntimeError(f"不支持的 PUSH_MODE: {PUSH_MODE}")
 
@@ -1055,12 +1509,75 @@ def build_admin_html() -> str:
   <div class="wrap">
     <div class="card">
       <h1 class="title">TouchX 第三方推送配置</h1>
-      <p class="muted">每个人单独配置 token（xizhi 密钥），系统按课表在上课前 30 分钟和 15 分钟自动推送。</p>
+      <p class="muted">支持 xizhi 与企业微信自建应用。系统按课表在上课前 30 分钟和 15 分钟自动推送。</p>
       <div class="top-actions">
         <button class="btn gray" onclick="refreshAll()">刷新</button>
         <button class="btn" onclick="runOnce()">手动跑一轮提醒</button>
       </div>
       <div id="globalMsg" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 6px;">企业微信自建应用鉴权</h2>
+      <p class="muted">网页里可直接配置并自动存储：api_base、corp_id、agent_id、corp_secret、default_touser、callback_token、callback_aes_key。</p>
+      <p class="muted">回调 URL（用于企业微信“接收消息”验证）：<code id="callbackUrlHint">/api/wecom/callback</code></p>
+      <div class="form-grid">
+        <div>
+          <label class="label" for="wecomApiBase">API Base</label>
+          <input id="wecomApiBase" type="text" placeholder="https://qyapi.weixin.qq.com" />
+        </div>
+        <div>
+          <label class="label" for="wecomCorpId">Corp ID</label>
+          <input id="wecomCorpId" type="text" placeholder="wwxxxxxxxxxxxx" />
+        </div>
+        <div>
+          <label class="label" for="wecomAgentId">Agent ID</label>
+          <input id="wecomAgentId" type="text" placeholder="1000002" />
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="label" for="wecomCorpSecret">Corp Secret</label>
+          <input id="wecomCorpSecret" type="text" placeholder="企业微信应用 Secret（可留空沿用旧值）" />
+        </div>
+        <div>
+          <label class="label" for="wecomDefaultTouser">Default Touser</label>
+          <input id="wecomDefaultTouser" type="text" placeholder="zhangsan 或 @all" />
+        </div>
+        <div>
+          <label class="label" for="wecomCallbackToken">Callback Token</label>
+          <input id="wecomCallbackToken" type="text" placeholder="回调校验 token（可留空沿用旧值）" />
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="label" for="wecomCallbackAesKey">Callback AES Key</label>
+          <input id="wecomCallbackAesKey" type="text" placeholder="43位 EncodingAESKey（可留空沿用旧值）" />
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="btn" onclick="saveWecom()">保存配置</button>
+        <button class="btn gray" onclick="testWecom()">测试连接</button>
+      </div>
+      <div id="wecomMsg" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin:0 0 6px;">企业微信绑定用户</h2>
+      <p class="muted">这里展示通过消息命令 bind 绑定的用户，可直接点“测试推送”模拟发送。</p>
+      <div class="top-actions">
+        <button class="btn gray" onclick="refreshBindings()">刷新绑定列表</button>
+      </div>
+      <div id="wecomBindingMsg" class="muted" style="margin-top:8px;"></div>
+      <table style="margin-top:10px;">
+        <thead>
+          <tr>
+            <th style="width:130px;">WeCom UserID</th>
+            <th style="width:100px;">姓名</th>
+            <th style="width:120px;">课表ID</th>
+            <th style="width:80px;">启用</th>
+            <th style="width:170px;">更新时间</th>
+            <th style="width:140px;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="wecomBindingRows"></tbody>
+      </table>
     </div>
 
     <div class="card">
@@ -1108,7 +1625,7 @@ def build_admin_html() -> str:
 
   <script>
     const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
-    const state = { schedules: [], subscribers: {}, templates: null };
+    const state = { schedules: [], subscribers: {}, templates: null, wecom: null, wecomBindings: [] };
 
     async function request(url, options = {}) {
       const res = await fetch(url, { headers: { "Content-Type": "application/json" }, ...options });
@@ -1124,10 +1641,12 @@ def build_admin_html() -> str:
     }
 
     async function refreshAll() {
-      const [scheduleData, subscriberData, templateData] = await Promise.all([
+      const [scheduleData, subscriberData, templateData, wecomData, bindingData] = await Promise.all([
         request("/api/schedules"),
         request("/api/subscribers"),
-        request("/api/settings/templates")
+        request("/api/settings/templates"),
+        request("/api/settings/wecom"),
+        request("/api/wecom/bindings")
       ]);
       state.schedules = scheduleData.students || [];
       state.subscribers = {};
@@ -1137,8 +1656,13 @@ def build_admin_html() -> str:
         }
       }
       state.templates = templateData || {};
+      state.wecom = wecomData || {};
+      state.wecomBindings = (bindingData && bindingData.items) || [];
       renderRows();
       renderTemplates();
+      renderWecom();
+      renderWecomBindings();
+      setBindingMsg(`当前绑定用户数：${state.wecomBindings.length}`, false);
       setGlobal("已刷新", false);
     }
 
@@ -1147,6 +1671,83 @@ def build_admin_html() -> str:
       document.getElementById("contentTemplate").value = state.templates.content_template || "";
       document.getElementById("testTitleTemplate").value = state.templates.test_title_template || "";
       document.getElementById("testContentTemplate").value = state.templates.test_content_template || "";
+    }
+
+    function renderWecom() {
+      const conf = state.wecom || {};
+      const callbackHint = document.getElementById("callbackUrlHint");
+      if (callbackHint) callbackHint.textContent = window.location.origin + "/api/wecom/callback";
+      document.getElementById("wecomApiBase").value = conf.api_base || "https://qyapi.weixin.qq.com";
+      document.getElementById("wecomCorpId").value = conf.corp_id || "";
+      document.getElementById("wecomAgentId").value = conf.agent_id || "";
+      document.getElementById("wecomDefaultTouser").value = conf.default_touser || "";
+      document.getElementById("wecomCorpSecret").value = "";
+      document.getElementById("wecomCallbackToken").value = "";
+      document.getElementById("wecomCallbackAesKey").value = "";
+      if (conf.configured) {
+        const callbackState = conf.callback_configured ? "，回调参数已配置" : "，回调参数未配置";
+        setWecomMsg("已配置（secret 已脱敏保存）" + callbackState, false);
+      } else {
+        setWecomMsg("尚未配置企业微信鉴权信息", true);
+      }
+    }
+
+    function formatDateTime(unixTs) {
+      const ts = Number(unixTs || 0);
+      if (!ts) return "-";
+      const d = new Date(ts * 1000);
+      if (Number.isNaN(d.getTime())) return "-";
+      const pad = (v) => String(v).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function renderWecomBindings() {
+      const rows = Array.isArray(state.wecomBindings) ? state.wecomBindings : [];
+      const el = document.getElementById("wecomBindingRows");
+      if (!rows.length) {
+        el.innerHTML = '<tr><td colspan="6" class="muted">暂无绑定用户（先在企业微信发送：bind 姓名）</td></tr>';
+        return;
+      }
+      el.innerHTML = rows.map((item, idx) => `
+        <tr>
+          <td>${escapeHtml(item.wecom_userid || "-")}</td>
+          <td>${escapeHtml(item.name || "-")}</td>
+          <td>${escapeHtml(item.student_id || "-")}</td>
+          <td>${item.active ? "是" : "否"}</td>
+          <td>${escapeHtml(formatDateTime(item.updated_at))}</td>
+          <td>
+            <button class="btn gray" onclick="testWecomBinding(${idx})">测试推送</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    async function refreshBindings() {
+      try {
+        const data = await request("/api/wecom/bindings");
+        state.wecomBindings = (data && data.items) || [];
+        renderWecomBindings();
+        setBindingMsg("绑定列表已刷新", false);
+      } catch (e) {
+        setBindingMsg(String(e.message || e), true);
+      }
+    }
+
+    async function testWecomBinding(index) {
+      const item = (state.wecomBindings || [])[index];
+      if (!item) {
+        setBindingMsg("绑定项不存在，请先刷新", true);
+        return;
+      }
+      try {
+        await request("/api/subscribers/test", {
+          method: "POST",
+          body: JSON.stringify({ subscriber_key: item.subscriber_key }),
+        });
+        setBindingMsg(`已发送测试推送：${item.name} (${item.wecom_userid})`, false);
+      } catch (e) {
+        setBindingMsg(String(e.message || e), true);
+      }
     }
 
     function rowHtml(student) {
@@ -1277,6 +1878,50 @@ def build_admin_html() -> str:
       }
     }
 
+    async function saveWecom() {
+      const apiBase = (document.getElementById("wecomApiBase").value || "").trim();
+      const corpId = (document.getElementById("wecomCorpId").value || "").trim();
+      const agentId = (document.getElementById("wecomAgentId").value || "").trim();
+      const corpSecret = (document.getElementById("wecomCorpSecret").value || "").trim();
+      const defaultTouser = (document.getElementById("wecomDefaultTouser").value || "").trim();
+      const callbackToken = (document.getElementById("wecomCallbackToken").value || "").trim();
+      const callbackAesKey = (document.getElementById("wecomCallbackAesKey").value || "").trim();
+      if (!apiBase || !corpId || !agentId || !defaultTouser) {
+        setWecomMsg("api_base / corp_id / agent_id / default_touser 不能为空", true);
+        return;
+      }
+      try {
+        const data = await request("/api/settings/wecom", {
+          method: "POST",
+          body: JSON.stringify({
+            api_base: apiBase,
+            corp_id: corpId,
+            agent_id: agentId,
+            corp_secret: corpSecret,
+            default_touser: defaultTouser,
+            callback_token: callbackToken,
+            callback_aes_key: callbackAesKey
+          }),
+        });
+        state.wecom = data;
+        setWecomMsg("企业微信配置已保存", false);
+        document.getElementById("wecomCorpSecret").value = "";
+        document.getElementById("wecomCallbackToken").value = "";
+        document.getElementById("wecomCallbackAesKey").value = "";
+      } catch (e) {
+        setWecomMsg(String(e.message || e), true);
+      }
+    }
+
+    async function testWecom() {
+      try {
+        const data = await request("/api/settings/wecom/test", { method: "POST" });
+        setWecomMsg("连接成功，token 预览: " + (data.access_token_preview || "-"), false);
+      } catch (e) {
+        setWecomMsg(String(e.message || e), true);
+      }
+    }
+
     async function runOnce() {
       try {
         const data = await request("/api/reminders/run-once", { method: "POST" });
@@ -1294,6 +1939,18 @@ def build_admin_html() -> str:
 
     function setRowMsg(studentId, text, isError) {
       const el = document.getElementById("msg-" + studentId);
+      el.textContent = text;
+      el.className = isError ? "err" : "ok";
+    }
+
+    function setWecomMsg(text, isError) {
+      const el = document.getElementById("wecomMsg");
+      el.textContent = text;
+      el.className = isError ? "err" : "ok";
+    }
+
+    function setBindingMsg(text, isError) {
+      const el = document.getElementById("wecomBindingMsg");
       el.textContent = text;
       el.className = isError ? "err" : "ok";
     }
@@ -1322,8 +1979,98 @@ def admin_page() -> HTMLResponse:
     return HTMLResponse(build_admin_html())
 
 
+@app.get("/api/wecom/callback", response_class=PlainTextResponse)
+def wecom_callback_verify(msg_signature: str, timestamp: str, nonce: str, echostr: str) -> PlainTextResponse:
+    config = get_wecom_config()
+    token = config.get("callback_token", "")
+    aes_key = config.get("callback_aes_key", "")
+    if not token or not aes_key:
+        raise HTTPException(status_code=500, detail="请先配置 callback_token 和 callback_aes_key")
+
+    decoded_echostr = urllib.parse.unquote(echostr)
+    expected_signature = compute_wecom_signature(token, timestamp, nonce, decoded_echostr)
+    if expected_signature != msg_signature:
+        raise HTTPException(status_code=400, detail="msg_signature 校验失败")
+
+    try:
+        plain_text, receive_id = decrypt_wecom_echostr(decoded_echostr, aes_key)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    corp_id = config.get("corp_id")
+    if corp_id and receive_id and receive_id != corp_id:
+        raise HTTPException(status_code=400, detail="回调 receive_id 与 corp_id 不匹配")
+    return PlainTextResponse(content=plain_text)
+
+
+@app.post("/api/wecom/callback", response_class=PlainTextResponse)
+async def wecom_callback_receive(
+    request: Request,
+    msg_signature: Optional[str] = None,
+    timestamp: Optional[str] = None,
+    nonce: Optional[str] = None,
+) -> PlainTextResponse:
+    raw_body = await request.body()
+    if not raw_body:
+        return PlainTextResponse(content="success")
+
+    try:
+        outer_xml = parse_xml_message(raw_body.decode("utf-8", "ignore"))
+    except RuntimeError as exc:
+        print(f"[WECOM CALLBACK] XML parse error: {exc}")
+        return PlainTextResponse(content="success")
+
+    message_data = outer_xml
+    encrypted = outer_xml.get("Encrypt", "").strip()
+    if encrypted:
+        config = get_wecom_config()
+        token = config.get("callback_token", "")
+        aes_key = config.get("callback_aes_key", "")
+        if not token or not aes_key:
+            print("[WECOM CALLBACK] missing callback token/aes key")
+            return PlainTextResponse(content="success")
+        if not msg_signature or not timestamp or not nonce:
+            print("[WECOM CALLBACK] missing signature query params")
+            return PlainTextResponse(content="success")
+
+        expected_signature = compute_wecom_signature(token, timestamp, nonce, encrypted)
+        if expected_signature != msg_signature:
+            print("[WECOM CALLBACK] signature verify failed")
+            return PlainTextResponse(content="success")
+
+        try:
+            plain_xml, receive_id = decrypt_wecom_echostr(encrypted, aes_key)
+            corp_id = config.get("corp_id")
+            if corp_id and receive_id and receive_id != corp_id:
+                print("[WECOM CALLBACK] receive_id mismatch")
+                return PlainTextResponse(content="success")
+            message_data = parse_xml_message(plain_xml)
+        except RuntimeError as exc:
+            print(f"[WECOM CALLBACK] decrypt failed: {exc}")
+            return PlainTextResponse(content="success")
+
+    from_user = (message_data.get("FromUserName") or "").strip()
+    msg_type = (message_data.get("MsgType") or "").strip().lower()
+    if not from_user:
+        return PlainTextResponse(content="success")
+
+    if msg_type == "text":
+        content = message_data.get("Content", "")
+        try:
+            reply = handle_wecom_text_command(from_user, content)
+        except Exception as exc:
+            reply = f"命令处理失败：{exc}"
+        try:
+            send_wecom_text(title="课表助手", content=reply, touser=from_user)
+        except Exception as exc:
+            print(f"[WECOM CALLBACK] reply send failed: {exc}")
+
+    return PlainTextResponse(content="success")
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
+    wecom_info = get_wecom_config_public()
     return {
         "status": "ok",
         "db": str(DB_PATH),
@@ -1331,6 +2078,8 @@ def health() -> Dict[str, Any]:
         "timezone": TIMEZONE_NAME,
         "week1_monday": TERM_WEEK1_MONDAY,
         "worker_enabled": ENABLE_REMINDER_WORKER,
+        "wecom_configured": wecom_info["configured"],
+        "wecom_callback_configured": wecom_info["callback_configured"],
     }
 
 
@@ -1359,6 +2108,31 @@ def get_templates() -> Dict[str, Any]:
 def update_templates(body: SaveTemplatesRequest) -> Dict[str, Any]:
     save_push_templates(body)
     return {"ok": True, **get_push_templates()}
+
+
+@app.get("/api/settings/wecom")
+def get_wecom_settings() -> Dict[str, Any]:
+    return get_wecom_config_public()
+
+
+@app.post("/api/settings/wecom")
+def update_wecom_settings(body: SaveWecomConfigRequest) -> Dict[str, Any]:
+    save_wecom_config(body)
+    return {"ok": True, **get_wecom_config_public()}
+
+
+@app.post("/api/settings/wecom/test")
+def test_wecom_settings() -> Dict[str, Any]:
+    try:
+        result = test_wecom_connection()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result
+
+
+@app.get("/api/wecom/bindings")
+def wecom_bindings() -> Dict[str, Any]:
+    return {"items": list_wecom_bindings()}
 
 
 @app.post("/api/subscribers/register")
@@ -1419,7 +2193,10 @@ def test_subscriber_push(body: TestPushRequest) -> Dict[str, Any]:
     if not sub:
         raise HTTPException(status_code=404, detail="subscriber_key 不存在")
     title, content = build_test_push_payload(sub)
-    send_message(sub["channel_url"], title, content)
+    try:
+        send_message(sub["channel_url"], title, content)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"ok": True, "subscriberKey": body.subscriber_key}
 
 

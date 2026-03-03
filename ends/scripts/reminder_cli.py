@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-DEFAULT_BASE = os.getenv("TOUCHX_API_BASE", "http://127.0.0.1:8080")
+DEFAULT_BASE = os.getenv("TOUCHX_API_BASE", "http://127.0.0.1:9986")
 
 
 def http_json(method: str, base: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -164,7 +164,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="启动后端服务")
     serve.add_argument("--cwd", default=os.path.join(os.path.dirname(__file__), ".."), help="ends 目录")
     serve.add_argument("--host", default="0.0.0.0")
-    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument("--port", type=int, default=9986)
     serve.add_argument("--reload", action="store_true")
     serve.set_defaults(func=cmd_serve)
 
