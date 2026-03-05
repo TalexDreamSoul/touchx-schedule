@@ -8,6 +8,42 @@
           "navigationStyle": "custom"
         }
       }
+    },
+    {
+      "path": "pages/profile/account",
+      "style": {
+        "navigationBarTitleText": "账号与授权"
+      }
+    },
+    {
+      "path": "pages/profile/avatar",
+      "style": {
+        "navigationBarTitleText": "微信头像"
+      }
+    },
+    {
+      "path": "pages/profile/student-no",
+      "style": {
+        "navigationBarTitleText": "编辑学号"
+      }
+    },
+    {
+      "path": "pages/profile/bind-student",
+      "style": {
+        "navigationBarTitleText": "绑定课表"
+      }
+    },
+    {
+      "path": "pages/profile/subscribe",
+      "style": {
+        "navigationBarTitleText": "通知与订阅"
+      }
+    },
+    {
+      "path": "pages/profile/preferences",
+      "style": {
+        "navigationBarTitleText": "偏好设置"
+      }
     }
   ],
   "globalStyle": {

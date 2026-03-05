@@ -11,12 +11,14 @@ export interface CourseItem {
   classroom?: string | null;
   teacher?: string | null;
   teachingClasses?: string | null;
+  practiceCourseKey?: string | null;
 }
 
 export interface StudentSchedule {
   id: string;
   name: string;
   studentNo?: string;
+  classLabel?: string;
   courses: CourseItem[];
 }
 

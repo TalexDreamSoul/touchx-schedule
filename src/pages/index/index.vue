@@ -1,426 +1,193 @@
 <template>
-  <view class="page" :class="[ `theme-${themeKey}`, { 'modal-open': isAnyModalOpen } ]">
-    <view class="top-safe-bar" :style="{ height: `${topSafeInset}px`, paddingTop: `${capsuleTopOffset}px` }">
-      <view
-        v-if="activeTab === 'schedule'"
-        class="safe-week-row"
-        :style="{ gridTemplateColumns: `${leftActionsReserve}px 1fr ${capsuleReserveRight}px`, minHeight: `${capsuleHeight}px` }"
-      >
-        <view class="safe-left-actions">
-          <view class="week-nav-btn prev" @click="shiftWeek(-1)">
-            <view class="nav-chevron left" />
-          </view>
-          <view class="week-nav-btn next" @click="shiftWeek(1)">
-            <view class="nav-chevron right" />
-          </view>
-          <view class="setting-btn inline" @click="openIncludePicker">
-            <view class="gear-icon" />
-          </view>
-        </view>
-        <view class="safe-week-center">
-          <view class="safe-week-info">
-            <text class="week-main compact" @click="openWeekPicker">第 {{ selectedWeek }} 周</text>
-            <text class="week-sub compact">{{ getWeekDateRangeLabel(selectedWeek) }}</text>
-          </view>
-        </view>
-        <view class="safe-right-spacer" />
-      </view>
-    </view>
-    <view class="content">
-      <template v-if="activeTab === 'today'">
-        <view class="card">
-          <view class="today-hero">
-            <view class="today-greeting">{{ todayGreetingText }}</view>
-            <view class="today-hero-sub">第 {{ todayInfo.week }} 周 · {{ todayInfo.weekdayLabel }} · {{ todayInfo.dateLabel }}</view>
-          </view>
-
-          <view class="today-mini-grid">
-            <view class="today-mini-card">
-              <view class="today-mini-label">天气</view>
-              <view class="today-mini-value">{{ todayWeatherValue }}</view>
-              <view class="today-mini-sub">{{ weatherIntegrationHint }}</view>
-            </view>
-            <view class="today-mini-card">
-              <view class="today-mini-label">节日祝福</view>
-              <view class="today-mini-value">{{ todayFestival ? todayFestival.title : "普通的一天" }}</view>
-              <view class="today-mini-sub">{{ todayFestival ? todayFestival.wish : "今天也值得被认真对待。" }}</view>
+  <view
+    class="page"
+    :class="[ `theme-${themeKey}`, { 'modal-open': isAnyModalOpen, 'tab-switching': isTabSwitching } ]"
+    :style="pageThemeStyle"
+  >
+    <GlobalBackground
+      :image-src="pageBackgroundImageSrc"
+      :blur-enabled="pageBackgroundBlurEnabled"
+      :blur-radius="pageBackgroundBlurRadius"
+      :mask-color="pageBackgroundMaskColor"
+    />
+    <view class="page-content-layer">
+      <view class="tab-screen-stage">
+        <view class="tab-screen-track" :style="tabScreenTrackStyle">
+          <view class="tab-screen-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(0) }">
+            <schedule-top-header v-bind="todayScheduleTopHeaderProps" @include-click="openIncludePicker" @week-click="openWeekPicker" />
+            <view class="content">
+              <today-tab-content v-bind="todayTabProps" />
             </view>
           </view>
-        </view>
-
-        <view v-if="shouldShowStudyCard" class="card">
-          <view class="section-title">学习提醒</view>
-          <view v-if="todayFocusCourse" class="today-focus accent" :style="getCourseCardStyle(todayFocusCourse)">
-            <view class="today-focus-top">
-              <view class="today-focus-name">{{ todayFocusCourse.name }}</view>
-              <view class="today-focus-status">{{ todayFocusStatusText }}</view>
-            </view>
-            <view class="today-focus-meta">
-              {{ todayFocusCourse.ownerName }} · {{ formatSectionRange(todayFocusCourse.startSection, todayFocusCourse.endSection) }}
-            </view>
-            <view class="today-focus-meta">
-              教室：{{ formatCourseClassroom(todayFocusCourse) }} · 教师：{{ formatCourseTeacher(todayFocusCourse) }}
-            </view>
-            <view class="today-focus-line" />
-          </view>
-          <view v-else class="today-ready empty">今天暂时没有课程安排。</view>
-
-          <view class="today-ready">
-            <view class="today-ready-subtitle">出发提醒</view>
-            <template v-if="departureReminder">
-              <view class="today-ready-line">
-                {{ departureReminder.courseName }}（{{ departureReminder.timeRange }}），走过去约 {{ departureReminder.commuteMinutes }} 分钟，建议 {{ departureReminder.leaveAt }} 出发。
-              </view>
-            </template>
-            <view v-else class="today-ready-line">今日暂无出发提醒，按你的节奏安排就好。</view>
-          </view>
-
-          <view v-if="showTodayAdvice" class="today-advice">
-            <view class="today-ready-subtitle">今日建议</view>
-            <view v-for="(item, index) in todayAdviceList" :key="`advice-${index}`" class="today-advice-item">{{ item }}</view>
-          </view>
-        </view>
-
-        <view class="card">
-          <view class="section-title">今日课程</view>
-          <view v-if="todayCourses.length > 0" class="section-sub">今天有 {{ todayCourses.length }} 门课，共 {{ todaySectionLoad }} 节</view>
-          <view v-if="todayCourses.length === 0" class="tip">今天没有安排课程。</view>
-          <view v-else class="today-list">
-            <view
-              v-for="course in todayCourses"
-              :key="`today-${course.ownerId}-${course.id}`"
-              class="today-item"
-              :class="{ accent: isFocusCourse(course) }"
-              :style="getCourseCardStyle(course)"
-            >
-              <view class="today-item-main">
-                <view class="today-course">{{ course.name }}</view>
-                <view class="today-owner">{{ course.ownerName }}</view>
-                <view class="today-item-meta">教室：{{ formatCourseClassroom(course) }}</view>
-                <view class="today-item-meta">教师：{{ formatCourseTeacher(course) }}</view>
-              </view>
-              <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
-            </view>
-          </view>
-        </view>
-      </template>
-
-      <template v-else-if="activeTab === 'schedule'">
-        <view class="card schedule-card">
-          <view v-if="hasMultipleIncluded" class="owner-legend">
-            <view v-for="student in includedSchedules" :key="`owner-${student.id}`" class="owner-item">
-              <view class="owner-dot" :style="getOwnerDotStyle(student.id)" />
-              <text>{{ student.name }}</text>
-            </view>
-          </view>
-
-          <view v-if="markedCourseName" class="mark-tip" @click="markedCourseName = ''">
-            已标记：{{ markedCourseName }}（点击清除）
-          </view>
-
-	          <view class="table-wrap">
-	            <view class="table-row head-row">
-	              <view class="time-col head">节次</view>
-	              <view
-	                v-for="(dayLabel, dayIndex) in weekdayLabels"
-	                :key="`head-${dayLabel}`"
-	                class="day-col head"
-	                :class="{ 'today-column': isTodayColumn(dayIndex + 1) }"
-	              >
-	                {{ dayLabel }}
-	              </view>
-	            </view>
-
-	            <view
-	              v-for="row in gridRows"
-	              :key="`course-${selectedWeek}-${row.section}`"
-	              :id="`section-row-${row.section}`"
-	              class="table-row"
-	              :class="{
-	                'part-start': row.isPartStart,
-	                'row-morning': row.part === '上午',
-	                'row-afternoon': row.part === '下午',
-	                'row-evening': row.part === '晚上',
-	              }"
-	            >
-	              <view class="time-col">
-	                <view class="section-no">{{ row.section }}</view>
-	                <view class="section-time">{{ row.time }}</view>
-	              </view>
-
-	              <view
-	                v-for="(cell, dayIndex) in row.cells"
-	                :key="`course-${selectedWeek}-${row.section}-${dayIndex}`"
-	                class="day-col cell"
-	                :class="{
-	                  busy: cell.busy,
-	                  'today-column': isTodayColumn(dayIndex + 1),
-	                  'merge-prev': cell.mergeWithPrev,
-	                  'merge-next': cell.mergeWithNext,
-	                  marked: markedCourseName && cell.labels.includes(markedCourseName),
-	                  upcoming: isUpcomingCell(dayIndex + 1, row.section),
-	                  'upcoming-tail': isUpcomingTail(dayIndex + 1, row.section),
-	                }"
-	                :style="getCellStyle(cell)"
-	                @click="openCourseDialog(selectedWeek, dayIndex + 1, row.section)"
-	                @longpress="onCellLongPress(selectedWeek, dayIndex + 1, row.section)"
-	              >
-                <view v-if="cell.busy && cell.showLabel" class="cell-text" :style="getCellTextStyle(cell)">
-                  <view v-if="hasMultipleIncluded" class="cell-owner-markers">
-                    <view
-                      v-for="(ownerId, ownerIndex) in cell.ownerIds"
-                      :key="`marker-${selectedWeek}-${row.section}-${dayIndex}-${ownerId}-${ownerIndex}`"
-                      class="cell-owner-dot"
-                      :style="getOwnerMarkerStyle(ownerId)"
-                    />
-                  </view>
-                  <text class="cell-title">{{ renderCellTitle(cell.labels) }}</text>
-                  <text v-if="cell.classroomLabel" class="cell-room">{{ cell.classroomLabel }}</text>
-                </view>
+          <view class="tab-screen-panel schedule-tab-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(1) }">
+            <schedule-top-header v-bind="scheduleScheduleTopHeaderProps" @include-click="openIncludePicker" @week-click="openWeekPicker" />
+            <view class="content schedule-content">
+              <view class="schedule-content-inner">
+                <schedule-tab-content v-bind="scheduleTabProps" />
               </view>
             </view>
           </view>
-        </view>
-      </template>
-
-      <template v-else>
-        <view class="card">
-          <view class="section-title">我的</view>
-          <view class="profile-grid">
-            <view class="profile-info-card">
-              <view class="profile-info-label">当前账号</view>
-              <view class="profile-info-value">{{ activeSchedule.name }}</view>
-            </view>
-            <view class="profile-info-card">
-              <view class="profile-info-label">学号</view>
-              <view class="profile-info-value">{{ activeSchedule.studentNo || "待配置" }}</view>
-            </view>
-            <view class="profile-info-card">
-              <view class="profile-info-label">后端状态</view>
-              <view class="profile-info-value">{{ backendProbeStatusLabel }}</view>
-            </view>
-            <view class="profile-info-card">
-              <view class="profile-info-label">默认出发点</view>
-              <view class="profile-info-value">实验室</view>
-            </view>
-          </view>
-          <view class="profile-action-row">
-            <view class="profile-action-btn" @click="openUserPicker">切换课表账号</view>
-            <view class="profile-action-btn ghost" @click="openBackendProbeDialog">检查后端</view>
-          </view>
-        </view>
-
-        <view class="card">
-          <view class="section-title">设置</view>
-          <view class="setting-item" @click="toggleTodayAdvice">
-            <view class="setting-item-main">
-              <view class="setting-item-title">今日建议</view>
-              <view class="setting-item-sub">是否在今日页展示建议内容</view>
-            </view>
-            <view class="setting-item-state">{{ showTodayAdvice ? "已开启" : "已关闭" }}</view>
-          </view>
-        </view>
-
-        <view class="card">
-          <view class="section-title">主题</view>
-          <view class="theme-switch">
-            <view
-              v-for="item in themeOptions"
-              :key="item.key"
-              class="theme-chip"
-              :class="{ active: item.key === themeKey }"
-              @click="setTheme(item.key)"
-            >
-              <view class="theme-chip-main">
-                <view class="theme-swatch" :style="getThemePreviewStyle(item.key)" />
-                <text>{{ item.label }}</text>
+          <view class="tab-screen-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(2) }">
+            <schedule-top-header v-bind="profileScheduleTopHeaderProps" @include-click="openIncludePicker" @week-click="openWeekPicker" />
+              <view class="profile-tab-wrap">
+                <profile-display-section v-bind="profileDisplayProps" />
+                <profile-actions-section style="flex: 1" v-bind="profileActionsProps" />
               </view>
-              <text class="theme-chip-state">{{ item.key === themeKey ? "已启用" : "切换" }}</text>
-            </view>
-          </view>
-        </view>
-      </template>
-    </view>
-
-    <view class="bottom-nav">
-      <view
-        v-for="item in navItems"
-        :key="item.key"
-        class="bottom-nav-item"
-        :class="{ active: activeTab === item.key }"
-        @click="activeTab = item.key"
-      >
-        <text class="bottom-nav-text">{{ item.label }}</text>
-        <view class="bottom-nav-line" />
-      </view>
-    </view>
-
-    <view v-if="showIncludePicker" class="dialog-mask" @click="closeIncludePicker">
-      <view class="dialog-card" @click.stop>
-        <view class="dialog-title">课程显示设置</view>
-        <view class="dialog-sub">勾选后将对应同学课程合并进课表（可只看他人课表）</view>
-        <checkbox-group @change="onIncludeChange">
-          <label v-for="student in studentSchedules" :key="student.id" class="check-item">
-            <view class="owner-dot small" :style="getOwnerDotStyle(student.id)" />
-            <checkbox
-              :value="student.id"
-              :checked="includedStudentIds.includes(student.id)"
-              color="#111111"
-            />
-            <text>{{ student.name }}</text>
-          </label>
-        </checkbox-group>
-        <button class="dialog-btn" @click="closeIncludePicker">完成</button>
-      </view>
-    </view>
-
-    <view v-if="showThemeUnlockDialog" class="dialog-mask" @click="closeThemeUnlockDialog">
-      <view class="dialog-card unlock-card" @click.stop>
-        <view class="dialog-title">解锁炫靓紫</view>
-        <view class="dialog-sub">请输入密码后启用该主题（只需输入一次）</view>
-        <input
-          v-model="themePasswordInput"
-          class="unlock-input"
-          type="text"
-          password
-          placeholder="请输入解锁密码"
-          :maxlength="8"
-        />
-        <view v-if="themeUnlockError" class="unlock-error">{{ themeUnlockError }}</view>
-        <view class="unlock-actions">
-          <view class="unlock-btn ghost" @click="closeThemeUnlockDialog">取消</view>
-          <view class="unlock-btn" @click="confirmPurpleUnlock">解锁</view>
-        </view>
-      </view>
-    </view>
-
-    <view v-if="showBackendProbeDialog" class="dialog-mask" @click="closeBackendProbeDialog">
-      <view class="dialog-card" @click.stop>
-        <view class="dialog-title">后端在线检测</view>
-        <view class="dialog-sub">检测 `/health`，在线后拉取 `/api/today-brief`。</view>
-        <view class="backend-mock-row">
-          <view class="backend-mock-btn" @click="runBackendProbe">立即检测</view>
-          <view class="backend-mock-btn" @click="refreshTodayBrief">刷新今日数据</view>
-        </view>
-        <view class="backend-status-tip">当前展示：{{ backendProbeStatusLabel }}</view>
-        <view v-if="todayBackendError" class="backend-status-tip error">{{ todayBackendError }}</view>
-        <button class="dialog-btn" @click="closeBackendProbeDialog">关闭</button>
-      </view>
-    </view>
-
-    <view v-if="showUserPicker" class="auth-mask" @click="closeUserPicker">
-      <view class="auth-card" @click.stop>
-        <view class="auth-title">切换课表账号</view>
-        <view class="auth-sub">点击列表项后立即切换</view>
-        <view class="picker-list">
-          <view
-            v-for="candidate in loginCandidates"
-            :key="candidate.studentId"
-            class="picker-item"
-            :class="{ active: candidate.studentId === activeStudentId }"
-            @click="selectFromModal(candidate.studentId)"
-          >
-            <view class="picker-name">{{ candidate.name }}</view>
-            <view class="picker-wechat">微信号：{{ candidate.wechatId }}</view>
           </view>
         </view>
       </view>
-    </view>
 
-    <view v-if="showCourseDialog" class="dialog-mask" @click="closeCourseDialog">
-      <view class="dialog-card course-dialog-card" @click.stop>
-        <view class="dialog-title">课程详情</view>
-        <view class="dialog-sub">
-          第 {{ dialogWeek }} 周 · {{ weekdayLabels[dialogDay - 1] }} · 第 {{ dialogSection }} 节
-        </view>
-        <view class="dialog-list">
-          <view v-for="course in dialogCourses" :key="`dialog-${course.ownerId}-${course.id}`" class="dialog-item">
-            <view class="dialog-name">{{ course.name }}</view>
-            <view class="dialog-meta">课表：{{ course.ownerName }}</view>
-            <view class="dialog-meta">节次：{{ formatSectionRange(course.startSection, course.endSection) }}</view>
-            <view class="dialog-meta">周次：{{ formatWeekRule(course) }}</view>
-            <view class="dialog-meta">教室：{{ course.classroom || "待配置" }}</view>
-            <view class="dialog-meta">教学班：{{ formatCourseTeachingClasses(course) }}</view>
-          </view>
-        </view>
-        <button class="dialog-btn" @click="closeCourseDialog">关闭</button>
-      </view>
-    </view>
+      <index-bottom-nav v-bind="bottomNavProps" @change="onBottomNavChange" />
 
-    <view v-if="showWeekPicker" class="dialog-mask" @click="closeWeekPicker">
-      <view class="dialog-card" @click.stop>
-        <view class="dialog-title">选择周次</view>
-        <scroll-view class="week-picker-list" scroll-y>
-          <view
-            v-for="week in allWeeks"
-            :key="`picker-${week}`"
-            class="week-picker-item"
-            :class="{ active: week === selectedWeek }"
-            @click="chooseWeek(week)"
-          >
-            <text>第 {{ week }} 周</text>
-            <text class="week-picker-date">{{ getWeekDateRangeLabel(week) }}</text>
-          </view>
-        </scroll-view>
-        <button class="dialog-btn" @click="closeWeekPicker">关闭</button>
-      </view>
+      <auth-authorize-dialog
+        :show="showQuickAuthDialog"
+        :pending="quickAuthPending"
+        :hint-text="authStatusHint"
+        :show-student-no-input="true"
+        :student-no-value="quickAuthStudentNo"
+        :require-agreement="true"
+        :agreement-checked="quickAuthAgreementChecked"
+        confirm-text="微信授权并登录"
+        pending-text="授权中..."
+        subtitle="登录后可绑定课表账号并继续浏览。"
+        @update:student-no-value="updateQuickAuthStudentNo"
+        @update:agreement-checked="updateQuickAuthAgreementChecked"
+        @close="closeQuickAuthDialog"
+        @confirm="runQuickAuthLogin"
+      />
+
+      <index-dialogs
+        v-bind="dialogProps"
+        @close-include-picker="closeIncludePicker"
+        @include-change="onIncludeChange"
+        @update-show-weekend="updateShowWeekend"
+        @close-theme-unlock-dialog="closeThemeUnlockDialog"
+        @update-theme-password-input="updateThemePasswordInput"
+        @confirm-purple-unlock="confirmPurpleUnlock"
+        @close-backend-probe-dialog="closeBackendProbeDialog"
+        @run-backend-probe="runBackendProbe"
+        @refresh-today-brief="refreshTodayBrief"
+        @close-user-picker="closeUserPicker"
+        @select-from-modal="selectFromModal"
+        @close-course-dialog="closeCourseDialog"
+        @toggle-practice-course="togglePracticeCourse"
+        @close-week-picker="closeWeekPicker"
+        @choose-week="chooseWeek"
+      />
     </view>
   </view>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch, type CSSProperties } from "vue";
-import { sectionTimes, studentSchedules, termMeta, weekdayLabels } from "@/data/schedules";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { onPullDownRefresh, onShow } from "@dcloudio/uni-app";
+import {
+  sectionTimes as localSectionTimes,
+  termMeta as localTermMeta,
+  weekdayLabels as localWeekdayLabels,
+} from "@/data/schedules";
 import { useModalScrollLock } from "@/composables/useModalScrollLock";
-import { formatSectionRange, getWeekCourses } from "@/utils/schedule";
-import type { CourseItem } from "@/types/schedule";
-
-interface DisplayCourse extends CourseItem {
-  ownerId: string;
-  ownerName: string;
-}
-
-interface GridRow {
-  section: number;
-  time: string;
-  part: "上午" | "下午" | "晚上";
-  isPartStart: boolean;
-  cells: Array<{
-    busy: boolean;
-    labels: string[];
-    classroomLabel: string;
-    ownerIds: string[];
-    showLabel: boolean;
-    labelSpan: number;
-    part: string;
-    mergeWithPrev: boolean;
-    mergeWithNext: boolean;
-  }>;
-}
+import { useActiveScheduleState } from "@/composables/useActiveScheduleState";
+import { useBackendApi } from "@/composables/useBackendApi";
+import { useScheduleCellStyles } from "@/composables/useScheduleCellStyles";
+import { useScheduleViewport } from "@/composables/useScheduleViewport";
+import { useScheduleWeekSwipe } from "@/composables/useScheduleWeekSwipe";
+import { buildRegisteredUsersFromDashboard, useSocialDashboard } from "@/composables/useSocialDashboard";
+import AuthAuthorizeDialog from "@/components/AuthAuthorizeDialog.vue";
+import GlobalBackground from "@/components/GlobalBackground.vue";
+import IndexBottomNav from "./components/IndexBottomNav.vue";
+import IndexDialogs from "./components/IndexDialogs.vue";
+import ProfileActionsSection from "./components/ProfileActionsSection.vue";
+import ProfileDisplaySection from "./components/ProfileDisplaySection.vue";
+import ScheduleTabContent from "./components/ScheduleTabContent.vue";
+import ScheduleTopHeader from "./components/ScheduleTopHeader.vue";
+import TodayTabContent from "./components/TodayTabContent.vue";
+import { buildCoursePracticeKey, getWeekCourses, normalizePracticeCourseKey } from "@/utils/schedule";
+import {
+  fetchMiniProgramCode,
+  readLocalWallpaperPath,
+  resolveBackendRuntimeDefaultMode,
+  resolveClientPlatform,
+  resolveStudentIdByStudentNo,
+  saveLocalWallpaperPath,
+  STORAGE_THEME_WALLPAPER_BLUR_ENABLED_KEY,
+  STORAGE_THEME_WALLPAPER_EFFECT_LEVEL_KEY,
+  STORAGE_THEME_WALLPAPER_ENABLED_KEY,
+  tryGetWechatProfile,
+} from "@/utils/profile-service";
+import type { CourseItem, SectionTime, StudentSchedule } from "@/types/schedule";
+import type { SocialDashboardResponse, SocialUserItem } from "@/composables/useSocialDashboard";
+import type { DisplayCourse, GridRow, ScheduleWeekPanel, WeekPanelRole } from "./types";
 
 type ThemeKey = "black" | "purple" | "green" | "pink" | "blue" | "yellow" | "orange";
+type ThemeWallpaperEffectLevel = "light" | "medium" | "heavy";
 type TabKey = "today" | "schedule" | "profile";
 type BackendProbeStatus = "untested" | "online" | "offline";
-
-const STORAGE_SELECTED_STUDENT_KEY = "touchx_selected_student_id";
-const STORAGE_SELECTED_WEEK_KEY = "touchx_selected_week";
+type BackendEndpointMode = "local" | "online";
+type ScheduleFetchState = "idle" | "loading" | "ready" | "error";
+const STORAGE_SELECTED_STUDENT_KEY = "touchx_v2_selected_student_id";
+const STORAGE_SELECTED_WEEK_KEY = "touchx_v2_selected_week";
 const STORAGE_THEME_KEY = "touchx_theme_key";
 const STORAGE_PURPLE_UNLOCKED_KEY = "touchx_theme_purple_unlocked";
-const STORAGE_MARKED_COURSE_KEY = "touchx_marked_course_name";
-const STORAGE_INCLUDED_IDS_KEY = "touchx_included_student_ids";
-const STORAGE_BACKEND_BASE_URL_KEY = "touchx_backend_base_url";
-const STORAGE_SHOW_TODAY_ADVICE_KEY = "touchx_show_today_advice";
+const STORAGE_INCLUDED_IDS_KEY = "touchx_v2_included_student_ids";
+const STORAGE_BACKEND_BASE_URL_KEY = "touchx_v2_backend_base_url";
+const STORAGE_BACKEND_ENDPOINT_MODE_KEY = "touchx_v2_backend_endpoint_mode";
+const STORAGE_SHOW_NON_CURRENT_WEEK_COURSES_KEY = "touchx_show_non_current_week_courses";
+const STORAGE_SHOW_WEEKEND_KEY = "touchx_show_weekend";
+const STORAGE_THEME_IMAGE_MAP_KEY = "touchx_theme_image_map";
+const STORAGE_THEME_IMAGE_UPDATED_AT_KEY = "touchx_theme_image_updated_at";
+const STORAGE_AUTH_TOKEN_KEY = "touchx_v2_auth_token";
+const STORAGE_AUTH_EXPIRES_AT_KEY = "touchx_v2_auth_expires_at";
+const STORAGE_AUTH_USER_KEY = "touchx_v2_auth_user";
+const STORAGE_AUTH_MODE_KEY = "touchx_v2_auth_mode";
+const STORAGE_SCHEDULE_CACHE_SOURCE_KEY = "touchx_v2_schedule_cache_source";
 const MAX_COMPARE_OWNERS = 7;
-const TERM_WEEK1_MONDAY = termMeta.week1Monday;
-const TERM_MAX_WEEK = termMeta.maxWeek;
-const DEFAULT_BACKEND_BASE_URL = "http://127.0.0.1:8000";
+const DEFAULT_TERM_WEEK1_MONDAY = localTermMeta.week1Monday;
+const DEFAULT_TERM_MAX_WEEK = localTermMeta.maxWeek;
+const LOCAL_BACKEND_BASE_URL = String(import.meta.env.VITE_LOCAL_BACKEND_BASE_URL || "http://127.0.0.1:9986").trim();
+const ONLINE_BACKEND_BASE_URL = String(import.meta.env.VITE_ONLINE_BACKEND_BASE_URL || "https://schedule-ends.tagzxia.com").trim();
+const RUNTIME_BACKEND_DEFAULT_MODE = resolveBackendRuntimeDefaultMode();
+const DEFAULT_BACKEND_BASE_URL = RUNTIME_BACKEND_DEFAULT_MODE === "local" ? LOCAL_BACKEND_BASE_URL : ONLINE_BACKEND_BASE_URL;
 
-const loginCandidates = [
-  { studentId: "caiziling", name: "蔡子菱", wechatId: "C605460328" },
-  { studentId: "mawanqing", name: "马晚晴", wechatId: "mwq031103" },
-  { studentId: "tangzixian", name: "唐子贤", wechatId: "TanGzXia330" },
-  { studentId: "wuxinyu", name: "伍鑫宇", wechatId: "jinzhi101_10_0" },
-];
+type ScheduleDataSource = "backend" | "cache" | "local";
+
+const runtimeStudentSchedules = ref<StudentSchedule[]>([]);
+const scheduleDataSource = ref<ScheduleDataSource>("local");
+const scheduleCacheAt = ref(0);
+const runtimeTermWeek1Monday = ref(DEFAULT_TERM_WEEK1_MONDAY);
+const runtimeTermMaxWeek = ref(DEFAULT_TERM_MAX_WEEK);
+const runtimeSectionTimes = ref<SectionTime[]>([...localSectionTimes]);
+const runtimeWeekdayLabels = ref<string[]>([...localWeekdayLabels]);
+
+const studentSchedules = computed<StudentSchedule[]>(() => {
+  return runtimeStudentSchedules.value;
+});
+
+const sectionTimes = computed<SectionTime[]>(() => {
+  if (runtimeSectionTimes.value.length > 0) {
+    return runtimeSectionTimes.value;
+  }
+  return localSectionTimes;
+});
+
+const weekdayLabels = computed<string[]>(() => {
+  if (runtimeWeekdayLabels.value.length > 0) {
+    return runtimeWeekdayLabels.value;
+  }
+  return localWeekdayLabels;
+});
+
+const termWeek1Monday = computed(() => {
+  return runtimeTermWeek1Monday.value || DEFAULT_TERM_WEEK1_MONDAY;
+});
+
+const termMaxWeek = computed(() => {
+  const value = Number(runtimeTermMaxWeek.value || 0);
+  if (!Number.isFinite(value) || value <= 0) {
+    return DEFAULT_TERM_MAX_WEEK;
+  }
+  return Math.max(1, Math.floor(value));
+});
 
 const themeOptions: Array<{ key: ThemeKey; label: string }> = [
   { key: "black", label: "典雅黑" },
@@ -437,42 +204,8 @@ const navItems: Array<{ key: TabKey; label: string }> = [
   { key: "schedule", label: "课程表" },
   { key: "profile", label: "我的" },
 ];
-
-const themePreviewMap: Record<ThemeKey, { start: string; end: string }> = {
-  black: { start: "#f3f3f3", end: "#121212" },
-  purple: { start: "#f5eeff", end: "#a061ff" },
-  green: { start: "#edf9f3", end: "#13c56a" },
-  pink: { start: "#fff0f8", end: "#ef45a5" },
-  blue: { start: "#eff6ff", end: "#2e9dff" },
-  yellow: { start: "#fdf8eb", end: "#d9a511" },
-  orange: { start: "#fdf4ed", end: "#f57b16" },
-};
-
-const themeAccentMap: Record<ThemeKey, string> = {
-  black: "#2f55c8",
-  purple: "#a061ff",
-  green: "#13c56a",
-  pink: "#ef45a5",
-  blue: "#2e9dff",
-  yellow: "#d9a511",
-  orange: "#f57b16",
-};
-
-const ownerFixedColorMap: Record<string, string> = {
-  caiziling: "#2563eb",
-  mawanqing: "#dc2626",
-  tangzixian: "#ea580c",
-  wuxinyu: "#7c3aed",
-};
-
-const compareOwnerPalette = ["#2563eb", "#dc2626", "#ea580c", "#7c3aed", "#16a34a", "#db2777", "#0891b2"];
-
-const courseOverlayPalette = ["#6f84d8", "#d99663", "#c7749e", "#6a9fcb", "#9c88d8", "#d6a35f"];
-
-interface FestivalCard {
-  title: string;
-  wish: string;
-}
+const tabOrder: TabKey[] = ["today", "schedule", "profile"];
+const TAB_SCREEN_ANIMATION_MS = 320;
 
 interface BackendTodayBrief {
   studentId: string;
@@ -507,56 +240,180 @@ interface BackendTodayBrief {
   generatedAt?: string;
 }
 
-const fixedDateFestivals: Record<string, FestivalCard> = {
-  "2026-03-03": { title: "元宵节", wish: "愿你灯火可亲，喜乐常在。" },
-};
+interface AuthUserProfile {
+  openId: string;
+  studentId: string;
+  studentName: string;
+  classLabel?: string;
+  nickname: string;
+  avatarUrl: string;
+}
 
-const monthDayFestivals: Record<string, FestivalCard> = {
-  "01-01": { title: "元旦", wish: "新年开门红，课程和生活都顺顺利利。" },
-  "02-14": { title: "情人节", wish: "愿你被爱包围，也别忘了爱自己。" },
-  "03-08": { title: "妇女节", wish: "祝你今天和每天都闪闪发光。" },
-  "03-14": { title: "白色情人节", wish: "愿每一份心意都被温柔回应。" },
-  "05-20": { title: "520", wish: "今天适合勇敢表达喜欢，也适合喜欢自己。" },
-  "06-01": { title: "儿童节", wish: "保留一点童心，学习也会更轻松。" },
-  "11-11": { title: "双十一", wish: "理性下单，快乐生活，作业按时交。" },
-  "12-24": { title: "平安夜", wish: "平安喜乐，明天醒来也是好心情。" },
-  "12-25": { title: "圣诞节", wish: "节日快乐，愿你今天收到很多好消息。" },
-};
+interface BackendAuthMeResponse {
+  ok?: boolean;
+  mode?: "wechat" | "mock";
+  expiresAt?: number;
+  user?: AuthUserProfile;
+}
 
-const allWeeks = Array.from({ length: TERM_MAX_WEEK }, (_, index) => index + 1);
+interface BackendAuthLoginResponse {
+  ok?: boolean;
+  token?: string;
+  expiresAt?: number;
+  mode?: "wechat" | "mock";
+  user?: AuthUserProfile;
+}
+
+interface BackendSchedulePayload {
+  term?: {
+    name?: string;
+    week1Monday?: string;
+    maxWeek?: number;
+  };
+  sectionTimes?: Array<{
+    section: number;
+    start: string;
+    end: string;
+    part: "上午" | "下午" | "晚上";
+  }>;
+  weekdayLabels?: string[];
+  students?: StudentSchedule[];
+  generatedAt?: number;
+}
+
+interface BackendSingleSchedulePayload {
+  term?: BackendSchedulePayload["term"];
+  sectionTimes?: BackendSchedulePayload["sectionTimes"];
+  weekdayLabels?: string[];
+  student?: StudentSchedule;
+  generatedAt?: number;
+}
+
+interface BackendThemeImagesResponse {
+  ok?: boolean;
+  images?: Record<string, string>;
+  updatedAt?: number;
+}
+
+interface BackendPracticeCourseToggleResponse {
+  ok?: boolean;
+  courseKey?: string;
+  enabled?: boolean;
+  practiceCourseKeys?: string[];
+}
+
+const allWeeks = computed(() => Array.from({ length: termMaxWeek.value }, (_, index) => index + 1));
 const activeTab = ref<TabKey>("schedule");
+const isTabSwitching = ref(false);
+const tabTrackIndex = ref(tabOrder.indexOf(activeTab.value));
+const tabSwitchDurationMs = ref(TAB_SCREEN_ANIMATION_MS);
+const blurPanelIndex = ref<number | null>(null);
+const scheduleTableScrollIntoViewId = ref("");
+let tabSwitchCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+let scheduleTableScrollIntoViewResetTimer: ReturnType<typeof setTimeout> | null = null;
 const selectedWeek = ref(resolveWeekByDate(new Date()));
 const themeKey = ref<ThemeKey>("black");
-const activeStudentId = ref(studentSchedules[0]?.id ?? "");
-const includedStudentIds = ref<string[]>([]);
 const showIncludePicker = ref(false);
 const showUserPicker = ref(false);
-const markedCourseName = ref("");
-const ignoreTapUntil = ref(0);
 const showCourseDialog = ref(false);
 const showWeekPicker = ref(false);
 const showThemeUnlockDialog = ref(false);
 const showBackendProbeDialog = ref(false);
+const showQuickAuthDialog = ref(false);
 const purpleUnlocked = ref(false);
 const pendingThemeKey = ref<ThemeKey>("black");
 const themePasswordInput = ref("");
 const themeUnlockError = ref("");
 const backendProbeStatus = ref<BackendProbeStatus>("untested");
+const backendEndpointMode = ref<BackendEndpointMode>(RUNTIME_BACKEND_DEFAULT_MODE);
 const backendBaseUrl = ref(DEFAULT_BACKEND_BASE_URL);
 const todayBackendBrief = ref<BackendTodayBrief | null>(null);
 const todayBackendError = ref("");
-const showTodayAdvice = ref(true);
+const showWeekend = ref(true);
+const authToken = ref("");
+const authExpiresAt = ref(0);
+const authMode = ref<"none" | "wechat" | "mock">("none");
+const authUser = ref<AuthUserProfile | null>(null);
+const authStatusHint = ref("");
+const {
+  dashboard: socialDashboard,
+  refreshDashboard: refreshSocialDashboardData,
+  clearDashboard,
+} = useSocialDashboard();
+const quickAuthPending = ref(false);
+const quickAuthStudentNo = ref("");
+const quickAuthAgreementChecked = ref(false);
+const schedulePullRefreshing = ref(false);
+const scheduleFetchStateByStudentId = ref<Record<string, ScheduleFetchState>>({});
+const navTabRefreshPending = ref(false);
+const queuedNavTabRefresh = ref<TabKey | "">("");
+const isAuthed = computed(() => Boolean(authToken.value && authUser.value));
+const localWallpaperUrl = ref("");
+const themeImageMap = ref<Partial<Record<ThemeKey, string>>>({});
+const themeImageUpdatedAt = ref(0);
+const themeWallpaperEnabled = ref(true);
+const themeWallpaperBlurEnabled = ref(true);
+const themeWallpaperEffectLevel = ref<ThemeWallpaperEffectLevel>("medium");
+
+const { inferBackendEndpointModeByUrl, applyBackendEndpointMode, requestBackendGet, requestBackendPost } = useBackendApi({
+  backendBaseUrl,
+  backendEndpointMode,
+  authToken,
+  defaultBackendBaseUrl: DEFAULT_BACKEND_BASE_URL,
+  localBackendBaseUrl: LOCAL_BACKEND_BASE_URL,
+  onlineBackendBaseUrl: ONLINE_BACKEND_BASE_URL,
+  storageBackendEndpointModeKey: STORAGE_BACKEND_ENDPOINT_MODE_KEY,
+  storageBackendBaseUrlKey: STORAGE_BACKEND_BASE_URL_KEY,
+});
+
+const loginCandidates = computed(() => {
+  return buildRegisteredUsersFromDashboard(socialDashboard.value).map((item) => ({
+    studentId: item.studentId,
+    name: item.name,
+    description: [item.classLabel ? `班级：${item.classLabel}` : "", item.studentNo ? `学号：${item.studentNo}` : ""]
+      .filter((text) => text)
+      .join(" · ") || "已注册用户",
+  }));
+});
+
+const {
+  activeStudentId,
+  includedStudentIds,
+  activeSchedule,
+  includedSchedules,
+  hasMultipleIncluded,
+  subscribedStudentIds,
+  selectableStudentSchedules,
+  isKnownStudentId,
+  normalizeIncludedIds,
+  setIncludedIds,
+  syncIncludedIdsWithVisibleList,
+} = useActiveScheduleState({
+  studentSchedules,
+  socialDashboard,
+  maxCompareOwners: MAX_COMPARE_OWNERS,
+  includedStorageKey: STORAGE_INCLUDED_IDS_KEY,
+});
+const socialActionPending = ref(false);
+const practiceCourseKeys = ref<string[]>([]);
+const practiceTogglePendingCourseKey = ref("");
+const showNonCurrentWeekCourses = ref(false);
 const dialogWeek = ref(1);
 const dialogDay = ref(1);
 const dialogSection = ref(1);
 const dialogCourses = ref<DisplayCourse[]>([]);
 const currentWeek = ref(resolveWeekByDate(new Date()));
 const todayWeekday = ref(resolveWeekday(new Date()));
-const topSafeInset = ref(0);
-const capsuleReserveRight = ref(0);
-const leftActionsReserve = ref(0);
-const capsuleTopOffset = ref(0);
-const capsuleHeight = ref(32);
+const {
+  topSafeInset,
+  capsuleReserveRight,
+  leftActionsReserve,
+  capsuleTopOffset,
+  capsuleHeight,
+  scheduleSwipeViewportWidth,
+  resolveTopSafeInset,
+  syncScheduleSwipeViewportWidth,
+} = useScheduleViewport();
 
 const isAnyModalOpen = computed(() => {
   return (
@@ -565,8 +422,35 @@ const isAnyModalOpen = computed(() => {
     showCourseDialog.value ||
     showWeekPicker.value ||
     showThemeUnlockDialog.value ||
-    showBackendProbeDialog.value
+    showBackendProbeDialog.value ||
+    showQuickAuthDialog.value
   );
+});
+
+const {
+  ignoreTapUntil,
+  scheduleTrackStyle,
+  onScheduleTouchStart,
+  onScheduleTouchMove,
+  onScheduleTouchEnd,
+  onScheduleTouchCancel,
+  onScheduleMouseDown,
+  onScheduleMouseMove,
+  onScheduleMouseUp,
+  onScheduleMouseCancel,
+} = useScheduleWeekSwipe({
+  activeTab,
+  isAnyModalOpen,
+  selectedWeek,
+  termMaxWeek,
+  scheduleSwipeViewportWidth,
+  syncScheduleSwipeViewportWidth,
+});
+
+const { getOwnerDotStyle, getOwnerMarkerStyle, getCourseCardStyle, getCellStyle, getCellTextStyle } = useScheduleCellStyles({
+  themeKey,
+  hasMultipleIncluded,
+  studentSchedules,
 });
 
 const backendProbeStatusLabel = computed(() => {
@@ -579,42 +463,356 @@ const backendProbeStatusLabel = computed(() => {
   return "未测试";
 });
 
+const backendEndpointModeLabel = computed(() => {
+  return backendEndpointMode.value === "online" ? "线上" : "本地";
+});
+
+const scheduleSourceLabel = computed(() => {
+  if (scheduleDataSource.value === "backend") {
+    return "后端实时";
+  }
+  if (scheduleDataSource.value === "cache") {
+    return "本地缓存";
+  }
+  return "前端本地兜底";
+});
+
+const scheduleCacheTimeLabel = computed(() => {
+  if (scheduleCacheAt.value <= 0) {
+    return "无";
+  }
+  const date = new Date(scheduleCacheAt.value);
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const hour = `${date.getHours()}`.padStart(2, "0");
+  const minute = `${date.getMinutes()}`.padStart(2, "0");
+  return `${month}-${day} ${hour}:${minute}`;
+});
+
+const authStatusLabel = computed(() => {
+  if (!authUser.value || !authToken.value) {
+    return "";
+  }
+  if (!authUser.value.studentId) {
+    return "已登录（未绑定课表）";
+  }
+  const modeLabel = authMode.value === "wechat" ? "微信" : "开发";
+  return `${modeLabel}已授权`;
+});
+
+const normalizeThemeImageMap = (raw: unknown): Partial<Record<ThemeKey, string>> => {
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const result: Partial<Record<ThemeKey, string>> = {};
+  const entries = Object.entries(raw as Record<string, unknown>);
+  for (const [rawThemeKey, rawUrl] of entries) {
+    const theme = String(rawThemeKey || "").trim() as ThemeKey;
+    const isKnownTheme = themeOptions.some((item) => item.key === theme);
+    if (!isKnownTheme) {
+      continue;
+    }
+    const imageUrl = String(rawUrl || "").trim();
+    if (!imageUrl) {
+      continue;
+    }
+    result[theme] = imageUrl;
+  }
+  return result;
+};
+
+const persistThemeImageMapToStorage = (nextMap: Partial<Record<ThemeKey, string>>, updatedAt = Date.now()) => {
+  uni.setStorageSync(STORAGE_THEME_IMAGE_MAP_KEY, JSON.stringify(nextMap));
+  uni.setStorageSync(STORAGE_THEME_IMAGE_UPDATED_AT_KEY, Number(updatedAt || 0));
+};
+
+const restoreThemeImageMapFromStorage = () => {
+  const raw = uni.getStorageSync(STORAGE_THEME_IMAGE_MAP_KEY);
+  let parsed: unknown = {};
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      parsed = {};
+    }
+  } else if (raw && typeof raw === "object") {
+    parsed = raw;
+  }
+  themeImageMap.value = normalizeThemeImageMap(parsed);
+  themeImageUpdatedAt.value = Number(uni.getStorageSync(STORAGE_THEME_IMAGE_UPDATED_AT_KEY) || 0);
+};
+
+const resolveThemeImageUrl = (rawUrl: string) => {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  if (!trimmed.startsWith("/")) {
+    return "";
+  }
+  const base = String(backendBaseUrl.value || DEFAULT_BACKEND_BASE_URL).trim().replace(/\/+$/, "");
+  if (!base) {
+    return "";
+  }
+  return `${base}${trimmed}`;
+};
+
+const activeThemePatternImageUrl = computed(() => {
+  const raw = String(themeImageMap.value[themeKey.value] || "").trim();
+  return resolveThemeImageUrl(raw);
+});
+
+const hasThemePatternImage = computed(() => themeWallpaperEnabled.value && Boolean(activeThemePatternImageUrl.value));
+const isThemeWallpaperTab = computed(() => activeTab.value === "today" || activeTab.value === "schedule");
+const isThemeWallpaperEffectTab = computed(() => activeTab.value === "schedule");
+const shouldUseThemeWallpaperBackground = computed(() => isThemeWallpaperTab.value && hasThemePatternImage.value);
+const themeWallpaperEffectMap: Record<ThemeWallpaperEffectLevel, { blurRadius: number; maskColor: string }> = {
+  light: { blurRadius: 20, maskColor: "rgba(70, 75, 88, 0.28)" },
+  medium: { blurRadius: 30, maskColor: "rgba(70, 75, 88, 0.38)" },
+  heavy: { blurRadius: 40, maskColor: "rgba(70, 75, 88, 0.46)" },
+};
+const pageBackgroundImageSrc = computed(() => {
+  if (shouldUseThemeWallpaperBackground.value) {
+    return activeThemePatternImageUrl.value;
+  }
+  return "/static/background.png";
+});
+const pageBackgroundBlurEnabled = computed(() => {
+  if (!isThemeWallpaperEffectTab.value || !shouldUseThemeWallpaperBackground.value) {
+    return false;
+  }
+  return themeWallpaperBlurEnabled.value;
+});
+const pageBackgroundBlurRadius = computed(() => {
+  if (!isThemeWallpaperEffectTab.value || !shouldUseThemeWallpaperBackground.value) {
+    return 0;
+  }
+  return themeWallpaperEffectMap[themeWallpaperEffectLevel.value].blurRadius;
+});
+const pageBackgroundMaskColor = computed(() => {
+  if (activeTab.value === "today") {
+    return "linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.5) 20%, rgba(255, 255, 255, 0.75) 58%, rgba(255, 255, 255, 0.8) 100%)";
+  }
+  if (!shouldUseThemeWallpaperBackground.value) {
+    return "var(--bg)";
+  }
+  if (isThemeWallpaperEffectTab.value) {
+    return themeWallpaperEffectMap[themeWallpaperEffectLevel.value].maskColor;
+  }
+  return "rgba(70, 75, 88, 0.28)";
+});
+
+const syncThemeWallpaperEnabledFromStorage = () => {
+  themeWallpaperEnabled.value = readStorageBoolean(STORAGE_THEME_WALLPAPER_ENABLED_KEY, true);
+};
+
+const syncThemeWallpaperBlurEnabledFromStorage = () => {
+  themeWallpaperBlurEnabled.value = readStorageBoolean(STORAGE_THEME_WALLPAPER_BLUR_ENABLED_KEY, true);
+};
+
+const resolveThemeWallpaperEffectLevel = (raw: unknown): ThemeWallpaperEffectLevel => {
+  const value = String(raw || "").trim();
+  if (value === "light" || value === "medium" || value === "heavy") {
+    return value;
+  }
+  return "medium";
+};
+
+const syncThemeWallpaperEffectLevelFromStorage = () => {
+  themeWallpaperEffectLevel.value = resolveThemeWallpaperEffectLevel(
+    uni.getStorageSync(STORAGE_THEME_WALLPAPER_EFFECT_LEVEL_KEY),
+  );
+};
+
+const pageThemeStyle = computed((): Record<string, string> => {
+  const imageUrl = activeThemePatternImageUrl.value;
+  if (!imageUrl) {
+    return {
+      "--bg-pattern-image": "none",
+      "--bg-pattern-size": "auto",
+      "--bg-pattern-position": "center",
+      "--bg-pattern-repeat": "no-repeat",
+    };
+  }
+  const escapedImageUrl = imageUrl.replace(/"/g, '\\"');
+  return {
+    "--bg-pattern-image": `url("${escapedImageUrl}")`,
+    "--bg-pattern-size": "cover",
+    "--bg-pattern-position": "center",
+    "--bg-pattern-repeat": "no-repeat",
+  };
+});
+
+const refreshThemeImageMap = async () => {
+  try {
+    const response = await requestBackendGet<BackendThemeImagesResponse>("/api/theme-images");
+    const nextMap = normalizeThemeImageMap(response.images || {});
+    const updatedAt = Number(response.updatedAt || Date.now());
+    if (updatedAt > 0 && themeImageUpdatedAt.value > 0 && updatedAt < themeImageUpdatedAt.value) {
+      return;
+    }
+    themeImageMap.value = nextMap;
+    themeImageUpdatedAt.value = updatedAt;
+    persistThemeImageMapToStorage(nextMap, updatedAt);
+  } catch (error) {
+    // 静默失败，保留本地缓存
+  }
+};
+
+const isCurrentUserAdmin = computed(() => {
+  return Boolean(socialDashboard.value?.me?.isAdmin);
+});
+
+const clearAuthSession = () => {
+  authToken.value = "";
+  authExpiresAt.value = 0;
+  authUser.value = null;
+  authMode.value = "none";
+  practiceCourseKeys.value = [];
+  practiceTogglePendingCourseKey.value = "";
+  clearDashboard();
+  activeStudentId.value = "";
+  setIncludedIds([]);
+  showUserPicker.value = false;
+  uni.removeStorageSync(STORAGE_AUTH_TOKEN_KEY);
+  uni.removeStorageSync(STORAGE_AUTH_EXPIRES_AT_KEY);
+  uni.removeStorageSync(STORAGE_AUTH_USER_KEY);
+  uni.removeStorageSync(STORAGE_AUTH_MODE_KEY);
+  clearRuntimeScheduleData();
+};
+
+const persistAuthSession = () => {
+  if (!authToken.value || !authUser.value) {
+    clearAuthSession();
+    return;
+  }
+  uni.setStorageSync(STORAGE_AUTH_TOKEN_KEY, authToken.value);
+  uni.setStorageSync(STORAGE_AUTH_EXPIRES_AT_KEY, authExpiresAt.value);
+  uni.setStorageSync(STORAGE_AUTH_USER_KEY, JSON.stringify(authUser.value));
+  uni.setStorageSync(STORAGE_AUTH_MODE_KEY, authMode.value);
+};
+
+const resolveRequestErrorMessage = (error: unknown, fallback = "请求失败") => {
+  const rawMessage = error instanceof Error ? String(error.message || "").trim() : "";
+  if (!rawMessage) {
+    return fallback;
+  }
+  if (/timeout/i.test(rawMessage)) {
+    return "网络较慢，请稍后重试";
+  }
+  if (/request:fail/i.test(rawMessage)) {
+    return "网络请求失败，请检查网络或后端地址";
+  }
+  return rawMessage;
+};
+
+const normalizePracticeCourseKeys = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [] as string[];
+  }
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const key = normalizePracticeCourseKey(item);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+};
+
+const practiceCourseKeySet = computed(() => new Set(practiceCourseKeys.value));
+
+const getCoursePracticeKey = (course: CourseItem) => {
+  const fromPayload = normalizePracticeCourseKey((course as { practiceCourseKey?: unknown }).practiceCourseKey);
+  if (fromPayload) {
+    return fromPayload;
+  }
+  return buildCoursePracticeKey(course);
+};
+
+const isPracticeCourse = (course: DisplayCourse) => {
+  if (!isAuthed.value) {
+    return false;
+  }
+  if (!activeStudentId.value || course.ownerId !== activeStudentId.value) {
+    return false;
+  }
+  const key = getCoursePracticeKey(course);
+  if (!key) {
+    return false;
+  }
+  return practiceCourseKeySet.value.has(key);
+};
+
+const canTogglePracticeCourse = (course: DisplayCourse) => {
+  if (!isAuthed.value) {
+    return false;
+  }
+  if (!activeStudentId.value || course.ownerId !== activeStudentId.value) {
+    return false;
+  }
+  return Boolean(getCoursePracticeKey(course));
+};
+
 useModalScrollLock(isAnyModalOpen);
 
-const activeSchedule = computed(() => {
-  return studentSchedules.find((student) => student.id === activeStudentId.value) ?? studentSchedules[0];
-});
+const formatScheduleOwnerName = (schedule: StudentSchedule) => {
+  return schedule.classLabel ? `${schedule.name}（${schedule.classLabel}）` : schedule.name;
+};
 
-const includedSchedules = computed(() => {
-  const normalizedIds = normalizeIncludedIds(includedStudentIds.value);
-  return studentSchedules.filter((student) => normalizedIds.includes(student.id));
-});
-
-const hasMultipleIncluded = computed(() => includedSchedules.value.length > 1);
-
-const selectedWeekCourses = computed<DisplayCourse[]>(() => {
+const buildWeekDisplayCourses = (week: number) => {
   const merged: DisplayCourse[] = [];
   for (const schedule of includedSchedules.value) {
-    const courses = getWeekCourses(schedule, selectedWeek.value);
+    const courses = getWeekCourses(schedule, week);
     for (const course of courses) {
-      merged.push({ ...course, ownerId: schedule.id, ownerName: schedule.name });
+      merged.push({ ...course, ownerId: schedule.id, ownerName: formatScheduleOwnerName(schedule) });
     }
   }
 
   return merged.sort(
     (a, b) => a.day - b.day || a.startSection - b.startSection || a.endSection - b.endSection || a.ownerName.localeCompare(b.ownerName),
   );
-});
+};
 
-const selectedWeekCellMap = computed(() => {
+const buildWeekCellMap = (courses: DisplayCourse[]) => {
   const map: Record<string, DisplayCourse[]> = {};
-  for (const course of selectedWeekCourses.value) {
+  for (const course of courses) {
     for (let section = course.startSection; section <= course.endSection; section += 1) {
       const key = `${course.day}-${section}`;
       if (!map[key]) {
         map[key] = [];
       }
       map[key].push(course);
+    }
+  }
+  return map;
+};
+
+const selectedWeekCourses = computed<DisplayCourse[]>(() => buildWeekDisplayCourses(selectedWeek.value));
+const selectedWeekCellMap = computed(() => buildWeekCellMap(selectedWeekCourses.value));
+
+const allTermCellMap = computed(() => {
+  const map: Record<string, DisplayCourse[]> = {};
+  for (const schedule of includedSchedules.value) {
+    for (const course of schedule.courses) {
+      const displayCourse: DisplayCourse = {
+        ...course,
+        ownerId: schedule.id,
+        ownerName: formatScheduleOwnerName(schedule),
+      };
+      for (let section = course.startSection; section <= course.endSection; section += 1) {
+        const key = `${course.day}-${section}`;
+        if (!map[key]) {
+          map[key] = [];
+        }
+        map[key].push(displayCourse);
+      }
     }
   }
   return map;
@@ -633,7 +831,27 @@ const pickCellClassroomLabel = (courses: DisplayCourse[]) => {
   return labels[0] || "";
 };
 
-const gridRows = computed<GridRow[]>(() => {
+const resolveWeekCellCourses = (week: number, weekCellMap: Record<string, DisplayCourse[]>, day: number, section: number) => {
+  const key = `${day}-${section}`;
+  const weekCourses = weekCellMap[key] ?? [];
+  if (weekCourses.length > 0) {
+    return { courses: weekCourses, isOutOfWeek: false };
+  }
+  if (!showNonCurrentWeekCourses.value) {
+    return { courses: [] as DisplayCourse[], isOutOfWeek: false };
+  }
+  const outOfWeekCourses = allTermCellMap.value[key] ?? [];
+  if (outOfWeekCourses.length > 0) {
+    return { courses: outOfWeekCourses, isOutOfWeek: true };
+  }
+  return { courses: [] as DisplayCourse[], isOutOfWeek: false };
+};
+
+const buildGridRowsForWeek = (week: number, weekCellMap: Record<string, DisplayCourse[]>): GridRow[] => {
+  const resolveDisplayCourses = (day: number, section: number) => {
+    return resolveWeekCellCourses(week, weekCellMap, day, section);
+  };
+
   const getCellSignature = (courses: DisplayCourse[]) => {
     if (courses.length === 0) {
       return "";
@@ -644,14 +862,14 @@ const gridRows = computed<GridRow[]>(() => {
       .join("|");
   };
 
-  return sectionTimes.map((slot) => {
+  return sectionTimes.value.map((slot) => {
     const cells = Array.from({ length: 7 }, (_, dayIndex) => {
       const day = dayIndex + 1;
-      const courses = selectedWeekCellMap.value[`${dayIndex + 1}-${slot.section}`] ?? [];
-      const prevCourses = selectedWeekCellMap.value[`${dayIndex + 1}-${slot.section - 1}`] ?? [];
-      const nextCourses = selectedWeekCellMap.value[`${dayIndex + 1}-${slot.section + 1}`] ?? [];
-      const prevPart = sectionTimes[slot.section - 2]?.part;
-      const nextPart = sectionTimes[slot.section]?.part;
+      const { courses, isOutOfWeek } = resolveDisplayCourses(day, slot.section);
+      const prevCourses = resolveDisplayCourses(day, slot.section - 1).courses;
+      const nextCourses = resolveDisplayCourses(day, slot.section + 1).courses;
+      const prevPart = sectionTimes.value[slot.section - 2]?.part;
+      const nextPart = sectionTimes.value[slot.section]?.part;
       const signature = getCellSignature(courses);
       const prevSignature = getCellSignature(prevCourses);
       const nextSignature = getCellSignature(nextCourses);
@@ -661,8 +879,8 @@ const gridRows = computed<GridRow[]>(() => {
       if (signature !== "") {
         let groupStart = slot.section;
         while (groupStart > 1) {
-          const upperPart = sectionTimes[groupStart - 2]?.part;
-          const upperSignature = getCellSignature(selectedWeekCellMap.value[`${day}-${groupStart - 1}`] ?? []);
+          const upperPart = sectionTimes.value[groupStart - 2]?.part;
+          const upperSignature = getCellSignature(resolveDisplayCourses(day, groupStart - 1).courses);
           if (upperPart !== slot.part || upperSignature !== signature) {
             break;
           }
@@ -670,9 +888,9 @@ const gridRows = computed<GridRow[]>(() => {
         }
 
         let groupEnd = slot.section;
-        while (groupEnd < sectionTimes.length) {
-          const lowerPart = sectionTimes[groupEnd]?.part;
-          const lowerSignature = getCellSignature(selectedWeekCellMap.value[`${day}-${groupEnd + 1}`] ?? []);
+        while (groupEnd < sectionTimes.value.length) {
+          const lowerPart = sectionTimes.value[groupEnd]?.part;
+          const lowerSignature = getCellSignature(resolveDisplayCourses(day, groupEnd + 1).courses);
           if (lowerPart !== slot.part || lowerSignature !== signature) {
             break;
           }
@@ -688,9 +906,11 @@ const gridRows = computed<GridRow[]>(() => {
         labels: Array.from(new Set(courses.map((course) => course.name))),
         classroomLabel: pickCellClassroomLabel(courses),
         ownerIds: Array.from(new Set(courses.map((course) => course.ownerId))),
+        hasPracticeCourse: courses.some((course) => isPracticeCourse(course)),
         showLabel,
         labelSpan,
         part: slot.part,
+        isOutOfWeek,
         mergeWithPrev: signature !== "" && prevPart === slot.part && prevSignature === signature,
         mergeWithNext: signature !== "" && nextPart === slot.part && nextSignature === signature,
       };
@@ -700,10 +920,47 @@ const gridRows = computed<GridRow[]>(() => {
       section: slot.section,
       time: slot.start,
       part: slot.part,
-      isPartStart: slot.section === 5 || slot.section === 9,
+      isPartStart: slot.section === 1 || sectionTimes.value[slot.section - 2]?.part !== slot.part,
       cells,
     };
   });
+};
+
+const schedulePanelWeeks = computed(() => {
+  return {
+    prev: Math.max(1, selectedWeek.value - 1),
+    current: selectedWeek.value,
+    next: Math.min(termMaxWeek.value, selectedWeek.value + 1),
+  };
+});
+
+const scheduleWeekCellMaps = computed(() => {
+  const map: Record<number, Record<string, DisplayCourse[]>> = {};
+  const uniqueWeeks = Array.from(new Set([schedulePanelWeeks.value.prev, schedulePanelWeeks.value.current, schedulePanelWeeks.value.next]));
+  for (const week of uniqueWeeks) {
+    map[week] = buildWeekCellMap(buildWeekDisplayCourses(week));
+  }
+  return map;
+});
+
+const scheduleWeekPanels = computed<ScheduleWeekPanel[]>(() => {
+  const panelDefs: Array<{ role: WeekPanelRole; week: number }> = [
+    { role: "prev", week: schedulePanelWeeks.value.prev },
+    { role: "current", week: schedulePanelWeeks.value.current },
+    { role: "next", week: schedulePanelWeeks.value.next },
+  ];
+  return panelDefs.map((panel) => {
+    const cellMap = scheduleWeekCellMaps.value[panel.week] ?? {};
+    return {
+      role: panel.role,
+      week: panel.week,
+      rows: buildGridRowsForWeek(panel.week, cellMap),
+    };
+  });
+});
+
+const gridRows = computed<GridRow[]>(() => {
+  return scheduleWeekPanels.value.find((panel) => panel.role === "current")?.rows ?? [];
 });
 
 const nextUpcomingCourse = computed(() => {
@@ -720,8 +977,8 @@ const nextUpcomingCourse = computed(() => {
   let target: { course: DisplayCourse; startTs: number } | null = null;
 
   for (const course of courses) {
-    const sectionStart = sectionTimes[course.startSection - 1];
-    const sectionEnd = sectionTimes[course.endSection - 1];
+    const sectionStart = sectionTimes.value[course.startSection - 1];
+    const sectionEnd = sectionTimes.value[course.endSection - 1];
     if (!sectionStart) {
       continue;
     }
@@ -752,7 +1009,7 @@ const todayInfo = computed(() => {
   return {
     week,
     weekday,
-    weekdayLabel: weekdayLabels[weekday - 1],
+    weekdayLabel: weekdayLabels.value[weekday - 1],
     dateLabel: formatMonthDay(now),
   };
 });
@@ -765,7 +1022,7 @@ const todayCourses = computed<DisplayCourse[]>(() => {
   for (const schedule of includedSchedules.value) {
     const courses = getWeekCourses(schedule, week).filter((course) => course.day === weekday);
     for (const course of courses) {
-      merged.push({ ...course, ownerId: schedule.id, ownerName: schedule.name });
+      merged.push({ ...course, ownerId: schedule.id, ownerName: formatScheduleOwnerName(schedule) });
     }
   }
 
@@ -773,8 +1030,8 @@ const todayCourses = computed<DisplayCourse[]>(() => {
 });
 
 const getCourseStartEndTs = (course: DisplayCourse) => {
-  const sectionStart = sectionTimes[course.startSection - 1];
-  const sectionEnd = sectionTimes[course.endSection - 1];
+  const sectionStart = sectionTimes.value[course.startSection - 1];
+  const sectionEnd = sectionTimes.value[course.endSection - 1];
   if (!sectionStart || !sectionEnd) {
     return null;
   }
@@ -850,13 +1107,6 @@ const fallbackGreeting = computed(() => {
   return `${prefix}，${activeSchedule.value.name}`;
 });
 
-const todayFestival = computed<FestivalCard | null>(() => {
-  const now = new Date();
-  const fullDate = formatIsoDate(now);
-  const monthDay = `${`${now.getMonth() + 1}`.padStart(2, "0")}-${`${now.getDate()}`.padStart(2, "0")}`;
-  return fixedDateFestivals[fullDate] ?? monthDayFestivals[monthDay] ?? null;
-});
-
 const todaySectionLoad = computed(() => {
   return todayCourses.value.reduce((total, course) => total + (course.endSection - course.startSection + 1), 0);
 });
@@ -877,53 +1127,6 @@ const todayFocusStatusText = computed(() => {
   }
   const minutes = Math.max(1, Math.ceil((info.startTs - now) / (60 * 1000)));
   return `${minutes} 分钟后上课`;
-});
-
-const todayWeatherValue = computed(() => {
-  const weather = todayBackendBrief.value?.weather;
-  if (!weather) {
-    return backendProbeStatus.value === "online" ? "同步中" : "待接入后端";
-  }
-  const summary = weather.summary || "天气待同步";
-  const temperature = weather.temperature && weather.temperature !== "--" ? ` ${weather.temperature}` : "";
-  return `${summary}${temperature}`;
-});
-
-const todayAdviceList = computed(() => {
-  const list: string[] = [];
-  if (todayCourses.value.length === 0) {
-    list.push("今天课程较少，建议安排复盘或项目推进。");
-  } else if (todaySectionLoad.value >= 8) {
-    list.push("课时较满，课间记得补水和活动一下。");
-  } else {
-    list.push("今天节奏适中，建议在空档整理重点。");
-  }
-
-  const focusInfo = todayFocusInfo.value;
-  if (focusInfo?.status === "ongoing") {
-    list.push("当前正在上课，记得标记重点和疑问点。");
-  } else if (focusInfo?.status === "upcoming") {
-    list.push("上课前把设备和资料再确认一遍。");
-  } else if (todayCourses.value.length > 0) {
-    list.push("今天课程已结束，花 10 分钟复盘会更稳。");
-  }
-
-  list.push("晚间留一点时间整理明天任务。");
-  return list.slice(0, 3);
-});
-
-const weatherIntegrationHint = computed(() => {
-  const weatherAdvice = todayBackendBrief.value?.weather?.advice;
-  if (weatherAdvice) {
-    return weatherAdvice;
-  }
-  if (backendProbeStatus.value === "offline") {
-    return "后端离线，天气信息待同步";
-  }
-  if (backendProbeStatus.value === "online") {
-    return "后端在线，正在同步天气信息";
-  }
-  return "后续展示实时温度、天气和空气质量";
 });
 
 const inferBuildingLabel = (classroom?: string | null) => {
@@ -988,10 +1191,10 @@ const departureReminder = computed(() => {
     return null;
   }
   const commuteMinutes = estimateCommuteMinutes(info.course.classroom);
-  const startTime = sectionTimes[info.course.startSection - 1]?.start ?? "--:--";
+  const startTime = sectionTimes.value[info.course.startSection - 1]?.start ?? "--:--";
   return {
     courseName: info.course.name,
-    timeRange: `${startTime}-${sectionTimes[info.course.endSection - 1]?.end ?? "--:--"}`,
+    timeRange: `${startTime}-${sectionTimes.value[info.course.endSection - 1]?.end ?? "--:--"}`,
     commuteMinutes,
     leaveAt: subtractMinutesFromTime(startTime, commuteMinutes),
   };
@@ -1030,102 +1233,319 @@ const formatCourseTeachingClasses = (course: DisplayCourse) => {
   return (course.teachingClasses || "").trim() || "待同步";
 };
 
-const isTodayColumn = (day: number) => {
-  return selectedWeek.value === currentWeek.value && day === todayWeekday.value;
+const isTodayColumn = (week: number, day: number) => {
+  return week === currentWeek.value && day === todayWeekday.value;
 };
 
-const resolveCurrentPartStartSection = (date: Date) => {
-  const hour = date.getHours();
-  if (hour >= 18) {
-    return 9;
-  }
-  if (hour >= 12) {
-    return 5;
-  }
-  return 1;
-};
+const SCHEDULE_TABLE_TOP_ANCHOR_ID = "schedule-table-top-anchor";
 
-const autoScrollToCurrentPart = () => {
-  if (activeTab.value !== "schedule") {
+const clearScheduleTableScrollIntoViewResetTimer = () => {
+  if (!scheduleTableScrollIntoViewResetTimer) {
     return;
   }
+  clearTimeout(scheduleTableScrollIntoViewResetTimer);
+  scheduleTableScrollIntoViewResetTimer = null;
+};
 
-  const targetSection = resolveCurrentPartStartSection(new Date());
-  nextTick(() => {
-    uni.pageScrollTo({
-      selector: `#section-row-${targetSection}`,
-      duration: 260,
+const triggerScheduleTableScrollIntoView = (targetId: string) => {
+  clearScheduleTableScrollIntoViewResetTimer();
+  if (scheduleTableScrollIntoViewId.value === targetId) {
+    scheduleTableScrollIntoViewId.value = "";
+    nextTick(() => {
+      scheduleTableScrollIntoViewId.value = targetId;
+      scheduleTableScrollIntoViewResetTimer = setTimeout(() => {
+        scheduleTableScrollIntoViewId.value = "";
+        scheduleTableScrollIntoViewResetTimer = null;
+      }, 120);
     });
+    return;
+  }
+  scheduleTableScrollIntoViewId.value = targetId;
+  scheduleTableScrollIntoViewResetTimer = setTimeout(() => {
+    scheduleTableScrollIntoViewId.value = "";
+    scheduleTableScrollIntoViewResetTimer = null;
+  }, 120);
+};
+
+const scrollScheduleTableToTop = () => {
+  nextTick(() => {
+    triggerScheduleTableScrollIntoView(SCHEDULE_TABLE_TOP_ANCHOR_ID);
   });
 };
 
-const resolveTopSafeInset = () => {
-  const systemInfo = uni.getSystemInfoSync();
-  const statusBar = Number(systemInfo.statusBarHeight || 0);
-  const windowWidth = Number(systemInfo.windowWidth || 375);
-  let safeInset = statusBar;
-  capsuleReserveRight.value = 0;
-  leftActionsReserve.value = Math.ceil((212 / 750) * windowWidth);
-  capsuleTopOffset.value = Math.max(0, statusBar + 4);
-  capsuleHeight.value = 32;
-  const getMenuRect = (uni as unknown as {
-    getMenuButtonBoundingClientRect?: () => { top?: number; bottom?: number; left?: number; width?: number; height?: number };
-  }).getMenuButtonBoundingClientRect;
-  if (typeof getMenuRect === "function") {
-    const menuRect = getMenuRect();
-    const menuTop = Number(menuRect?.top || 0);
-    const menuBottom = Number(menuRect?.bottom || 0);
-    const menuWidth = Number(menuRect?.width || 0);
-    const menuHeight = Number(menuRect?.height || 0);
-    if (menuRect && Number.isFinite(menuBottom) && menuBottom > 0) {
-      safeInset = Math.max(safeInset, Math.ceil(menuBottom + 2));
-      capsuleReserveRight.value = Math.ceil((menuWidth || 96) + 12);
-      if (Number.isFinite(menuTop) && menuTop > 0) {
-        capsuleTopOffset.value = Math.ceil(menuTop);
+const normalizeStudentSchedulePayload = (payload: BackendSchedulePayload) => {
+  const rows = Array.isArray(payload.students) ? payload.students : [];
+  return rows
+    .filter((row) => row && typeof row.id === "string" && typeof row.name === "string")
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      studentNo: row.studentNo,
+      classLabel: row.classLabel,
+      courses: (row.courses || []).map((course) => ({
+        id: course.id,
+        name: course.name,
+        day: Number(course.day),
+        startSection: Number(course.startSection),
+        endSection: Number(course.endSection),
+        weekExpr: course.weekExpr,
+        parity: course.parity,
+        classroom: course.classroom ?? null,
+        teacher: course.teacher ?? null,
+        teachingClasses: course.teachingClasses ?? null,
+        practiceCourseKey: getCoursePracticeKey(course),
+      })),
+    })) as StudentSchedule[];
+};
+
+const normalizeSingleStudentSchedulePayload = (payload: BackendSingleSchedulePayload) => {
+  const student = payload.student;
+  if (!student || typeof student.id !== "string" || typeof student.name !== "string") {
+    return null;
+  }
+  const rows = normalizeStudentSchedulePayload({ students: [student] });
+  return rows[0] || null;
+};
+
+const normalizeScheduleWeek1Monday = (value: unknown) => {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+  return DEFAULT_TERM_WEEK1_MONDAY;
+};
+
+const normalizeScheduleMaxWeek = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_TERM_MAX_WEEK;
+  }
+  return Math.max(1, Math.floor(parsed));
+};
+
+const normalizeScheduleSectionTimes = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [...localSectionTimes];
+  }
+  const rows = value
+    .map((item) => {
+      const row = item as Partial<SectionTime>;
+      const section = Number(row.section);
+      const start = String(row.start || "").trim();
+      const end = String(row.end || "").trim();
+      const part = row.part === "上午" || row.part === "下午" || row.part === "晚上" ? row.part : "";
+      if (!Number.isFinite(section) || section <= 0 || !start || !end || !part) {
+        return null;
       }
-      if (Number.isFinite(menuHeight) && menuHeight > 0) {
-        capsuleHeight.value = Math.ceil(menuHeight);
+      return {
+        section: Math.floor(section),
+        start,
+        end,
+        part,
+      } as SectionTime;
+    })
+    .filter((item): item is SectionTime => Boolean(item))
+    .sort((a, b) => a.section - b.section);
+  if (rows.length === 0) {
+    return [...localSectionTimes];
+  }
+  return rows;
+};
+
+const normalizeScheduleWeekdayLabels = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [...localWeekdayLabels];
+  }
+  const rows = value.map((item) => String(item || "").trim()).filter((item) => item !== "");
+  if (rows.length !== 7) {
+    return [...localWeekdayLabels];
+  }
+  return rows;
+};
+
+const syncWeekValues = () => {
+  currentWeek.value = resolveWeekByDate(new Date());
+  if (selectedWeek.value > termMaxWeek.value) {
+    selectedWeek.value = termMaxWeek.value;
+  }
+  if (selectedWeek.value < 1) {
+    selectedWeek.value = 1;
+  }
+};
+
+const applyRuntimeScheduleMeta = (payload?: BackendSchedulePayload) => {
+  runtimeTermWeek1Monday.value = normalizeScheduleWeek1Monday(payload?.term?.week1Monday);
+  runtimeTermMaxWeek.value = normalizeScheduleMaxWeek(payload?.term?.maxWeek);
+  runtimeSectionTimes.value = normalizeScheduleSectionTimes(payload?.sectionTimes);
+  runtimeWeekdayLabels.value = normalizeScheduleWeekdayLabels(payload?.weekdayLabels);
+  syncWeekValues();
+};
+
+const sortRuntimeScheduleRows = (rows: StudentSchedule[]) => {
+  const order = new Map(loginCandidates.value.map((item, index) => [item.studentId, index]));
+  return [...rows].sort((left, right) => {
+    const leftOrder = order.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = order.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.name.localeCompare(right.name, "zh-CN");
+  });
+};
+
+const applyRuntimeStudentSchedules = (rows: StudentSchedule[], source: ScheduleDataSource, cacheTime: number) => {
+  runtimeStudentSchedules.value = sortRuntimeScheduleRows(rows);
+  scheduleDataSource.value = source;
+  scheduleCacheAt.value = cacheTime;
+  const hasActive = Boolean(activeStudentId.value && runtimeStudentSchedules.value.some((item) => item.id === activeStudentId.value));
+  if (!hasActive) {
+    activeStudentId.value = "";
+    includedStudentIds.value = [];
+    showUserPicker.value = false;
+    return;
+  }
+  showUserPicker.value = false;
+};
+
+const mergeRuntimeScheduleCandidates = (users: SocialUserItem[]) => {
+  const oldRows = new Map(runtimeStudentSchedules.value.map((item) => [item.id, item]));
+  const rows = users.map((user) => {
+    const existing = oldRows.get(user.studentId);
+    return {
+      id: user.studentId,
+      name: user.name,
+      studentNo: user.studentNo,
+      classLabel: user.classLabel,
+      courses: existing?.courses || [],
+    } as StudentSchedule;
+  });
+  applyRuntimeStudentSchedules(rows, scheduleDataSource.value, scheduleCacheAt.value);
+};
+
+const syncDashboardStudentLists = (dashboard: SocialDashboardResponse, preferredIncludedIds: string[]) => {
+  const registeredUsers = buildRegisteredUsersFromDashboard(dashboard);
+  mergeRuntimeScheduleCandidates(registeredUsers);
+  syncIncludedIdsWithVisibleList(preferredIncludedIds);
+  return registeredUsers;
+};
+
+const clearRuntimeScheduleData = () => {
+  applyRuntimeScheduleMeta();
+  applyRuntimeStudentSchedules([], "local", 0);
+  scheduleFetchStateByStudentId.value = {};
+};
+
+const loadScheduleForStudent = async (studentId: string) => {
+  if (!studentId || !isAuthed.value) {
+    return false;
+  }
+  try {
+    const payload = await requestBackendGet<BackendSingleSchedulePayload>(
+      "/api/schedules/student",
+      { student_id: studentId },
+      true,
+    );
+    const row = normalizeSingleStudentSchedulePayload(payload);
+    if (!row) {
+      throw new Error("EMPTY_SCHEDULE");
+    }
+    applyRuntimeScheduleMeta(payload as BackendSchedulePayload);
+    const cacheAt = Date.now();
+    const nextRows = runtimeStudentSchedules.value.map((item) => (item.id === row.id ? row : item));
+    if (!nextRows.some((item) => item.id === row.id)) {
+      nextRows.push(row);
+    }
+    applyRuntimeStudentSchedules(nextRows, "backend", cacheAt);
+    uni.setStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY, "backend");
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+const hasScheduleCoursesLoaded = (studentId: string) => {
+  const row = runtimeStudentSchedules.value.find((item) => item.id === studentId);
+  return Boolean(row && Array.isArray(row.courses) && row.courses.length > 0);
+};
+
+const getScheduleFetchState = (studentId: string): ScheduleFetchState => {
+  const state = scheduleFetchStateByStudentId.value[studentId];
+  if (state) {
+    return state;
+  }
+  return hasScheduleCoursesLoaded(studentId) ? "ready" : "idle";
+};
+
+const setScheduleFetchState = (studentId: string, state: ScheduleFetchState) => {
+  if (!studentId) {
+    return;
+  }
+  scheduleFetchStateByStudentId.value = {
+    ...scheduleFetchStateByStudentId.value,
+    [studentId]: state,
+  };
+};
+
+const ensureScheduleLoaded = async (studentId: string) => {
+  if (!studentId || !isAuthed.value || backendProbeStatus.value !== "online") {
+    return false;
+  }
+  if (hasScheduleCoursesLoaded(studentId)) {
+    setScheduleFetchState(studentId, "ready");
+    return true;
+  }
+  if (getScheduleFetchState(studentId) === "loading") {
+    return false;
+  }
+  setScheduleFetchState(studentId, "loading");
+  const success = await loadScheduleForStudent(studentId);
+  setScheduleFetchState(studentId, success ? "ready" : "error");
+  return success;
+};
+
+const ensureIncludedSchedulesLoaded = async (studentIds: string[]) => {
+  if (!isAuthed.value || backendProbeStatus.value !== "online") {
+    return;
+  }
+  const targets = Array.from(new Set(studentIds)).filter((studentId) => isKnownStudentId(studentId));
+  await Promise.all(targets.map((studentId) => ensureScheduleLoaded(studentId)));
+};
+
+const includeStatusByStudentId = computed<Record<string, string>>(() => {
+  const subscribedSet = new Set(subscribedStudentIds.value);
+  const statusMap: Record<string, string> = {};
+  for (const student of selectableStudentSchedules.value) {
+    const relation = student.id === activeStudentId.value ? "本人" : subscribedSet.has(student.id) ? "已订阅" : "未订阅";
+    let pullStatus = "未拉取";
+    if (backendProbeStatus.value !== "online") {
+      pullStatus = "后端离线";
+    } else {
+      const state = getScheduleFetchState(student.id);
+      if (state === "loading") {
+        pullStatus = "拉取中";
+      } else if (state === "ready") {
+        pullStatus = "已拉取";
+      } else if (state === "error") {
+        pullStatus = "拉取失败";
       }
     }
+    statusMap[student.id] = `${relation} · ${pullStatus}`;
   }
-  if (safeInset <= 0) {
-    safeInset = 44 + capsuleHeight.value;
+  return statusMap;
+});
+
+const refreshScheduleData = async () => {
+  if (!isAuthed.value || backendProbeStatus.value !== "online") {
+    clearRuntimeScheduleData();
+    return false;
   }
-  topSafeInset.value = safeInset;
-};
-
-const normalizeBackendBaseUrl = (value: string) => {
-  const normalized = (value || "").trim().replace(/\/+$/, "");
-  return normalized || DEFAULT_BACKEND_BASE_URL;
-};
-
-const buildBackendUrl = (path: string, query: Record<string, string> = {}) => {
-  const base = normalizeBackendBaseUrl(backendBaseUrl.value);
-  const search = Object.entries(query)
-    .filter(([, value]) => value !== "")
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-    .join("&");
-  return `${base}${path}${search ? `?${search}` : ""}`;
-};
-
-const requestBackendGet = <T>(path: string, query: Record<string, string> = {}) => {
-  return new Promise<T>((resolve, reject) => {
-    uni.request({
-      url: buildBackendUrl(path, query),
-      method: "GET",
-      timeout: 3500,
-      success: (res) => {
-        if ((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300) {
-          resolve((res.data || {}) as T);
-          return;
-        }
-        reject(new Error(`HTTP ${res.statusCode || 0}`));
-      },
-      fail: (err) => {
-        reject(new Error(err?.errMsg || "request failed"));
-      },
-    });
-  });
+  if (!activeStudentId.value) {
+    applyRuntimeScheduleMeta();
+    scheduleDataSource.value = "local";
+    scheduleCacheAt.value = 0;
+    return false;
+  }
+  return loadScheduleForStudent(activeStudentId.value);
 };
 
 const runBackendProbe = async () => {
@@ -1141,8 +1561,319 @@ const runBackendProbe = async () => {
   }
 };
 
+const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
+  if (!raw) {
+    return null;
+  }
+  if (typeof raw === "string") {
+    try {
+      return parseStoredAuthUser(JSON.parse(raw));
+    } catch (error) {
+      return null;
+    }
+  }
+  if (typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Partial<AuthUserProfile>;
+  if (!data.openId) {
+    return null;
+  }
+  return {
+    openId: String(data.openId),
+    studentId: String(data.studentId || ""),
+    studentName: String(data.studentName || ""),
+    classLabel: String(data.classLabel || ""),
+    nickname: String(data.nickname || ""),
+    avatarUrl: String(data.avatarUrl || ""),
+  };
+};
+
+const restoreAuthSessionFromStorage = () => {
+  const token = String(uni.getStorageSync(STORAGE_AUTH_TOKEN_KEY) || "").trim();
+  const expiresAt = Number(uni.getStorageSync(STORAGE_AUTH_EXPIRES_AT_KEY) || 0);
+  const mode = String(uni.getStorageSync(STORAGE_AUTH_MODE_KEY) || "").trim();
+  const user = parseStoredAuthUser(uni.getStorageSync(STORAGE_AUTH_USER_KEY));
+  if (!token || !user || expiresAt <= 0) {
+    clearAuthSession();
+    return;
+  }
+  authToken.value = token;
+  authExpiresAt.value = expiresAt;
+  authMode.value = mode === "wechat" ? "wechat" : "mock";
+  authUser.value = user;
+};
+
+const requestAuthProfile = async () => {
+  const response = await requestBackendGet<BackendAuthMeResponse>("/api/auth/me", {}, true);
+  if (!response.user || !response.user.openId) {
+    throw new Error("登录状态异常");
+  }
+  authMode.value = response.mode === "wechat" ? "wechat" : "mock";
+  authExpiresAt.value = Number(response.expiresAt || 0);
+  authUser.value = response.user;
+  authStatusHint.value = "";
+  persistAuthSession();
+};
+
+const refreshSocialDashboard = async () => {
+  if (!isAuthed.value) {
+    practiceCourseKeys.value = [];
+    practiceTogglePendingCourseKey.value = "";
+    clearDashboard();
+    clearRuntimeScheduleData();
+    return;
+  }
+  try {
+    const previousIncludedIds = [...includedStudentIds.value];
+    const response = await refreshSocialDashboardData(() => requestBackendGet<SocialDashboardResponse>("/api/social/me", {}, true));
+    practiceCourseKeys.value = normalizePracticeCourseKeys(response.me?.practiceCourseKeys || []);
+    practiceTogglePendingCourseKey.value = "";
+    const cloudWallpaper = String(response.me?.wallpaperUrl || "").trim();
+    localWallpaperUrl.value = cloudWallpaper;
+    saveLocalWallpaperPath(cloudWallpaper);
+    const preferredIncludedIds = previousIncludedIds.length > 0 ? previousIncludedIds : [];
+    const registeredUsers = buildRegisteredUsersFromDashboard(response);
+    const registeredIds = new Set(registeredUsers.map((item) => item.studentId));
+    const currentActiveStudentId = activeStudentId.value.trim();
+    const defaultStudentId = String(response.me?.studentId || "").trim();
+    const nextActiveStudentId = currentActiveStudentId && registeredIds.has(currentActiveStudentId)
+      ? currentActiveStudentId
+      : defaultStudentId && registeredIds.has(defaultStudentId)
+        ? defaultStudentId
+        : "";
+    activeStudentId.value = nextActiveStudentId;
+    const fallbackIncludedIds = nextActiveStudentId ? [nextActiveStudentId] : [];
+    syncDashboardStudentLists(response, preferredIncludedIds.length > 0 ? preferredIncludedIds : fallbackIncludedIds);
+    if (!nextActiveStudentId) {
+      showUserPicker.value = false;
+      return;
+    }
+    uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, nextActiveStudentId);
+    await loadScheduleForStudent(nextActiveStudentId);
+    showUserPicker.value = false;
+  } catch (error) {
+    practiceCourseKeys.value = [];
+    practiceTogglePendingCourseKey.value = "";
+    clearDashboard();
+    clearRuntimeScheduleData();
+  }
+};
+
+const openQuickAuthDialog = () => {
+  showQuickAuthDialog.value = true;
+  authStatusHint.value = "";
+  quickAuthAgreementChecked.value = false;
+};
+
+const closeQuickAuthDialog = () => {
+  if (quickAuthPending.value) {
+    return;
+  }
+  showQuickAuthDialog.value = false;
+};
+
+const updateQuickAuthStudentNo = (value: string) => {
+  quickAuthStudentNo.value = String(value || "")
+    .replace(/\D+/g, "")
+    .slice(0, 32);
+};
+
+const updateQuickAuthAgreementChecked = (value: boolean) => {
+  quickAuthAgreementChecked.value = Boolean(value);
+};
+
+const runQuickAuthLogin = async () => {
+  if (quickAuthPending.value) {
+    return;
+  }
+  if (!quickAuthAgreementChecked.value) {
+    authStatusHint.value = "请先同意用户协议与隐私政策";
+    uni.showToast({ title: "请先同意协议", icon: "none", duration: 1400 });
+    return;
+  }
+  const studentNo = String(quickAuthStudentNo.value || "").trim();
+  if (!studentNo) {
+    authStatusHint.value = "请输入学号";
+    uni.showToast({ title: "请输入学号", icon: "none", duration: 1400 });
+    return;
+  }
+  const studentId = resolveStudentIdByStudentNo(studentNo);
+  quickAuthPending.value = true;
+  authStatusHint.value = "";
+  try {
+    const code = await fetchMiniProgramCode();
+    const profile = await tryGetWechatProfile();
+    const response = await requestBackendPost<BackendAuthLoginResponse>("/api/auth/wechat-login", {
+      code,
+      student_id: studentId || undefined,
+      student_no: studentNo,
+      nickname: profile.nickname || "",
+      avatar_url: profile.avatarUrl || "",
+      client_platform: resolveClientPlatform(),
+    });
+    if (!response.token || !response.user?.openId) {
+      throw new Error("授权失败，请重试");
+    }
+    authToken.value = String(response.token || "").trim();
+    authExpiresAt.value = Number(response.expiresAt || 0);
+    authMode.value = response.mode === "wechat" ? "wechat" : "mock";
+    authUser.value = {
+      openId: String(response.user.openId || ""),
+      studentId: String(response.user.studentId || ""),
+      studentName: String(response.user.studentName || ""),
+      classLabel: String(response.user.classLabel || ""),
+      nickname: String(response.user.nickname || ""),
+      avatarUrl: String(response.user.avatarUrl || ""),
+    };
+    persistAuthSession();
+    await refreshSocialDashboard();
+    showQuickAuthDialog.value = false;
+    authStatusHint.value = authUser.value?.studentId ? "" : "登录成功，请先绑定一个课表账号";
+    uni.showToast({ title: "授权成功", icon: "none", duration: 1200 });
+  } catch (error) {
+    const message = resolveRequestErrorMessage(error, "授权失败");
+    authStatusHint.value = message;
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  } finally {
+    quickAuthPending.value = false;
+  }
+};
+
+async function bindNotifyChannel() {
+  if (!authToken.value) {
+    uni.showToast({ title: "请先登录授权", icon: "none", duration: 1600 });
+    return;
+  }
+  if (socialActionPending.value) {
+    return;
+  }
+  uni.showModal({
+    title: "绑定微信通知",
+    content: "请输入企业微信用户ID（或 wecom://用户ID）",
+    editable: true,
+    success: async (result) => {
+      if (!result.confirm) {
+        return;
+      }
+      const value = String((result as { content?: string }).content || "").trim();
+      if (!value) {
+        uni.showToast({ title: "请输入企业微信用户ID", icon: "none", duration: 1600 });
+        return;
+      }
+      socialActionPending.value = true;
+      try {
+        await requestBackendPost("/api/social/notify/bind", { channel_url: value }, true);
+        uni.showToast({ title: "绑定成功", icon: "none", duration: 1200 });
+        void refreshSocialDashboard();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "绑定失败";
+        uni.showToast({ title: message, icon: "none", duration: 1800 });
+      } finally {
+        socialActionPending.value = false;
+      }
+    },
+  });
+}
+
+async function unbindNotifyChannel() {
+  if (!authToken.value) {
+    uni.showToast({ title: "请先登录授权", icon: "none", duration: 1600 });
+    return;
+  }
+  if (socialActionPending.value) {
+    return;
+  }
+  socialActionPending.value = true;
+  try {
+    await requestBackendPost("/api/social/notify/unbind", {}, true);
+    uni.showToast({ title: "已解绑", icon: "none", duration: 1200 });
+    void refreshSocialDashboard();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "解绑失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  } finally {
+    socialActionPending.value = false;
+  }
+}
+
+async function unsubscribeStudent(targetStudentId: string) {
+  if (!authToken.value) {
+    uni.showToast({ title: "请先登录授权", icon: "none", duration: 1600 });
+    return;
+  }
+  if (socialActionPending.value) {
+    return;
+  }
+  socialActionPending.value = true;
+  try {
+    await requestBackendPost("/api/social/subscribe/remove", { target_student_id: targetStudentId }, true);
+    uni.showToast({ title: "已取消订阅", icon: "none", duration: 1200 });
+    await refreshSocialDashboard();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "取消失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  } finally {
+    socialActionPending.value = false;
+  }
+}
+
+async function togglePracticeCourse(course: DisplayCourse) {
+  if (!canTogglePracticeCourse(course)) {
+    uni.showToast({ title: "仅可设置本人课程", icon: "none", duration: 1600 });
+    return;
+  }
+  const courseKey = getCoursePracticeKey(course);
+  if (!courseKey) {
+    uni.showToast({ title: "课程标识异常，请稍后重试", icon: "none", duration: 1600 });
+    return;
+  }
+  if (practiceTogglePendingCourseKey.value === courseKey) {
+    return;
+  }
+  const nextEnabled = !isPracticeCourse(course);
+  practiceTogglePendingCourseKey.value = courseKey;
+  try {
+    const response = await requestBackendPost<BackendPracticeCourseToggleResponse>(
+      "/api/social/practice-course",
+      {
+        course_key: courseKey,
+        enabled: nextEnabled,
+      },
+      true,
+    );
+    if (Array.isArray(response.practiceCourseKeys)) {
+      practiceCourseKeys.value = normalizePracticeCourseKeys(response.practiceCourseKeys);
+    } else {
+      const values = new Set(practiceCourseKeys.value);
+      if (nextEnabled) {
+        values.add(courseKey);
+      } else {
+        values.delete(courseKey);
+      }
+      practiceCourseKeys.value = [...values];
+    }
+    uni.showToast({
+      title: nextEnabled ? "已标记实践" : "已取消实践",
+      icon: "none",
+      duration: 1200,
+    });
+  } catch (error) {
+    const message = resolveRequestErrorMessage(error, "实践设置失败");
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  } finally {
+    if (practiceTogglePendingCourseKey.value === courseKey) {
+      practiceTogglePendingCourseKey.value = "";
+    }
+  }
+}
+
 const refreshTodayBrief = async () => {
   if (backendProbeStatus.value !== "online") {
+    return;
+  }
+  if (!activeStudentId.value) {
+    todayBackendBrief.value = null;
     return;
   }
   try {
@@ -1155,58 +1886,135 @@ const refreshTodayBrief = async () => {
   }
 };
 
+const syncDisplayStateFromStorage = () => {
+  syncThemeFromStorage();
+  restoreThemeImageMapFromStorage();
+  syncThemeWallpaperEnabledFromStorage();
+  syncThemeWallpaperBlurEnabledFromStorage();
+  syncThemeWallpaperEffectLevelFromStorage();
+  showNonCurrentWeekCourses.value = readStorageBoolean(STORAGE_SHOW_NON_CURRENT_WEEK_COURSES_KEY, false);
+  showWeekend.value = readStorageBoolean(STORAGE_SHOW_WEEKEND_KEY, true);
+  localWallpaperUrl.value = readLocalWallpaperPath();
+};
+
+const refreshCurrentTabData = async (tab: TabKey) => {
+  if (navTabRefreshPending.value) {
+    queuedNavTabRefresh.value = tab;
+    return;
+  }
+  navTabRefreshPending.value = true;
+  try {
+    syncDisplayStateFromStorage();
+    if (!isAuthed.value) {
+      todayBackendBrief.value = null;
+      clearRuntimeScheduleData();
+      return;
+    }
+    const backendReady = backendProbeStatus.value === "online" ? true : await runBackendProbe();
+    if (!backendReady) {
+      return;
+    }
+    await requestAuthProfile().catch(() => {
+      clearAuthSession();
+    });
+    if (!isAuthed.value) {
+      return;
+    }
+    await refreshSocialDashboard();
+    if (tab === "today") {
+      await refreshTodayBrief();
+      return;
+    }
+    if (tab === "schedule") {
+      await ensureIncludedSchedulesLoaded(includedStudentIds.value);
+    }
+  } finally {
+    navTabRefreshPending.value = false;
+    const queuedTab = queuedNavTabRefresh.value;
+    queuedNavTabRefresh.value = "";
+    if (queuedTab) {
+      void refreshCurrentTabData(queuedTab);
+    }
+  }
+};
+
 onMounted(() => {
   resolveTopSafeInset();
-
-  const savedStudentId = uni.getStorageSync(STORAGE_SELECTED_STUDENT_KEY);
-  if (savedStudentId && studentSchedules.some((item) => item.id === savedStudentId)) {
-    activeStudentId.value = savedStudentId;
-  } else {
-    showUserPicker.value = true;
-  }
-
   const savedWeek = Number(uni.getStorageSync(STORAGE_SELECTED_WEEK_KEY));
-  if (savedWeek >= 1 && savedWeek <= TERM_MAX_WEEK) {
+  if (savedWeek >= 1 && savedWeek <= termMaxWeek.value) {
     selectedWeek.value = savedWeek;
   }
 
-  const savedTheme = String(uni.getStorageSync(STORAGE_THEME_KEY) || "");
-  purpleUnlocked.value = Boolean(uni.getStorageSync(STORAGE_PURPLE_UNLOCKED_KEY));
-  if (savedTheme === "light" || savedTheme === "dark") {
-    themeKey.value = "black";
-  }
-  if (savedTheme === "purple" && !purpleUnlocked.value) {
-    themeKey.value = "black";
-  } else if (themeOptions.some((item) => item.key === savedTheme)) {
-    themeKey.value = savedTheme as ThemeKey;
-  }
+  syncDisplayStateFromStorage();
 
-  const savedMarked = String(uni.getStorageSync(STORAGE_MARKED_COURSE_KEY) || "");
-  if (savedMarked) {
-    markedCourseName.value = savedMarked;
-  }
-
-  const savedIncludeIds = uni.getStorageSync(STORAGE_INCLUDED_IDS_KEY);
-  if (Array.isArray(savedIncludeIds)) {
-    setIncludedIds(savedIncludeIds as string[]);
+  if (RUNTIME_BACKEND_DEFAULT_MODE === "local") {
+    const savedMode = String(uni.getStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY) || "").trim();
+    const legacyUrl = String(uni.getStorageSync(STORAGE_BACKEND_BASE_URL_KEY) || "").trim();
+    const mode: BackendEndpointMode =
+      savedMode === "local" || savedMode === "online"
+        ? (savedMode as BackendEndpointMode)
+        : inferBackendEndpointModeByUrl(legacyUrl || DEFAULT_BACKEND_BASE_URL);
+    applyBackendEndpointMode(mode);
   } else {
-    setIncludedIds([activeStudentId.value]);
+    applyBackendEndpointMode("online");
   }
+  void refreshThemeImageMap();
+  restoreAuthSessionFromStorage();
 
-  backendBaseUrl.value = normalizeBackendBaseUrl(String(uni.getStorageSync(STORAGE_BACKEND_BASE_URL_KEY) || DEFAULT_BACKEND_BASE_URL));
-  uni.setStorageSync(STORAGE_BACKEND_BASE_URL_KEY, backendBaseUrl.value);
-  const savedShowTodayAdvice = uni.getStorageSync(STORAGE_SHOW_TODAY_ADVICE_KEY);
-  if (savedShowTodayAdvice === false || savedShowTodayAdvice === "false" || savedShowTodayAdvice === 0 || savedShowTodayAdvice === "0") {
-    showTodayAdvice.value = false;
-  }
-
-  void runBackendProbe().then((ok) => {
-    if (ok) {
-      void refreshTodayBrief();
+  void runBackendProbe().then(async (ok) => {
+    if (!ok) {
+      clearRuntimeScheduleData();
+      return;
     }
+    if (isAuthed.value) {
+      await requestAuthProfile().catch(() => {
+        clearAuthSession();
+        authStatusHint.value = "授权已过期，请重新登录";
+      });
+      await refreshSocialDashboard();
+    } else {
+      clearRuntimeScheduleData();
+    }
+    void refreshTodayBrief();
   });
 
-  autoScrollToCurrentPart();
+  scrollScheduleTableToTop();
+  syncScheduleSwipeViewportWidth();
+});
+
+onShow(() => {
+  syncDisplayStateFromStorage();
+  void refreshThemeImageMap();
+  restoreAuthSessionFromStorage();
+  void refreshCurrentTabData(activeTab.value);
+});
+
+const handleSchedulePullDownRefresh = async () => {
+  if (schedulePullRefreshing.value || activeTab.value !== "schedule") {
+    return;
+  }
+  schedulePullRefreshing.value = true;
+  try {
+    const backendReady = backendProbeStatus.value === "online" ? true : await runBackendProbe();
+    if (!backendReady || !isAuthed.value) {
+      return;
+    }
+    await requestAuthProfile().catch(() => {
+      clearAuthSession();
+    });
+    if (!isAuthed.value) {
+      return;
+    }
+    await refreshSocialDashboard();
+    void refreshTodayBrief();
+  } finally {
+    schedulePullRefreshing.value = false;
+    uni.stopPullDownRefresh();
+  }
+};
+
+onPullDownRefresh(() => {
+  void handleSchedulePullDownRefresh();
 });
 
 watch(selectedWeek, (value) => {
@@ -1217,26 +2025,149 @@ watch(themeKey, (value) => {
   uni.setStorageSync(STORAGE_THEME_KEY, value);
 });
 
-watch(markedCourseName, (value) => {
-  uni.setStorageSync(STORAGE_MARKED_COURSE_KEY, value);
-});
-
 watch(activeTab, (value) => {
+  const currentIndex = tabOrder.indexOf(value);
+  if (currentIndex >= 0 && !isTabSwitching.value) {
+    tabTrackIndex.value = currentIndex;
+  }
   if (value === "schedule") {
-    autoScrollToCurrentPart();
+    scrollScheduleTableToTop();
+    syncScheduleSwipeViewportWidth();
+  } else {
+    onScheduleMouseCancel();
   }
-  if (value === "today" && backendProbeStatus.value === "online") {
-    void refreshTodayBrief();
-  }
+  void refreshCurrentTabData(value);
 });
 
 watch(activeStudentId, () => {
+  practiceTogglePendingCourseKey.value = "";
+  if (activeStudentId.value) {
+    showUserPicker.value = false;
+  }
+  setIncludedIds(activeStudentId.value ? [activeStudentId.value] : []);
   if (backendProbeStatus.value === "online") {
     void refreshTodayBrief();
+    if (isAuthed.value && activeStudentId.value) {
+      void refreshScheduleData();
+      void ensureScheduleLoaded(activeStudentId.value);
+    }
   }
 });
 
+watch(includedStudentIds, () => {
+  if (backendProbeStatus.value === "online") {
+    void ensureIncludedSchedulesLoaded(includedStudentIds.value);
+  }
+});
+
+watch(backendProbeStatus, (value) => {
+  if (value === "online") {
+    void refreshThemeImageMap();
+    if (isAuthed.value) {
+      void requestAuthProfile().catch(() => {
+        clearAuthSession();
+      });
+      void refreshSocialDashboard();
+    } else {
+      clearRuntimeScheduleData();
+    }
+  }
+});
+
+const openProfileAccountPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/account" });
+};
+
+const openProfileSubscribePage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/subscribe" });
+};
+
+const openProfilePreferencesPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/preferences" });
+};
+
+const clearTabSwitchTimers = () => {
+  if (tabSwitchCleanupTimer) {
+    clearTimeout(tabSwitchCleanupTimer);
+    tabSwitchCleanupTimer = null;
+  }
+};
+
+const shouldBlurPanel = (panelIndex: number) => {
+  return isTabSwitching.value && blurPanelIndex.value === panelIndex;
+};
+
+const runTabSwitch = (nextTab: TabKey) => {
+  const nextIndex = tabOrder.indexOf(nextTab);
+  const prevIndex = tabTrackIndex.value;
+  if (nextIndex < 0 || nextIndex === prevIndex) {
+    return;
+  }
+  const distance = Math.abs(nextIndex - prevIndex);
+  blurPanelIndex.value = prevIndex;
+  tabSwitchDurationMs.value = TAB_SCREEN_ANIMATION_MS * distance;
+  activeTab.value = nextTab;
+  tabTrackIndex.value = nextIndex;
+  isTabSwitching.value = true;
+  clearTabSwitchTimers();
+  tabSwitchCleanupTimer = setTimeout(() => {
+    isTabSwitching.value = false;
+    blurPanelIndex.value = null;
+    tabSwitchDurationMs.value = TAB_SCREEN_ANIMATION_MS;
+    tabSwitchCleanupTimer = null;
+  }, tabSwitchDurationMs.value);
+};
+
+const onBottomNavChange = (tabKey: string) => {
+  if (tabKey !== "today" && tabKey !== "schedule" && tabKey !== "profile") {
+    return;
+  }
+  if (tabKey === activeTab.value) {
+    if (tabKey === "schedule") {
+      scrollScheduleTableToTop();
+    }
+    void refreshCurrentTabData(tabKey as TabKey);
+    return;
+  }
+  runTabSwitch(tabKey as TabKey);
+};
+
+onUnmounted(() => {
+  clearTabSwitchTimers();
+  clearScheduleTableScrollIntoViewResetTimer();
+  blurPanelIndex.value = null;
+});
+
 const openIncludePicker = () => {
+  if (!isAuthed.value) {
+    uni.showToast({
+      title: "请先登录",
+      icon: "none",
+      duration: 1600,
+    });
+    return;
+  }
+  if (!activeStudentId.value) {
+    uni.showToast({
+      title: "请先选择课表账号",
+      icon: "none",
+      duration: 1600,
+    });
+    showUserPicker.value = true;
+    return;
+  }
   showIncludePicker.value = true;
 };
 
@@ -1244,8 +2175,8 @@ const closeIncludePicker = () => {
   showIncludePicker.value = false;
 };
 
-const onIncludeChange = (event: { detail: { value: string[] } }) => {
-  const rawValidIds = Array.from(new Set(event.detail.value)).filter((id) => studentSchedules.some((student) => student.id === id));
+const onIncludeChange = (values: string[]) => {
+  const rawValidIds = Array.from(new Set(values)).filter((id) => isKnownStudentId(id));
   if (rawValidIds.length > MAX_COMPARE_OWNERS) {
     uni.showToast({
       title: `最多可同时对比 ${MAX_COMPARE_OWNERS} 人`,
@@ -1253,12 +2184,91 @@ const onIncludeChange = (event: { detail: { value: string[] } }) => {
       duration: 1800,
     });
   }
-  setIncludedIds(event.detail.value);
+  setIncludedIds(values);
+  if (includedStudentIds.value.length > 0) {
+    void ensureIncludedSchedulesLoaded(includedStudentIds.value);
+  }
 };
 
-const toggleTodayAdvice = () => {
-  showTodayAdvice.value = !showTodayAdvice.value;
-  uni.setStorageSync(STORAGE_SHOW_TODAY_ADVICE_KEY, showTodayAdvice.value);
+const updateShowWeekend = (value: boolean) => {
+  showWeekend.value = Boolean(value);
+  uni.setStorageSync(STORAGE_SHOW_WEEKEND_KEY, showWeekend.value);
+};
+
+const toggleShowNonCurrentWeekCourses = () => {
+  showNonCurrentWeekCourses.value = !showNonCurrentWeekCourses.value;
+  uni.setStorageSync(STORAGE_SHOW_NON_CURRENT_WEEK_COURSES_KEY, showNonCurrentWeekCourses.value);
+};
+
+const pickBackendEndpointMode = () => {
+  if (!isCurrentUserAdmin.value) {
+    uni.showToast({
+      title: "仅管理员可切换后端",
+      icon: "none",
+      duration: 1600,
+    });
+    return;
+  }
+  if (RUNTIME_BACKEND_DEFAULT_MODE !== "local") {
+    uni.showToast({
+      title: "线上版已固定走线上后端",
+      icon: "none",
+      duration: 1600,
+    });
+    return;
+  }
+
+  const itemList = [
+    `本地 (${LOCAL_BACKEND_BASE_URL})`,
+    `线上 (${ONLINE_BACKEND_BASE_URL})`,
+  ];
+  uni.showActionSheet({
+    itemList,
+    success: (result) => {
+      const nextMode: BackendEndpointMode = result.tapIndex === 1 ? "online" : "local";
+      if (nextMode === backendEndpointMode.value) {
+        return;
+      }
+      applyBackendEndpointMode(nextMode);
+      void refreshThemeImageMap();
+      authStatusHint.value = `后端已切换到${nextMode === "online" ? "线上" : "本地"}：${backendBaseUrl.value}`;
+      void runBackendProbe().then((ok) => {
+        if (ok) {
+          void refreshTodayBrief();
+        }
+      });
+    },
+  });
+};
+
+const readStorageBoolean = (key: string, defaultValue: boolean) => {
+  const raw = uni.getStorageSync(key);
+  if (raw === true || raw === "true" || raw === 1 || raw === "1") {
+    return true;
+  }
+  if (raw === false || raw === "false" || raw === 0 || raw === "0") {
+    return false;
+  }
+  return defaultValue;
+};
+
+const resolveThemeByStorage = (savedTheme: string, isPurpleUnlocked: boolean): ThemeKey => {
+  if (savedTheme === "light" || savedTheme === "dark") {
+    return "black";
+  }
+  if (savedTheme === "purple" && !isPurpleUnlocked) {
+    return "black";
+  }
+  if (themeOptions.some((item) => item.key === savedTheme)) {
+    return savedTheme as ThemeKey;
+  }
+  return "black";
+};
+
+const syncThemeFromStorage = () => {
+  const savedTheme = String(uni.getStorageSync(STORAGE_THEME_KEY) || "");
+  purpleUnlocked.value = Boolean(uni.getStorageSync(STORAGE_PURPLE_UNLOCKED_KEY));
+  themeKey.value = resolveThemeByStorage(savedTheme, purpleUnlocked.value);
 };
 
 const setTheme = (key: ThemeKey) => {
@@ -1278,6 +2288,10 @@ const closeThemeUnlockDialog = () => {
   themeUnlockError.value = "";
 };
 
+const updateThemePasswordInput = (value: string) => {
+  themePasswordInput.value = value;
+};
+
 const confirmPurpleUnlock = () => {
   if (themePasswordInput.value.trim() !== "1353") {
     themeUnlockError.value = "密码错误，请重试";
@@ -1290,9 +2304,24 @@ const confirmPurpleUnlock = () => {
 };
 
 const openBackendProbeDialog = () => {
+  if (!isCurrentUserAdmin.value) {
+    uni.showToast({
+      title: "仅管理员可查看后端状态",
+      icon: "none",
+      duration: 1600,
+    });
+    return;
+  }
   showBackendProbeDialog.value = true;
   void runBackendProbe().then((ok) => {
     if (ok) {
+      void refreshScheduleData();
+      if (authToken.value) {
+        void requestAuthProfile().catch(() => {
+          clearAuthSession();
+        });
+        void refreshSocialDashboard();
+      }
       void refreshTodayBrief();
     }
   });
@@ -1303,26 +2332,118 @@ const closeBackendProbeDialog = () => {
 };
 
 const openUserPicker = () => {
+  if (!isAuthed.value) {
+    uni.showToast({
+      title: "请先登录",
+      icon: "none",
+      duration: 1400,
+    });
+    return;
+  }
+  if (loginCandidates.value.length === 0) {
+    uni.showToast({
+      title: "暂无可选课表",
+      icon: "none",
+      duration: 1400,
+    });
+    return;
+  }
   showUserPicker.value = true;
 };
 
 const closeUserPicker = () => {
+  if (!activeStudentId.value) {
+    return;
+  }
   showUserPicker.value = false;
 };
 
-const setActiveStudent = (studentId: string) => {
-  if (!studentSchedules.some((item) => item.id === studentId)) {
+const normalizeTargetRandomCode = (value: unknown) => {
+  return String(value || "")
+    .replace(/\D+/g, "")
+    .slice(0, 4);
+};
+
+const promptTargetRandomCode = () => {
+  return new Promise<string | null>((resolve) => {
+    uni.showModal({
+      title: "输入验证码（4位）",
+      content: "",
+      editable: true,
+      placeholderText: "4 位数字验证码",
+      success: (result) => {
+        if (!result.confirm) {
+          resolve(null);
+          return;
+        }
+        const code = normalizeTargetRandomCode((result as { content?: string }).content);
+        if (code.length !== 4) {
+          uni.showToast({ title: "请输入 4 位数字验证码", icon: "none", duration: 1800 });
+          resolve("");
+          return;
+        }
+        resolve(code);
+      },
+      fail: () => {
+        resolve(null);
+      },
+    });
+  });
+};
+
+const shouldPromptRandomCodeByMessage = (message: string) => {
+  return /验证码/.test(String(message || ""));
+};
+
+const setActiveStudent = async (studentId: string) => {
+  if (!isKnownStudentId(studentId)) {
+    return;
+  }
+  if (!isAuthed.value || backendProbeStatus.value !== "online") {
+    return;
+  }
+  try {
+    try {
+      await requestBackendPost(
+        "/api/social/bind-student",
+        { target_student_id: studentId },
+        true,
+      );
+    } catch (error) {
+      const firstMessage = error instanceof Error ? error.message : "绑定失败";
+      if (!shouldPromptRandomCodeByMessage(firstMessage)) {
+        throw error;
+      }
+      const code = await promptTargetRandomCode();
+      if (code === null || !code) {
+        return;
+      }
+      await requestBackendPost(
+        "/api/social/bind-student",
+        {
+          target_student_id: studentId,
+          target_random_code: code,
+        },
+        true,
+      );
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "绑定失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
     return;
   }
   activeStudentId.value = studentId;
-  markedCourseName.value = "";
   uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, studentId);
-  setIncludedIds(includedStudentIds.value);
+  setIncludedIds([studentId]);
+  await refreshSocialDashboard();
 };
 
 const selectFromModal = (studentId: string) => {
-  setActiveStudent(studentId);
-  showUserPicker.value = false;
+  void setActiveStudent(studentId).finally(() => {
+    if (activeStudentId.value) {
+      showUserPicker.value = false;
+    }
+  });
 };
 
 const openWeekPicker = () => {
@@ -1338,46 +2459,21 @@ const chooseWeek = (week: number) => {
   showWeekPicker.value = false;
 };
 
-const shiftWeek = (offset: number) => {
-  const nextWeek = Math.min(TERM_MAX_WEEK, Math.max(1, selectedWeek.value + offset));
-  selectedWeek.value = nextWeek;
+const getCoursesByCell = (week: number, day: number, section: number) => {
+  const weekCellMap = scheduleWeekCellMaps.value[week] || (week === selectedWeek.value ? selectedWeekCellMap.value : {});
+  return resolveWeekCellCourses(week, weekCellMap, day, section).courses;
 };
 
-const getCoursesByCell = (day: number, section: number) => {
-  return selectedWeekCellMap.value[`${day}-${section}`] ?? [];
-};
-
-const onCellLongPress = async (_week: number, day: number, section: number) => {
-  const courses = getCoursesByCell(day, section);
-  if (courses.length === 0) {
-    return;
-  }
-
-  const uniqueNames = Array.from(new Set(courses.map((item) => item.name)));
-  let selectedName = uniqueNames[0];
-
-  if (uniqueNames.length > 1) {
-    const index = await chooseCourseName(uniqueNames);
-    if (index < 0) {
-      return;
-    }
-    selectedName = uniqueNames[index];
-  }
-
-  markedCourseName.value = markedCourseName.value === selectedName ? "" : selectedName;
-  ignoreTapUntil.value = Date.now() + 400;
-};
-
-const openCourseDialog = (_week: number, day: number, section: number) => {
+const openCourseDialog = (week: number, day: number, section: number) => {
   if (Date.now() < ignoreTapUntil.value) {
     return;
   }
 
-  const courses = getCoursesByCell(day, section);
+  const courses = getCoursesByCell(week, day, section);
   if (courses.length === 0) {
     return;
   }
-  dialogWeek.value = selectedWeek.value;
+  dialogWeek.value = week;
   dialogDay.value = day;
   dialogSection.value = section;
   dialogCourses.value = courses;
@@ -1388,7 +2484,10 @@ const closeCourseDialog = () => {
   showCourseDialog.value = false;
 };
 
-const isUpcomingCell = (day: number, section: number) => {
+const isUpcomingCell = (week: number, day: number, section: number) => {
+  if (week !== selectedWeek.value) {
+    return false;
+  }
   const course = nextUpcomingCourse.value;
   if (!course) {
     return false;
@@ -1396,7 +2495,10 @@ const isUpcomingCell = (day: number, section: number) => {
   return course.day === day && section >= course.startSection && section <= course.endSection;
 };
 
-const isUpcomingTail = (day: number, section: number) => {
+const isUpcomingTail = (week: number, day: number, section: number) => {
+  if (week !== selectedWeek.value) {
+    return false;
+  }
   const course = nextUpcomingCourse.value;
   if (!course) {
     return false;
@@ -1414,14 +2516,13 @@ const formatWeekRule = (course: CourseItem) => {
   return `${course.weekExpr}周`;
 };
 
-const chooseCourseName = (items: string[]) => {
-  return new Promise<number>((resolve) => {
-    uni.showActionSheet({
-      itemList: items,
-      success: (res) => resolve(Number(res.tapIndex ?? -1)),
-      fail: () => resolve(-1),
-    });
-  });
+const formatSectionRange = (startSection: number, endSection: number) => {
+  const start = sectionTimes.value[startSection - 1];
+  const end = sectionTimes.value[endSection - 1];
+  if (!start || !end) {
+    return `第${startSection}-${endSection}节`;
+  }
+  return `第${startSection}-${endSection}节 ${start.start}-${end.end}`;
 };
 
 const renderCellTitle = (labels: string[]) => {
@@ -1435,165 +2536,165 @@ const renderCellTitle = (labels: string[]) => {
 };
 
 const getSectionStartTime = (section: number) => {
-  return sectionTimes[section - 1]?.start ?? "--:--";
+  return sectionTimes.value[section - 1]?.start ?? "--:--";
 };
 
-const getThemePreviewStyle = (key: ThemeKey): CSSProperties => {
-  const preview = themePreviewMap[key];
+const getSectionEndTime = (section: number) => {
+  return sectionTimes.value[section - 1]?.end ?? "--:--";
+};
+
+const visibleScheduleDayNumbers = computed(() => {
+  return showWeekend.value ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
+});
+
+const resolveScheduleTopHeaderProps = (tabKey: TabKey) => ({
+  isScheduleTab: tabKey === "schedule",
+  headerTitle: tabKey === "profile" ? "我的" : "",
+  topSafeInset: topSafeInset.value,
+  capsuleTopOffset: capsuleTopOffset.value,
+  leftActionsReserve: leftActionsReserve.value,
+  capsuleReserveRight: capsuleReserveRight.value,
+  capsuleHeight: capsuleHeight.value,
+  selectedWeek: selectedWeek.value,
+  weekRangeLabel: getWeekDateRangeLabel(selectedWeek.value),
+});
+
+const todayScheduleTopHeaderProps = computed(() => {
+  return resolveScheduleTopHeaderProps("today");
+});
+
+const scheduleScheduleTopHeaderProps = computed(() => {
+  return resolveScheduleTopHeaderProps("schedule");
+});
+
+const profileScheduleTopHeaderProps = computed(() => {
+  return resolveScheduleTopHeaderProps("profile");
+});
+
+const todayTabProps = computed(() => ({
+  isAuthed: isAuthed.value,
+  onAuthorize: openQuickAuthDialog,
+  todayGreetingText: todayGreetingText.value,
+  todayInfo: todayInfo.value,
+  shouldShowStudyCard: shouldShowStudyCard.value,
+  todayFocusCourse: todayFocusCourse.value,
+  todayFocusStatusText: todayFocusStatusText.value,
+  departureReminder: departureReminder.value,
+  todayCourses: todayCourses.value,
+  todaySectionLoad: todaySectionLoad.value,
+  getCourseCardStyle,
+  formatSectionRange,
+  formatCourseClassroom,
+  formatCourseTeacher,
+  isPracticeCourse,
+  isFocusCourse,
+  getSectionStartTime,
+  getSectionEndTime,
+}));
+
+const scheduleTabProps = computed(() => ({
+  hasMultipleIncluded: hasMultipleIncluded.value,
+  includedSchedules: includedSchedules.value,
+  scheduleTrackStyle: scheduleTrackStyle.value,
+  scheduleWeekPanels: scheduleWeekPanels.value,
+  weekdayLabels: weekdayLabels.value,
+  visibleDayNumbers: visibleScheduleDayNumbers.value,
+  tableBodyScrollIntoViewId: scheduleTableScrollIntoViewId.value,
+  getOwnerDotStyle,
+  getOwnerMarkerStyle,
+  isTodayColumn,
+  isUpcomingCell,
+  isUpcomingTail,
+  getCellStyle,
+  getCellTextStyle,
+  openCourseDialog,
+  renderCellTitle,
+  onScheduleTouchStart,
+  onScheduleTouchMove,
+  onScheduleTouchEnd,
+  onScheduleTouchCancel,
+  onScheduleMouseDown,
+  onScheduleMouseMove,
+  onScheduleMouseUp,
+}));
+
+const profileDisplayProps = computed(() => ({
+  isAuthed: isAuthed.value,
+  profileName: String(socialDashboard.value?.me?.name || authUser.value?.studentName || activeSchedule.value.name || "").trim(),
+  profileClassLabel: String(socialDashboard.value?.me?.classLabel || authUser.value?.classLabel || activeSchedule.value.classLabel || "").trim(),
+  profileAvatarUrl: String(socialDashboard.value?.me?.avatarUrl || authUser.value?.avatarUrl || "").trim(),
+  authStatusLabel: authStatusLabel.value,
+}));
+
+const profileActionsProps = computed(() => ({
+  isAuthed: isAuthed.value,
+  isCurrentUserAdmin: isCurrentUserAdmin.value,
+  openProfileAccountPage,
+  openProfileSubscribePage,
+  openProfilePreferencesPage,
+}));
+
+const tabScreenTrackStyle = computed(() => {
+  const tabCount = tabOrder.length || 1;
+  const offsetPercent = (tabTrackIndex.value * 100) / tabCount;
   return {
-    background: `linear-gradient(135deg, ${preview.start} 0%, ${preview.end} 100%)`,
+    width: `${tabCount * 100}%`,
+    transform: `translate3d(-${offsetPercent}%, 0, 0)`,
+    transition: isTabSwitching.value
+      ? `transform ${tabSwitchDurationMs.value}ms cubic-bezier(0.22, 0.61, 0.36, 1)`
+      : "none",
   };
-};
+});
 
-const getOwnerTone = (ownerId: string) => {
-  const fixed = ownerFixedColorMap[ownerId];
-  if (fixed) {
-    return { dot: fixed };
-  }
+const bottomNavProps = computed(() => ({
+  navItems,
+  activeTab: activeTab.value,
+}));
 
-  if (!hasMultipleIncluded.value) {
-    return {
-      dot: compareOwnerPalette[0],
-    };
-  }
-  const knownIndex = studentSchedules.findIndex((student) => student.id === ownerId);
-  const fallbackIndex = Array.from(ownerId).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const index = knownIndex >= 0 ? knownIndex : fallbackIndex;
-  return {
-    dot: compareOwnerPalette[index % compareOwnerPalette.length],
-  };
-};
-
-const getOwnerDotStyle = (ownerId: string): CSSProperties => {
-  const tone = getOwnerTone(ownerId);
-  return {
-    backgroundColor: tone.dot,
-  };
-};
-
-const getOwnerMarkerStyle = (ownerId: string): CSSProperties => {
-  const tone = getOwnerTone(ownerId);
-  return {
-    backgroundColor: tone.dot,
-    borderColor: "var(--card-bg)",
-  };
-};
-
-const getCourseTone = (courseSeed: string, ownerSeed: string) => {
-  const accent = themeAccentMap[themeKey.value] || themeAccentMap.black;
-  const hashSource = `${courseSeed}::${ownerSeed}`;
-  const index = hashString(hashSource) % courseOverlayPalette.length;
-  return mixHex(accent, courseOverlayPalette[index], 0.42);
-};
-
-const getCourseCardStyle = (course: DisplayCourse): CSSProperties => {
-  const tone = getCourseTone(course.name, course.ownerId);
-  return {
-    borderColor: "var(--line)",
-    backgroundColor: hexToRgba(tone, hasMultipleIncluded.value ? 0.12 : 0.18),
-    boxShadow: "none",
-  };
-};
-
-const getCellStyle = (cell: GridRow["cells"][number]): CSSProperties => {
-  if (!cell.busy || cell.ownerIds.length === 0) {
-    return {};
-  }
-
-  const primaryLabel = cell.labels[0] || "course";
-  const ownerSeed = cell.ownerIds.join("|");
-  const primary = getCourseTone(primaryLabel, ownerSeed);
-  if (cell.labels.length > 1) {
-    const secondary = getCourseTone(cell.labels[1], ownerSeed);
-    return {
-      backgroundImage: `linear-gradient(140deg, ${hexToRgba(primary, 0.21)} 0%, ${hexToRgba(secondary, 0.21)} 100%)`,
-      backgroundColor: hexToRgba(primary, 0.19),
-    };
-  }
-  return {
-    backgroundImage: "none",
-    backgroundColor: hexToRgba(primary, 0.21),
-  };
-};
-
-const getCellTextStyle = (cell: GridRow["cells"][number]): CSSProperties => {
-  if (cell.labelSpan <= 1) {
-    return {};
-  }
-  return {
-    top: "0",
-    transform: "none",
-    height: `calc(${cell.labelSpan} * 100%)`,
-  };
-};
-
-const hashString = (value: string) => {
-  let hash = 0;
-  for (const char of value) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return hash;
-};
-
-const mixHex = (base: string, overlay: string, weight: number) => {
-  const baseRgb = hexToRgb(base);
-  const overlayRgb = hexToRgb(overlay);
-  if (!baseRgb || !overlayRgb) {
-    return base;
-  }
-  const safeWeight = Math.min(1, Math.max(0, weight));
-  const r = Math.round(baseRgb.r * (1 - safeWeight) + overlayRgb.r * safeWeight);
-  const g = Math.round(baseRgb.g * (1 - safeWeight) + overlayRgb.g * safeWeight);
-  const b = Math.round(baseRgb.b * (1 - safeWeight) + overlayRgb.b * safeWeight);
-  return rgbToHex(r, g, b);
-};
-
-const hexToRgb = (hex: string) => {
-  const normalized = hex.replace("#", "");
-  if (normalized.length !== 6) {
-    return null;
-  }
-  return {
-    r: Number.parseInt(normalized.slice(0, 2), 16),
-    g: Number.parseInt(normalized.slice(2, 4), 16),
-    b: Number.parseInt(normalized.slice(4, 6), 16),
-  };
-};
-
-const rgbToHex = (r: number, g: number, b: number) => {
-  const toHex = (value: number) => `${Math.max(0, Math.min(255, value)).toString(16)}`.padStart(2, "0");
-  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-};
-
-const hexToRgba = (hex: string, alpha: number) => {
-  const normalized = hex.replace("#", "");
-  if (normalized.length !== 6) {
-    return hex;
-  }
-  const r = Number.parseInt(normalized.slice(0, 2), 16);
-  const g = Number.parseInt(normalized.slice(2, 4), 16);
-  const b = Number.parseInt(normalized.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
-
-const normalizeIncludedIds = (ids: string[]) => {
-  const validIds = ids.filter((id) => studentSchedules.some((student) => student.id === id));
-  return Array.from(new Set(validIds)).slice(0, MAX_COMPARE_OWNERS);
-};
-
-const setIncludedIds = (ids: string[]) => {
-  includedStudentIds.value = normalizeIncludedIds(ids);
-  uni.setStorageSync(STORAGE_INCLUDED_IDS_KEY, includedStudentIds.value);
-};
+const dialogProps = computed(() => ({
+  showIncludePicker: showIncludePicker.value,
+  selectableStudentSchedules: selectableStudentSchedules.value,
+  includeStatusByStudentId: includeStatusByStudentId.value,
+  includedStudentIds: includedStudentIds.value,
+  showWeekend: showWeekend.value,
+  getOwnerDotStyle,
+  showThemeUnlockDialog: showThemeUnlockDialog.value,
+  themePasswordInput: themePasswordInput.value,
+  themeUnlockError: themeUnlockError.value,
+  showBackendProbeDialog: showBackendProbeDialog.value,
+  backendProbeStatusLabel: backendProbeStatusLabel.value,
+  todayBackendError: todayBackendError.value,
+  showUserPicker: showUserPicker.value,
+  loginCandidates: loginCandidates.value,
+  activeStudentId: activeStudentId.value,
+  showCourseDialog: showCourseDialog.value,
+  dialogWeek: dialogWeek.value,
+  dialogDay: dialogDay.value,
+  dialogSection: dialogSection.value,
+  weekdayLabels: weekdayLabels.value,
+  dialogCourses: dialogCourses.value,
+  formatSectionRange,
+  formatWeekRule,
+  formatCourseTeacher,
+  formatCourseTeachingClasses,
+  getCoursePracticeKey,
+  isPracticeCourse,
+  canTogglePracticeCourse,
+  practiceTogglePendingCourseKey: practiceTogglePendingCourseKey.value,
+  showWeekPicker: showWeekPicker.value,
+  allWeeks: allWeeks.value,
+  selectedWeek: selectedWeek.value,
+  getWeekDateRangeLabel,
+}));
 
 function resolveWeekByDate(date: Date) {
-  const base = parseDate(TERM_WEEK1_MONDAY);
+  const base = parseDate(termWeek1Monday.value);
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.floor((target.getTime() - base.getTime()) / (24 * 60 * 60 * 1000));
   if (diffDays < 0) {
     return 1;
   }
-  return Math.min(TERM_MAX_WEEK, Math.floor(diffDays / 7) + 1);
+  return Math.min(termMaxWeek.value, Math.floor(diffDays / 7) + 1);
 }
 
 function resolveWeekday(date: Date) {
@@ -1602,7 +2703,7 @@ function resolveWeekday(date: Date) {
 }
 
 function getWeekDateRangeLabel(week: number) {
-  const base = parseDate(TERM_WEEK1_MONDAY);
+  const base = parseDate(termWeek1Monday.value);
   const start = addDays(base, (week - 1) * 7);
   const end = addDays(start, 6);
   return `${formatMonthDay(start)} - ${formatMonthDay(end)}`;
@@ -1622,13 +2723,6 @@ function formatMonthDay(date: Date) {
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${month}.${day}`;
 }
-
-function formatIsoDate(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 </script>
 
 <style scoped>
@@ -1640,14 +2734,44 @@ function formatIsoDate(date: Date) {
   --line: #d8d8d8;
   --line-strong: #121212;
   --accent: #2f55c8;
+  --bg-gradient-start: #f8f8fb;
+  --bg-gradient-end: #edf1fb;
+  --bg-glow: rgba(102, 118, 165, 0.16);
+  --bg-glow-strong: rgba(255, 255, 255, 0);
+  --bg-pattern-image: none;
+  --bg-pattern-size: auto;
+  --bg-pattern-position: center;
+  --bg-pattern-repeat: no-repeat;
   --today-col-bg: #ececec;
   --today-head-bg: #e2e2e2;
   --muted-bg: #f7f7f7;
   --time-col-bg: #eef1f7;
   --mask-bg: rgba(0, 0, 0, 0.45);
+  position: relative;
   min-height: 100vh;
-  background: var(--bg);
+  background-color: transparent;
   color: var(--text-main);
+}
+
+.page-content-layer {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+}
+
+.page.theme-black {
+  --bg: #f3f4f7;
+  --card-bg: #ffffff;
+  --muted-bg: #eff2f7;
+  --line: #d6d9e0;
+  --line-strong: #2c3445;
+  --accent: #2f55c8;
+  --today-col-bg: #e6eaf1;
+  --today-head-bg: #dde2eb;
+  --time-col-bg: #e8edf7;
+  --bg-gradient-start: #f8f9fc;
+  --bg-gradient-end: #edf1f9;
+  --bg-glow: rgba(97, 110, 150, 0.15);
 }
 
 .page.theme-purple {
@@ -1655,10 +2779,15 @@ function formatIsoDate(date: Date) {
   --card-bg: #fcfaff;
   --muted-bg: #f5edff;
   --line: #d9cfef;
+  --line-strong: #8e57de;
   --accent: #a061ff;
   --today-col-bg: #f0e4ff;
   --today-head-bg: #eadbff;
   --time-col-bg: #ede4fb;
+  --bg-gradient-start: #f4e9ff;
+  --bg-gradient-end: #eadfff;
+  --bg-glow: rgba(142, 87, 222, 0.32);
+  --bg-glow-strong: rgba(171, 109, 255, 0.24);
 }
 
 .page.theme-green {
@@ -1666,10 +2795,14 @@ function formatIsoDate(date: Date) {
   --card-bg: #f9fffb;
   --muted-bg: #ebf9f0;
   --line: #cde2d6;
+  --line-strong: #159b57;
   --accent: #13c56a;
   --today-col-bg: #e2f8eb;
   --today-head-bg: #d4f2e0;
   --time-col-bg: #e6f3ea;
+  --bg-gradient-start: #f2fbf5;
+  --bg-gradient-end: #e7f5ed;
+  --bg-glow: rgba(21, 155, 87, 0.20);
 }
 
 .page.theme-pink {
@@ -1677,10 +2810,14 @@ function formatIsoDate(date: Date) {
   --card-bg: #fffafe;
   --muted-bg: #fdebf5;
   --line: #ebcede;
+  --line-strong: #d93d96;
   --accent: #ef45a5;
   --today-col-bg: #fbdded;
   --today-head-bg: #f6d1e5;
   --time-col-bg: #f5e4ed;
+  --bg-gradient-start: #fff5fa;
+  --bg-gradient-end: #fceaf4;
+  --bg-glow: rgba(217, 61, 150, 0.18);
 }
 
 .page.theme-blue {
@@ -1688,21 +2825,29 @@ function formatIsoDate(date: Date) {
   --card-bg: #fafdff;
   --muted-bg: #eaf3ff;
   --line: #cddcf3;
+  --line-strong: #257ecf;
   --accent: #2e9dff;
   --today-col-bg: #e0eeff;
   --today-head-bg: #d2e7ff;
   --time-col-bg: #e4edf9;
+  --bg-gradient-start: #f2f7ff;
+  --bg-gradient-end: #e8f1ff;
+  --bg-glow: rgba(37, 126, 207, 0.22);
 }
 
 .page.theme-yellow {
   --bg: #fff9ea;
-  --card-bg: #fffdf4;
-  --muted-bg: #fbf2d8;
-  --line: #eadba8;
+  --card-bg: #fffdf5;
+  --muted-bg: #fdf4e0;
+  --line: #eadcb9;
+  --line-strong: #ad8100;
   --accent: #d9a511;
-  --today-col-bg: #f9ecc0;
-  --today-head-bg: #f3e2a9;
-  --time-col-bg: #f4ecd7;
+  --today-col-bg: #f9eccc;
+  --today-head-bg: #f4e2b1;
+  --time-col-bg: #f2e8d3;
+  --bg-gradient-start: #fffbf2;
+  --bg-gradient-end: #fbf1db;
+  --bg-glow: rgba(173, 129, 0, 0.18);
 }
 
 .page.theme-orange {
@@ -1710,10 +2855,14 @@ function formatIsoDate(date: Date) {
   --card-bg: #fffaf6;
   --muted-bg: #fdebe0;
   --line: #edd3c2;
+  --line-strong: #cf6f17;
   --accent: #f57b16;
   --today-col-bg: #fbe2cd;
   --today-head-bg: #f6d4b9;
   --time-col-bg: #f5e6de;
+  --bg-gradient-start: #fff8f3;
+  --bg-gradient-end: #fdeee2;
+  --bg-glow: rgba(207, 111, 23, 0.2);
 }
 
 .page.modal-open {
@@ -1721,986 +2870,110 @@ function formatIsoDate(date: Date) {
   overflow: hidden;
 }
 
-.top-safe-bar {
+.tab-screen-stage {
+  position: relative;
+  overflow: hidden;
   width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+}
+
+.tab-screen-track {
+  display: flex;
+  align-items: stretch;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, filter;
+}
+
+.page.tab-switching .tab-screen-stage {
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.tab-screen-panel {
+  flex: 0 0 calc(100% / 3);
+  width: calc(100% / 3);
+  height: 100vh;
+  min-height: 100vh;
   box-sizing: border-box;
-  padding-left: 16rpx;
-  padding-right: 16rpx;
+  transition: filter 160ms linear;
 }
 
-.safe-week-row {
-  width: 100%;
-  display: grid;
-  align-items: center;
-  column-gap: 10rpx;
-}
-
-.safe-left-actions {
+.schedule-tab-panel {
+  height: calc(100vh - 108rpx);
+  height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx);
+  max-height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 10rpx;
-  min-width: 0;
+  flex-direction: column;
 }
 
-.safe-week-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
+.tab-screen-panel-blur {
+  filter: blur(1.8px);
 }
 
-.safe-week-info {
-  max-width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  white-space: nowrap;
+.page.tab-switching .tab-screen-panel {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
-.safe-right-spacer {
-  min-height: 1px;
+.page.tab-switching .schedule-tab-panel {
+  height: calc(100vh - 108rpx);
+  height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx);
+  max-height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+}
+
+.page.tab-switching .content {
+  height: calc(100vh - 110rpx);
+  height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 110rpx - constant(safe-area-inset-bottom));
+  max-height: calc(100vh - 110rpx);
+  max-height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 110rpx - constant(safe-area-inset-bottom));
+  overflow: hidden;
 }
 
 .content {
+  padding: 20rpx 20rpx 130rpx;
   padding: 20rpx 20rpx calc(130rpx + env(safe-area-inset-bottom));
   padding: 20rpx 20rpx calc(130rpx + constant(safe-area-inset-bottom));
 }
 
-.card {
-  background: var(--card-bg);
-  border-radius: 14rpx;
-  padding: 16rpx;
-  margin-bottom: 14rpx;
-  border: 1rpx solid var(--line);
-}
-
-.schedule-card {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-}
-
-.schedule-card .top-bar,
-.schedule-card .owner-legend,
-.schedule-card .mark-tip {
-  margin-left: 4rpx;
-  margin-right: 4rpx;
-}
-
-.section-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.section-sub {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.today-hero {
-  border-radius: 12rpx;
-  padding: 16rpx;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0.56) 100%);
-}
-
-.today-greeting {
-  font-size: 32rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.today-hero-sub {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.today-mini-grid {
-  margin-top: 12rpx;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10rpx;
-}
-
-.today-mini-card {
-  border-radius: 10rpx;
-  padding: 12rpx;
-  background: var(--muted-bg);
-}
-
-.today-mini-label {
-  font-size: 20rpx;
-  color: var(--text-sub);
-}
-
-.today-mini-value {
-  margin-top: 6rpx;
-  font-size: 25rpx;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.today-mini-sub {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  color: var(--text-sub);
-  line-height: 1.4;
-}
-
-.today-advice {
-  margin-top: 8rpx;
-  padding: 0 2rpx;
-}
-
-.today-advice-item {
-  margin-top: 7rpx;
-  font-size: 21rpx;
-  color: var(--text-sub);
-  line-height: 1.4;
-}
-
-.today-ready {
-  margin-top: 8rpx;
-  padding: 0 2rpx;
-}
-
-.today-ready.empty {
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.today-ready-line {
-  margin-top: 7rpx;
-  font-size: 21rpx;
-  color: var(--text-sub);
-  line-height: 1.4;
-}
-
-.today-ready-subtitle {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.top-bar {
+.profile-tab-wrap {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  margin-bottom: 8rpx;
+  gap: 22rpx;
+
+  height: calc(100vh - 110rpx);
+  height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 110rpx - constant(safe-area-inset-bottom));
 }
 
-.week-nav-btn {
-  width: 64rpx;
-  height: 52rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid var(--line);
-  background: var(--muted-bg);
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.week-main {
-  padding: 4rpx 6rpx;
-  text-align: center;
-  font-size: 31rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.week-main.compact {
-  font-size: 42rpx;
-  line-height: 1.05;
+.schedule-content {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
   padding: 0;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.week-sub.compact {
-  margin-top: 0;
-  font-size: 20rpx;
-  line-height: 1.1;
-  color: var(--text-sub);
-  white-space: nowrap;
-}
-
-.setting-btn.inline {
-  width: 52rpx;
-  height: 40rpx;
-  border-radius: 999rpx;
-  border: 1rpx solid var(--line);
-  background: var(--muted-bg);
-  color: var(--text-main);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.nav-chevron {
-  width: 12rpx;
-  height: 12rpx;
-  border-top: 2rpx solid currentColor;
-  border-right: 2rpx solid currentColor;
-}
-
-.nav-chevron.left {
-  transform: rotate(-135deg);
-}
-
-.nav-chevron.right {
-  transform: rotate(45deg);
-}
-
-.gear-icon {
-  width: 18rpx;
-  height: 18rpx;
-  border: 2rpx solid currentColor;
-  border-radius: 999rpx;
-  position: relative;
-}
-
-.gear-icon::before,
-.gear-icon::after {
-  content: "";
-  position: absolute;
-  inset: -5rpx 7rpx;
-  border-top: 2rpx solid currentColor;
-  border-bottom: 2rpx solid currentColor;
-}
-
-.gear-icon::after {
-  inset: 7rpx -5rpx;
-  border: none;
-  border-left: 2rpx solid currentColor;
-  border-right: 2rpx solid currentColor;
-}
-
-.week-sub {
-  margin-top: 2rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.owner-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx 16rpx;
-  margin-bottom: 10rpx;
-}
-
-.owner-item {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  font-size: 21rpx;
-  color: var(--text-sub);
-}
-
-.owner-dot {
-  width: 14rpx;
-  height: 14rpx;
-  border-radius: 999rpx;
-  flex-shrink: 0;
-}
-
-.owner-dot.small {
-  width: 12rpx;
-  height: 12rpx;
-}
-
-.mark-tip {
-  margin-bottom: 10rpx;
-  font-size: 22rpx;
-  color: var(--text-main);
-  background: var(--muted-bg);
-  border: 1rpx solid var(--line);
-  border-radius: 8rpx;
-  padding: 8rpx 12rpx;
-}
-
-.table-wrap {
-  width: 100%;
-  border-radius: 0;
   overflow: hidden;
-  background: transparent;
   display: flex;
   flex-direction: column;
-  min-height: calc(100vh - 520rpx - env(safe-area-inset-bottom));
-  min-height: calc(100vh - 520rpx - constant(safe-area-inset-bottom));
 }
 
-.table-row {
-  display: flex;
-  min-height: 88rpx;
-  flex: 1 1 auto;
-}
-
-.head-row {
-  flex: 0 0 84rpx;
-}
-
-.time-col,
-.day-col {
+.schedule-content-inner {
+  flex: 1;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 8rpx 6rpx;
-}
-
-.head-row .time-col,
-.head-row .day-col {
-  border-top: none;
-}
-
-.part-start .time-col,
-.part-start .day-col {
-  box-shadow: inset 0 18rpx 0 rgba(255, 255, 255, 0.72);
-}
-
-.time-col {
-  width: 108rpx;
-  background: var(--time-col-bg);
+  padding: 20rpx 20rpx 140rpx;
+  padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
+  padding: 20rpx 20rpx calc(140rpx + constant(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.day-col {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.day-col:last-child {
-  border-right: none;
-}
-
-.cell {
-  position: relative;
-  padding: 2rpx 4rpx;
-}
-
-.cell-owner-markers {
-  position: absolute;
-  top: 8rpx;
-  right: 6rpx;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5rpx;
-  max-width: calc(100% - 12rpx);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.part-start .cell-owner-markers {
-  top: 22rpx;
-}
-
-.cell-owner-dot {
-  width: 10rpx;
-  height: 10rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid var(--card-bg);
-  flex-shrink: 0;
-}
-
-.head {
-  font-size: 22rpx;
-  font-weight: 600;
-  color: var(--text-main);
-  background: var(--muted-bg);
-}
-
-.section-no {
-  font-size: 22rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.section-time {
-  margin-top: 3rpx;
-  font-size: 18rpx;
-  color: var(--text-sub);
-}
-
-.cell.busy {
-  color: var(--text-main);
-  background-clip: content-box;
-}
-
-.cell.busy.merge-prev {
-  padding-top: 0;
-}
-
-.cell.busy.merge-next {
-  padding-bottom: 0;
-}
-
-.cell.marked {
-  filter: saturate(1.08) brightness(0.98);
-}
-
-.cell.upcoming-tail {
-  position: relative;
-}
-
-.cell.upcoming-tail::after {
-  content: "";
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: 6rpx;
-  height: 8rpx;
-  border-radius: 999rpx;
-  background: var(--accent);
-  box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.22);
-}
-
-.cell-text {
-  position: absolute;
-  left: 4rpx;
-  right: 4rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 4rpx;
-  padding: 0;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.cell-title {
-  font-size: 19rpx;
-  line-height: 1.28;
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.cell-room {
-  font-size: 15rpx;
-  line-height: 1.2;
-  color: var(--text-sub);
-}
-
-.day-col.today-column {
-  background: transparent;
-  position: relative;
-  z-index: 3;
-  border-left: 2rpx solid var(--accent);
-  border-right: 2rpx solid var(--accent);
-}
-
-.head.today-column {
-  background: var(--muted-bg);
-  font-weight: 700;
-  box-shadow: inset 0 2rpx 0 var(--accent);
-}
-
-.table-row:last-child .day-col.today-column {
-  border-bottom: 2rpx solid var(--accent);
-}
-
-.today-focus {
-  margin-top: 12rpx;
-  border-radius: 12rpx;
-  padding: 14rpx;
-  border: none;
-}
-
-.today-focus.accent {
-  background: var(--today-col-bg);
-}
-
-.today-focus-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10rpx;
-}
-
-.today-focus-name {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.today-focus-status {
-  flex-shrink: 0;
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  background: color-mix(in srgb, var(--accent) 16%, #ffffff);
-  color: var(--accent);
-  font-size: 20rpx;
-  font-weight: 600;
-}
-
-.today-focus-meta {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.today-focus-line {
-  margin-top: 12rpx;
-  height: 7rpx;
-  border-radius: 999rpx;
-  background: var(--accent);
-}
-
-.today-list {
-  margin-top: 14rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.today-item {
-  border-radius: 10rpx;
-  padding: 12rpx;
-  display: flex;
-  justify-content: space-between;
-  gap: 16rpx;
-  border: none;
-}
-
-.today-item.accent {
-  background: var(--today-col-bg);
-}
-
-.today-item-main {
-  min-width: 0;
-}
-
-.today-course {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.today-owner {
-  margin-top: 4rpx;
-  font-size: 21rpx;
-  color: var(--text-sub);
-}
-
-.today-item-meta {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  color: var(--text-sub);
-}
-
-.today-time {
-  font-size: 20rpx;
-  color: var(--text-sub);
-  text-align: right;
-}
-
-.profile-grid {
-  margin-top: 12rpx;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10rpx;
-}
-
-.profile-info-card {
-  border-radius: 10rpx;
-  padding: 12rpx;
-  background: var(--muted-bg);
-}
-
-.profile-info-label {
-  font-size: 20rpx;
-  color: var(--text-sub);
-}
-
-.profile-info-value {
-  margin-top: 6rpx;
-  font-size: 24rpx;
-  font-weight: 600;
-  color: var(--text-main);
-  line-height: 1.35;
-}
-
-.profile-action-row {
-  margin-top: 12rpx;
-  display: flex;
-  gap: 10rpx;
-}
-
-.profile-action-btn {
-  flex: 1;
-  text-align: center;
-  padding: 10rpx 12rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 10rpx;
-  color: var(--text-main);
-  background: var(--muted-bg);
-  font-size: 22rpx;
-}
-
-.profile-action-btn.ghost {
-  background: var(--card-bg);
-}
-
-.theme-switch {
-  margin-top: 14rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-}
-
-.theme-chip {
-  padding: 10rpx 14rpx;
-  border-radius: 12rpx;
-  border: 1rpx solid var(--line);
-  color: var(--text-main);
-  font-size: 22rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--card-bg);
-}
-
-.theme-chip-main {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.theme-swatch {
-  width: 44rpx;
-  height: 24rpx;
-  border-radius: 8rpx;
-  border: 1rpx solid rgba(0, 0, 0, 0.16);
-}
-
-.theme-chip-state {
-  color: var(--text-sub);
-  font-size: 20rpx;
-}
-
-.theme-chip.active {
-  color: var(--text-main);
-  border-color: var(--line-strong);
-  box-shadow: inset 4rpx 0 0 var(--line-strong);
-}
-
-.theme-chip.active .theme-chip-state {
-  color: var(--line-strong);
-}
-
-.check-item {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  margin-top: 12rpx;
-  color: var(--text-main);
-  font-size: 24rpx;
-}
-
-.setting-item {
-  margin-top: 14rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 10rpx;
-  padding: 12rpx;
-  background: var(--muted-bg);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12rpx;
-}
-
-.setting-item-main {
-  min-width: 0;
-}
-
-.setting-item-title {
-  font-size: 23rpx;
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.setting-item-sub {
-  margin-top: 4rpx;
-  font-size: 20rpx;
-  color: var(--text-sub);
-}
-
-.setting-item-state {
-  flex-shrink: 0;
-  padding: 4rpx 12rpx;
-  border-radius: 999rpx;
-  font-size: 20rpx;
-  color: var(--text-main);
-  background: var(--card-bg);
-  border: 1rpx solid var(--line);
-}
-
-.tip,
-.empty {
-  margin-top: 14rpx;
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-.bottom-nav {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  height: calc(108rpx + env(safe-area-inset-bottom));
-  height: calc(108rpx + constant(safe-area-inset-bottom));
-  box-sizing: border-box;
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-bottom: constant(safe-area-inset-bottom);
-  background: var(--card-bg);
-  border-top: 1rpx solid var(--line);
-  z-index: 60;
-}
-
-.bottom-nav-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-}
-
-.bottom-nav-text {
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-.bottom-nav-line {
-  width: 42rpx;
-  height: 6rpx;
-  border-radius: 999rpx;
-  background: var(--line-strong);
-  opacity: 0;
-}
-
-.bottom-nav-item.active .bottom-nav-text {
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.bottom-nav-item.active .bottom-nav-line {
-  opacity: 1;
-}
-
-.auth-mask,
-.dialog-mask {
-  position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  background: var(--mask-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  padding: 20rpx;
-}
-
-.auth-card,
-.dialog-card {
-  width: 100%;
-  max-width: 640rpx;
-  background: var(--card-bg);
-  border-radius: 16rpx;
-  padding: 24rpx;
-  border: 1rpx solid var(--line);
-}
-
-.auth-title,
-.dialog-title {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: var(--text-main);
-}
-
-.auth-sub,
-.dialog-sub {
-  margin-top: 8rpx;
-  font-size: 23rpx;
-  color: var(--text-sub);
-}
-
-.picker-list {
-  margin-top: 16rpx;
-  display: flex;
-  flex-direction: column;
-  max-height: 520rpx;
-  overflow: auto;
-  gap: 10rpx;
-}
-
-.picker-item {
-  border: 1rpx solid var(--line);
-  border-radius: 12rpx;
-  padding: 14rpx 16rpx;
-  background: var(--muted-bg);
-}
-
-.picker-item.active {
-  border-color: var(--line-strong);
-}
-
-.picker-name {
-  font-size: 27rpx;
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.picker-wechat {
-  margin-top: 4rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.dialog-list {
-  margin-top: 16rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 10rpx;
-  max-height: 620rpx;
-  overflow: auto;
-}
-
-.dialog-item {
-  border: 1rpx solid var(--line);
-  border-radius: 10rpx;
-  padding: 12rpx;
-}
-
-.course-dialog-card .dialog-item {
-  background: var(--muted-bg);
-}
-
-.course-dialog-card .dialog-name {
-  color: var(--text-main);
-}
-
-.course-dialog-card .dialog-meta {
-  color: var(--text-sub);
-}
-
-.course-dialog-card .dialog-btn {
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-}
-
-.dialog-name {
-  font-size: 26rpx;
-  font-weight: 600;
-  color: var(--text-main);
-}
-
-.dialog-meta {
-  margin-top: 4rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.dialog-btn {
-  margin-top: 18rpx;
-  background: var(--line-strong);
-  color: var(--card-bg);
-  font-size: 24rpx;
-}
-
-.unlock-card {
-  max-width: 560rpx;
-}
-
-.unlock-input {
-  margin-top: 16rpx;
-  border: 1rpx solid var(--line);
-  border-radius: 10rpx;
-  padding: 12rpx 14rpx;
-  font-size: 24rpx;
-  color: var(--text-main);
-  background: var(--card-bg);
-}
-
-.unlock-error {
-  margin-top: 8rpx;
-  font-size: 21rpx;
-  color: #d64545;
-}
-
-.unlock-actions,
-.backend-mock-row {
-  margin-top: 14rpx;
-  display: flex;
-  gap: 12rpx;
-}
-
-.unlock-btn,
-.backend-mock-btn {
-  flex: 1;
-  text-align: center;
-  padding: 10rpx 12rpx;
-  border-radius: 10rpx;
-  border: 1rpx solid var(--line);
-  font-size: 23rpx;
-  color: var(--text-main);
-  background: var(--muted-bg);
-}
-
-.unlock-btn.ghost {
-  background: var(--card-bg);
-}
-
-.backend-status-tip {
-  margin-top: 10rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
-.backend-status-tip.error {
-  color: #d64545;
-}
-
-.week-picker-list {
-  margin-top: 14rpx;
-  max-height: 640rpx;
-}
-
-.week-picker-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14rpx 10rpx;
-  border-bottom: 1rpx solid var(--line);
-  font-size: 24rpx;
-  color: var(--text-sub);
-}
-
-.week-picker-item.active {
-  color: var(--text-main);
-  font-weight: 600;
-}
-
-.week-picker-date {
-  font-size: 21rpx;
 }
 </style>

@@ -67,14 +67,8 @@
     },
     {
       "section": 11,
-      "start": "20:50",
-      "end": "21:35",
-      "part": "晚上"
-    },
-    {
-      "section": 12,
-      "start": "21:40",
-      "end": "22:25",
+      "start": "20:40",
+      "end": "21:25",
       "part": "晚上"
     }
   ],
@@ -720,6 +714,273 @@
           "classroom": "10-301",
           "teacher": "盛腾",
           "teachingClasses": "软件工程23(5)"
+        }
+      ]
+    },
+    {
+      "id": "goujiaxiang",
+      "name": "苟家祥",
+      "courses": [
+        {
+          "id": "gjx-01",
+          "name": "人工智能导论",
+          "day": 1,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "1-17",
+          "classroom": "10-505",
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(1);软件工程23(2)"
+        },
+        {
+          "id": "gjx-02",
+          "name": "开发和实现 Web 数据库",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "1-8",
+          "classroom": "10-504",
+          "teacher": "代博",
+          "teachingClasses": "软件工程23(1);软件工程23(2)"
+        },
+        {
+          "id": "gjx-03",
+          "name": "移动设备和操作系统",
+          "day": 1,
+          "startSection": 9,
+          "endSection": 11,
+          "weekExpr": "1-8",
+          "classroom": "10-413",
+          "teacher": "赵淑贤",
+          "teachingClasses": "软件工程23(1)"
+        },
+        {
+          "id": "gjx-04",
+          "name": "移动应用测试",
+          "day": 1,
+          "startSection": 9,
+          "endSection": 11,
+          "weekExpr": "9-16",
+          "classroom": "2-504",
+          "teacher": "王玮慧",
+          "teachingClasses": "软件工程23(1)"
+        },
+        {
+          "id": "gjx-05",
+          "name": "软件质量保证与测试",
+          "day": 2,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "1-17",
+          "classroom": "10-510",
+          "teacher": "李癸雨",
+          "teachingClasses": "软件工程23(1);软件工程23(2)"
+        },
+        {
+          "id": "gjx-06",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 2,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "13-16",
+          "classroom": "4-301",
+          "teacher": "胡思敏",
+          "teachingClasses": "软件工程23(1);软件工程23(2);物联网工程23(4)"
+        },
+        {
+          "id": "gjx-07",
+          "name": "移动设备和操作系统",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "1-306",
+          "teacher": "赵淑贤",
+          "teachingClasses": "软件工程23(1);软件工程23(2)"
+        },
+        {
+          "id": "gjx-08",
+          "name": "移动应用测试",
+          "day": 3,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "IT实训工作坊(Ⅱ)",
+          "teacher": "王玮慧",
+          "teachingClasses": "软件工程23(1);软件工程23(2)"
+        },
+        {
+          "id": "gjx-09",
+          "name": "智能制造数字化工艺仿真",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "2-17",
+          "classroom": "5-305",
+          "teacher": "刘顺新",
+          "teachingClasses": "无"
+        },
+        {
+          "id": "gjx-10",
+          "name": "智能运维与管理",
+          "day": 3,
+          "startSection": 7,
+          "endSection": 8,
+          "weekExpr": "2-17",
+          "classroom": "5-305",
+          "teacher": "李双岑",
+          "teachingClasses": "无"
+        },
+        {
+          "id": "gjx-11",
+          "name": "软件质量保证与测试",
+          "day": 4,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "9-16",
+          "classroom": "2-504",
+          "teacher": "李癸雨",
+          "teachingClasses": "软件工程23(1)"
+        },
+        {
+          "id": "gjx-12",
+          "name": "开发和实现 Web 数据库",
+          "day": 4,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "10-504",
+          "teacher": "代博",
+          "teachingClasses": "软件工程23(1)"
+        },
+        {
+          "id": "gjx-13",
+          "name": "人工智能导论",
+          "day": 4,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "9-16",
+          "classroom": "10-304",
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(1)"
+        },
+        {
+          "id": "gjx-14",
+          "name": "形势与政策-6",
+          "day": 5,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "6-12",
+          "parity": "even",
+          "classroom": "2-301",
+          "teacher": "张晓勇",
+          "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
+        }
+      ]
+    },
+    {
+      "id": "yanying",
+      "name": "严盈",
+      "courses": [
+        {
+          "id": "yy-01",
+          "name": "纪录片创作",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 4,
+          "weekExpr": "1-12",
+          "classroom": "8-410",
+          "teacher": "李雪薇",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-02",
+          "name": "大学生职业发展与就业指导-2",
+          "day": 1,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "1-4",
+          "classroom": "5-101",
+          "teacher": "戴维",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-03",
+          "name": "影视短片创作",
+          "day": 2,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "12-15",
+          "classroom": "10-516",
+          "teacher": "卢琳",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-04",
+          "name": "全媒体节目策划与制作",
+          "day": 2,
+          "startSection": 5,
+          "endSection": 8,
+          "weekExpr": "1-8",
+          "classroom": "8-309",
+          "teacher": "冉宇",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-05",
+          "name": "影视短片创作",
+          "day": 2,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "12-15",
+          "classroom": "8-411",
+          "teacher": "卢琳",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-06",
+          "name": "影视制片管理",
+          "day": 3,
+          "startSection": 1,
+          "endSection": 4,
+          "weekExpr": "1-8",
+          "classroom": "8-412",
+          "teacher": "刘昊",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-07",
+          "name": "文艺节目策划",
+          "day": 3,
+          "startSection": 1,
+          "endSection": 4,
+          "weekExpr": "9-16",
+          "classroom": "8-410",
+          "teacher": "王诗旖",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-08",
+          "name": "影视短片创作",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 8,
+          "weekExpr": "1-8",
+          "classroom": "10-516",
+          "teacher": "卢琳",
+          "teachingClasses": "广播电视编导23(1)"
+        },
+        {
+          "id": "yy-09",
+          "name": "形势与政策-6",
+          "day": 4,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "6-12",
+          "parity": "even",
+          "classroom": "4-301",
+          "teacher": "赵畅",
+          "teachingClasses": "广播电视编导23(1)"
         }
       ]
     }

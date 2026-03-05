@@ -10,4 +10,9 @@ onHide(() => {
   console.log("App Hide");
 });
 </script>
-<style></style>
+<style>
+page,
+body {
+  background-color: #f3f4f8;
+}
+</style>

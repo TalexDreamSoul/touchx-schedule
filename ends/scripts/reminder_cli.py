@@ -109,12 +109,12 @@ def cmd_set(args: argparse.Namespace) -> int:
         "subscriber_key": f"student-{student['studentId']}",
     }
 
-    if args.token:
-        payload["channel_token"] = args.token
+    if args.userid:
+        payload["channel_url"] = args.userid if str(args.userid).startswith("wecom://") else f"wecom://{args.userid}"
     elif args.url:
         payload["channel_url"] = args.url
     else:
-        raise RuntimeError("请提供 --token 或 --url")
+        raise RuntimeError("请提供 --userid 或 --url（wecom://用户ID）")
 
     if args.display_name:
         payload["display_name"] = args.display_name
@@ -151,12 +151,6 @@ def cmd_test(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run_once(args: argparse.Namespace) -> int:
-    result = http_json("POST", args.base, "/api/reminders/run-once", {})
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="TouchX 提醒管理脚本")
     sub = p.add_subparsers(dest="command", required=True)
@@ -176,11 +170,11 @@ def build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--base", default=DEFAULT_BASE)
     ls.set_defaults(func=cmd_list)
 
-    set_cmd = sub.add_parser("set", help="为指定学生设置 token/url")
+    set_cmd = sub.add_parser("set", help="为指定学生设置企业微信接收人")
     set_cmd.add_argument("--base", default=DEFAULT_BASE)
     set_cmd.add_argument("--name", required=True, help="姓名或 studentId")
-    set_cmd.add_argument("--token", help="xizhi token")
-    set_cmd.add_argument("--url", help="完整 channel URL")
+    set_cmd.add_argument("--userid", help="企业微信用户ID，自动转为 wecom://用户ID")
+    set_cmd.add_argument("--url", help="完整通道标识（wecom://用户ID）")
     set_cmd.add_argument("--display-name", help="推送称呼，如：贤贤")
     set_cmd.add_argument("--off-days", help="关闭推送的星期，逗号分隔（1=周一 ... 7=周日）")
     set_cmd.set_defaults(func=cmd_set)
@@ -195,10 +189,6 @@ def build_parser() -> argparse.ArgumentParser:
     test.add_argument("--base", default=DEFAULT_BASE)
     test.add_argument("--name", required=True, help="姓名或 studentId")
     test.set_defaults(func=cmd_test)
-
-    run_once = sub.add_parser("run-once", help="手动触发一轮提醒扫描")
-    run_once.add_argument("--base", default=DEFAULT_BASE)
-    run_once.set_defaults(func=cmd_run_once)
 
     return p
 

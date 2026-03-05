@@ -25,6 +25,7 @@ __pycache__/
 *.py[cod]
 ends/app/*.db
 ends/app/*.db-*
+ends/.env
 
 # Local release/build outputs
 ends/.venv/
