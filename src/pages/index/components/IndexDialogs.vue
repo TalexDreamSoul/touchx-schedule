@@ -326,8 +326,8 @@ const isPracticeTogglePending = (course: DisplayCourse) => {
 .auth-card,
 .dialog-card {
   width: 100%;
-  min-width: 60%;
   max-width: 640rpx;
+  box-sizing: border-box;
   background: var(--card-bg);
   border-radius: 16rpx;
   padding: 24rpx;
@@ -340,11 +340,14 @@ const isPracticeTogglePending = (course: DisplayCourse) => {
   opacity: 0;
   transition: transform 200ms ease, opacity 200ms ease;
   will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .dialog-pop-card.is-open {
-  transform: scale(1);
+  transform: none;
   opacity: 1;
+  will-change: auto;
 }
 
 .course-dialog-card {
@@ -354,15 +357,19 @@ const isPracticeTogglePending = (course: DisplayCourse) => {
   opacity: 0;
   transition: transform 200ms ease, opacity 200ms ease;
   will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .course-dialog-card.is-open {
-  transform: scale(1);
+  transform: none;
   opacity: 1;
+  will-change: auto;
 }
 
 .week-picker-dialog-card {
-  min-width: 68%;
+  min-width: 100%;
+  max-width: 710rpx;
 }
 
 .auth-title,

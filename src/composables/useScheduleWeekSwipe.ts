@@ -72,6 +72,8 @@ export const useScheduleWeekSwipe = ({
   const scheduleSwipeLastTs = ref(0);
   const scheduleSwipeStartTs = ref(0);
   const scheduleMouseDragging = ref(false);
+  const scheduleSwipePendingOffsetX = ref(0);
+  let scheduleSwipeRafId: number | null = null;
   let scheduleWindowMouseListenersBound = false;
 
   const scheduleTrackStyle = computed<CSSProperties>(() => {
@@ -120,6 +122,30 @@ export const useScheduleWeekSwipe = ({
     scheduleSwipeAfterAnimation.value = null;
   };
 
+  const clearScheduleSwipeRaf = () => {
+    if (scheduleSwipeRafId === null || typeof globalThis.cancelAnimationFrame !== "function") {
+      scheduleSwipeRafId = null;
+      return;
+    }
+    globalThis.cancelAnimationFrame(scheduleSwipeRafId);
+    scheduleSwipeRafId = null;
+  };
+
+  const setScheduleSwipeOffsetWithRaf = (offset: number) => {
+    scheduleSwipePendingOffsetX.value = offset;
+    if (typeof globalThis.requestAnimationFrame !== "function") {
+      scheduleSwipeOffsetX.value = offset;
+      return;
+    }
+    if (scheduleSwipeRafId !== null) {
+      return;
+    }
+    scheduleSwipeRafId = globalThis.requestAnimationFrame(() => {
+      scheduleSwipeRafId = null;
+      scheduleSwipeOffsetX.value = scheduleSwipePendingOffsetX.value;
+    });
+  };
+
   const clampNumber = (value: number, min: number, max: number) => {
     return Math.min(max, Math.max(min, value));
   };
@@ -143,6 +169,7 @@ export const useScheduleWeekSwipe = ({
   };
 
   const setScheduleSwipeOffset = (offset: number, animated: boolean, onFinished?: () => void, durationMs = WEEK_SWIPE_BASE_DURATION_MS) => {
+    clearScheduleSwipeRaf();
     clearScheduleSwipeTimer();
     scheduleSwipeAfterAnimation.value = onFinished || null;
     scheduleSwipeAnimating.value = animated;
@@ -230,7 +257,7 @@ export const useScheduleWeekSwipe = ({
     const offset = isOutwardSwipe ? rawDeltaX * WEEK_SWIPE_EDGE_RESISTANCE : rawDeltaX;
     const maxFollowDistance = scheduleSwipeViewportWidth.value * WEEK_SWIPE_MAX_FOLLOW_RATIO;
     const safeOffset = Math.max(-maxFollowDistance, Math.min(maxFollowDistance, offset));
-    setScheduleSwipeOffset(safeOffset, false);
+    setScheduleSwipeOffsetWithRaf(safeOffset);
     return true;
   };
 
@@ -430,6 +457,7 @@ export const useScheduleWeekSwipe = ({
   onUnmounted(() => {
     onScheduleMouseCancel();
     removeScheduleWindowMouseListeners();
+    clearScheduleSwipeRaf();
     clearScheduleSwipeTimer();
   });
 

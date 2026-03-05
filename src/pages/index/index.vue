@@ -435,8 +435,6 @@ const {
   onScheduleTouchEnd,
   onScheduleTouchCancel,
   onScheduleMouseDown,
-  onScheduleMouseMove,
-  onScheduleMouseUp,
   onScheduleMouseCancel,
 } = useScheduleWeekSwipe({
   activeTab,
@@ -592,9 +590,11 @@ const pageBackgroundBlurRadius = computed(() => {
   }
   return themeWallpaperEffectMap[themeWallpaperEffectLevel.value].blurRadius;
 });
+const TODAY_PAGE_BACKGROUND_MASK_GRADIENT =
+  "linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.84) 20%, rgba(255, 255, 255, 0.96) 58%, rgba(255, 255, 255, 0.99) 100%)";
 const pageBackgroundMaskColor = computed(() => {
   if (activeTab.value === "today") {
-    return "linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.5) 20%, rgba(255, 255, 255, 0.75) 58%, rgba(255, 255, 255, 0.8) 100%)";
+    return TODAY_PAGE_BACKGROUND_MASK_GRADIENT;
   }
   if (!shouldUseThemeWallpaperBackground.value) {
     return "var(--bg)";
@@ -819,11 +819,11 @@ const allTermCellMap = computed(() => {
 });
 
 const normalizeClassroomLabel = (classroom?: string | null) => {
-  const text = (classroom || "").replace(/\s+/g, "");
+  const text = (classroom || "").trim().replace(/\s+/g, " ");
   if (!text) {
     return "";
   }
-  return text.slice(0, 6);
+  return text;
 };
 
 const pickCellClassroomLabel = (courses: DisplayCourse[]) => {
@@ -2025,6 +2025,10 @@ watch(themeKey, (value) => {
   uni.setStorageSync(STORAGE_THEME_KEY, value);
 });
 
+watch(showWeekend, (value) => {
+  uni.setStorageSync(STORAGE_SHOW_WEEKEND_KEY, Boolean(value));
+});
+
 watch(activeTab, (value) => {
   const currentIndex = tabOrder.indexOf(value);
   if (currentIndex >= 0 && !isTabSwitching.value) {
@@ -2191,8 +2195,11 @@ const onIncludeChange = (values: string[]) => {
 };
 
 const updateShowWeekend = (value: boolean) => {
-  showWeekend.value = Boolean(value);
-  uni.setStorageSync(STORAGE_SHOW_WEEKEND_KEY, showWeekend.value);
+  const nextValue = Boolean(value);
+  if (nextValue === showWeekend.value) {
+    return;
+  }
+  showWeekend.value = nextValue;
 };
 
 const toggleShowNonCurrentWeekCourses = () => {
@@ -2480,6 +2487,22 @@ const openCourseDialog = (week: number, day: number, section: number) => {
   showCourseDialog.value = true;
 };
 
+const openTodayCourseDialog = (course: DisplayCourse) => {
+  if (Date.now() < ignoreTapUntil.value) {
+    return;
+  }
+  const week = todayInfo.value.week;
+  const day = course.day || todayInfo.value.weekday;
+  const sameSlotCourses = todayCourses.value.filter((item) => {
+    return item.day === day && item.startSection === course.startSection && item.endSection === course.endSection;
+  });
+  dialogWeek.value = week;
+  dialogDay.value = day;
+  dialogSection.value = course.startSection;
+  dialogCourses.value = sameSlotCourses.length > 0 ? sameSlotCourses : [course];
+  showCourseDialog.value = true;
+};
+
 const closeCourseDialog = () => {
   showCourseDialog.value = false;
 };
@@ -2574,6 +2597,8 @@ const profileScheduleTopHeaderProps = computed(() => {
 const todayTabProps = computed(() => ({
   isAuthed: isAuthed.value,
   onAuthorize: openQuickAuthDialog,
+  activeStudentId: activeStudentId.value,
+  onTodayCourseClick: openTodayCourseDialog,
   todayGreetingText: todayGreetingText.value,
   todayInfo: todayInfo.value,
   shouldShowStudyCard: shouldShowStudyCard.value,
@@ -2598,6 +2623,7 @@ const scheduleTabProps = computed(() => ({
   scheduleTrackStyle: scheduleTrackStyle.value,
   scheduleWeekPanels: scheduleWeekPanels.value,
   weekdayLabels: weekdayLabels.value,
+  themeKey: themeKey.value,
   visibleDayNumbers: visibleScheduleDayNumbers.value,
   tableBodyScrollIntoViewId: scheduleTableScrollIntoViewId.value,
   getOwnerDotStyle,
@@ -2614,8 +2640,6 @@ const scheduleTabProps = computed(() => ({
   onScheduleTouchEnd,
   onScheduleTouchCancel,
   onScheduleMouseDown,
-  onScheduleMouseMove,
-  onScheduleMouseUp,
 }));
 
 const profileDisplayProps = computed(() => ({

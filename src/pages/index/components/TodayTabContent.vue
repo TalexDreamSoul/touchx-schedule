@@ -1,51 +1,44 @@
 <template>
-  <view v-if="!isAuthed || shouldShowStudyCard" class="card">
+  <view class="today-greeting-top">{{ todayGreetingText }}</view>
+
+  <view v-if="!isAuthed || shouldShowStudyCard" class="lesson-widget-block">
     <view class="lesson-widget-head">
-      <view class="lesson-widget-title">Today</view>
-      <view class="lesson-widget-count">{{ isAuthed ? `${pendingCourseCount} Events` : "待授权" }}</view>
+      <view class="lesson-widget-title">今日待上课程</view>
+      <view class="lesson-widget-count">{{ isAuthed ? `${pendingCourseCount} 门` : "待授权" }}</view>
     </view>
     <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
     <template v-else>
-      <view v-if="pinnedCourseItems.length > 0" class="lesson-widget-list">
-        <view
-          v-for="item in pinnedCourseItems"
-          :key="item.key"
-          class="lesson-widget-item"
-          :style="getCourseCardStyle(item.course)"
-        >
-          <view class="lesson-widget-mark" />
-          <view class="lesson-widget-main">
-            <view class="lesson-widget-name-row">
-              <view class="lesson-widget-name">{{ item.course.name }}</view>
-              <text v-if="isPracticeCourse(item.course)" class="practice-tag">实践</text>
+      <scroll-view v-if="pendingCourseItems.length > 0" class="lesson-widget-scroll" scroll-x :show-scrollbar="false">
+        <view class="lesson-widget-list">
+          <view
+            v-for="item in pendingCourseItems"
+            :key="item.key"
+            class="lesson-widget-item"
+            :class="{ 'has-owner-tag': shouldShowPendingCourseOwner(item.course) }"
+            :style="getCourseCardStyle(item.course)"
+            @click="handleTodayCourseClick(item.course)"
+          >
+            <view class="lesson-widget-mark" />
+            <view class="lesson-widget-main">
+              <view class="lesson-widget-name-row">
+                <view class="lesson-widget-name">{{ item.course.name }}</view>
+                <text v-if="isPracticeCourse(item.course)" class="practice-tag">实践</text>
+              </view>
+              <view class="lesson-widget-reminder">{{ getItemDepartureReminderText(item) }}</view>
             </view>
-            <view class="lesson-widget-reminder">{{ getItemDepartureReminderText(item) }}</view>
-          </view>
-          <view class="lesson-widget-time">
-            <view>{{ item.startTime }}</view>
-            <view>{{ item.endTime }}</view>
+            <view class="lesson-widget-time">
+              <view>{{ item.startTime }}</view>
+              <view>{{ item.endTime }}</view>
+            </view>
+            <view v-if="shouldShowPendingCourseOwner(item.course)" class="lesson-widget-owner-tag">
+              来自 {{ item.course.ownerName }}
+            </view>
           </view>
         </view>
-      </view>
+      </scroll-view>
       <view v-else class="today-ready empty">今天暂无待上课程。</view>
 
     </template>
-  </view>
-
-  <view class="card">
-    <view class="today-hero">
-      <view class="today-greeting">{{ todayGreetingText }}</view>
-      <view class="today-hero-sub">第 {{ todayInfo.week }} 周 · {{ todayInfo.weekdayLabel }} · {{ todayInfo.dateLabel }}</view>
-    </view>
-
-    <view class="today-semester-card">
-      <view class="today-semester-title">我的加入</view>
-      <view class="today-semester-main">
-        你已经开学 {{ semesterElapsed.totalDays }} 天 {{ semesterElapsed.totalWeeks }} 周 {{ semesterElapsed.totalHours }} 小时
-      </view>
-      <view class="today-semester-note">* 以 3 月 1 日早上 8:00 作为起始计时</view>
-    </view>
-
   </view>
 
   <view class="card">
@@ -54,27 +47,40 @@
     <template v-else>
       <view v-if="todayCourses.length > 0" class="section-sub">今天有 {{ todayCourses.length }} 门课，共 {{ todaySectionLoad }} 节</view>
       <view v-if="todayCourses.length === 0" class="tip">今天没有安排课程。</view>
-      <view v-else class="today-list">
-        <view
-          v-for="course in todayCourses"
-          :key="`today-${course.ownerId}-${course.id}`"
-          class="today-item"
-          :class="{ accent: isFocusCourse(course) }"
-          :style="getCourseCardStyle(course)"
-        >
-          <view class="today-item-main">
-            <view class="today-course-row">
-              <view class="today-course">{{ course.name }}</view>
-              <text v-if="isPracticeCourse(course)" class="practice-tag">实践</text>
+      <scroll-view v-else class="today-list-scroll" scroll-y :show-scrollbar="false" :style="{ height: todayListScrollHeight }">
+        <view class="today-list">
+          <view
+            v-for="course in todayCourses"
+            :key="`today-${course.ownerId}-${course.id}`"
+            class="today-item"
+            :class="{ accent: isFocusCourse(course) }"
+            :style="getCourseCardStyle(course)"
+            @click="handleTodayCourseClick(course)"
+          >
+            <view class="today-item-main">
+              <view class="today-course-row">
+                <view class="today-course">{{ course.name }}</view>
+                <text v-if="isPracticeCourse(course)" class="practice-tag">实践</text>
+              </view>
+              <view class="today-owner">{{ course.ownerName }}</view>
+              <view class="today-item-meta">教室：{{ formatCourseClassroom(course) }}</view>
+              <view class="today-item-meta">教师：{{ formatCourseTeacher(course) }}</view>
             </view>
-            <view class="today-owner">{{ course.ownerName }}</view>
-            <view class="today-item-meta">教室：{{ formatCourseClassroom(course) }}</view>
-            <view class="today-item-meta">教师：{{ formatCourseTeacher(course) }}</view>
+            <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
           </view>
-          <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
         </view>
-      </view>
+      </scroll-view>
     </template>
+  </view>
+
+  <view class="card">
+    <view class="today-semester-card">
+      <view class="today-semester-title">我的加入</view>
+      <view class="today-semester-main">
+        你已经开学 {{ semesterElapsed.totalDays }} 天 {{ semesterElapsed.totalWeeks }} 周 {{ semesterElapsed.totalHours }} 小时
+      </view>
+      <view class="today-semester-note">* 以 3 月 1 日早上 8:00 作为起始计时</view>
+    </view>
   </view>
 </template>
 
@@ -157,6 +163,8 @@ const parseTimeToTodayTimestamp = (timeText: string) => {
 const props = defineProps<{
   isAuthed: boolean;
   onAuthorize: () => void;
+  activeStudentId: string;
+  onTodayCourseClick: (course: DisplayCourse) => void;
   todayGreetingText: string;
   todayInfo: TodayInfoLike;
   shouldShowStudyCard: boolean;
@@ -199,12 +207,30 @@ const pendingCourseItems = computed<PendingCourseItem[]>(() => {
   return items.sort((a, b) => a.startTs - b.startTs);
 });
 
-const pinnedCourseItems = computed(() => {
-  return pendingCourseItems.value.slice(0, 3);
-});
-
 const pendingCourseCount = computed(() => {
   return pendingCourseItems.value.length;
+});
+
+const handleTodayCourseClick = (course: DisplayCourse) => {
+  props.onTodayCourseClick(course);
+};
+
+const shouldShowPendingCourseOwner = (course: DisplayCourse) => {
+  const activeId = String(props.activeStudentId || "").trim();
+  if (!activeId) {
+    return false;
+  }
+  return course.ownerId !== activeId;
+};
+
+const TODAY_LIST_MAX_VISIBLE_ITEMS = 3;
+const TODAY_ITEM_ESTIMATED_HEIGHT_RPX = 170;
+const TODAY_ITEM_GAP_RPX = 10;
+
+const todayListScrollHeight = computed(() => {
+  const visibleCount = Math.max(1, Math.min(props.todayCourses.length, TODAY_LIST_MAX_VISIBLE_ITEMS));
+  const totalGap = Math.max(0, visibleCount - 1) * TODAY_ITEM_GAP_RPX;
+  return `${visibleCount * TODAY_ITEM_ESTIMATED_HEIGHT_RPX + totalGap}rpx`;
 });
 
 const DEFAULT_COMMUTE_MINUTES = 7;
@@ -317,11 +343,27 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
 
 <style scoped>
 .card {
-  background: color-mix(in srgb, var(--card-bg) 94%, transparent);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
+  background: color-mix(in srgb, var(--card-bg) 92%, #ffffff 8%);
   border-radius: 14rpx;
   padding: 16rpx;
   margin-bottom: 14rpx;
   border: 1rpx solid var(--line);
+  backdrop-filter: blur(10px) saturate(1.18);
+  -webkit-backdrop-filter: blur(10px) saturate(1.18);
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.34) 100%);
+  filter: saturate(1.08);
 }
 
 .section-title {
@@ -354,6 +396,10 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
   background: var(--muted-bg);
 }
 
+.lesson-widget-block {
+  margin-bottom: 14rpx;
+}
+
 .lesson-widget-head {
   display: flex;
   align-items: center;
@@ -362,9 +408,10 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
 }
 
 .lesson-widget-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  color: var(--text-main);
+  font-size: 24rpx;
+  font-weight: 400;
+  color: var(--text-sub);
+  opacity: 0.68;
   line-height: 1;
 }
 
@@ -374,20 +421,46 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
   color: var(--text-sub);
 }
 
-.lesson-widget-list {
+.lesson-widget-scroll {
   margin-top: 12rpx;
+}
+
+.lesson-widget-list {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 10rpx;
+  padding-right: 8rpx;
 }
 
 .lesson-widget-item {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
   border-radius: 12rpx;
   padding: 12rpx;
   display: flex;
   align-items: flex-start;
   gap: 12rpx;
+  width: 300rpx;
+  flex: 0 0 300rpx;
+  background: color-mix(in srgb, var(--card-bg) 90%, #ffffff 10%);
   border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+  backdrop-filter: blur(6px) saturate(1.12);
+  -webkit-backdrop-filter: blur(6px) saturate(1.12);
+}
+
+.lesson-widget-item.has-owner-tag {
+  padding-bottom: 34rpx;
+}
+
+.lesson-widget-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.2) 100%);
 }
 
 .lesson-widget-mark {
@@ -435,31 +508,45 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
   text-align: right;
 }
 
-.today-hero {
-  border-radius: 12rpx;
-  padding: 16rpx;
-  background: transparent;
-  border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+.lesson-widget-owner-tag {
+  position: absolute;
+  right: 12rpx;
+  bottom: 10rpx;
+  font-size: 16rpx;
+  font-weight: 500;
+  color: var(--text-sub);
+  opacity: 0.6;
+  line-height: 1;
 }
 
-.today-greeting {
-  font-size: 32rpx;
+.today-greeting-top {
+  margin: 4rpx 0 14rpx;
+  margin-left: -4rpx;
+  font-size: 34rpx;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.today-hero-sub {
-  margin-top: 6rpx;
-  font-size: 22rpx;
-  color: var(--text-sub);
-}
-
 .today-semester-card {
-  margin-top: 12rpx;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
   border-radius: 10rpx;
   padding: 12rpx;
-  background: transparent;
+  background: color-mix(in srgb, var(--card-bg) 90%, #ffffff 10%);
   border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+  backdrop-filter: blur(6px) saturate(1.12);
+  -webkit-backdrop-filter: blur(6px) saturate(1.12);
+}
+
+.today-semester-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.2) 100%);
 }
 
 .today-semester-title {
@@ -493,24 +580,42 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
   color: var(--text-sub);
 }
 
-.today-list {
+.today-list-scroll {
   margin-top: 14rpx;
+}
+
+.today-list {
   display: flex;
   flex-direction: column;
   gap: 10rpx;
 }
 
 .today-item {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 0;
   border-radius: 10rpx;
   padding: 12rpx;
   display: flex;
   justify-content: space-between;
   gap: 16rpx;
   border: none;
+  backdrop-filter: blur(5px) saturate(1.08);
+  -webkit-backdrop-filter: blur(5px) saturate(1.08);
+}
+
+.today-item::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0.15) 100%);
 }
 
 .today-item.accent {
-  background: transparent;
+  background: color-mix(in srgb, var(--card-bg) 88%, #ffffff 12%);
   border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
 }
 

@@ -6,7 +6,9 @@
     :style="maskInlineStyle"
     @click="onMaskClick"
   >
-    <slot :is-open="opened" />
+    <view class="scale-fade-dialog-container">
+      <slot :is-open="opened" />
+    </view>
   </view>
 </template>
 
@@ -117,6 +119,12 @@ onBeforeUnmount(() => {
   padding: 20rpx;
   opacity: 0;
   transition: opacity var(--scale-fade-dialog-duration, 200ms) ease;
+}
+
+.scale-fade-dialog-container {
+  width: 80vw;
+  min-width: 80vw;
+  max-width: calc(100vw - 40rpx);
 }
 
 .scale-fade-dialog-mask.is-open {

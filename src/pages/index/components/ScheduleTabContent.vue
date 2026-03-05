@@ -14,8 +14,6 @@
       @touchend="onScheduleTouchEnd"
       @touchcancel="onScheduleTouchCancel"
       @mousedown="onScheduleMouseDown"
-      @mousemove="onScheduleMouseMove"
-      @mouseup="onScheduleMouseUp"
     >
       <view class="table-head-wrap">
         <view class="table-swipe-track" :style="scheduleTrackStyle">
@@ -23,10 +21,13 @@
             <view class="table-row head-row">
               <view class="time-col head">节次</view>
               <view
-                v-for="dayNumber in visibleDayNumbers"
+                v-for="dayNumber in allDayNumbers"
                 :key="`head-${panel.role}-${dayNumber}`"
                 class="day-col head"
-                :class="{ 'today-column': isTodayColumn(panel.week, dayNumber) }"
+                :class="{
+                  'today-column': isTodayColumn(panel.week, dayNumber),
+                  'day-col-hidden': !isDayVisible(dayNumber),
+                }"
               >
                 {{ weekdayLabels[dayNumber - 1] }}
               </view>
@@ -38,7 +39,8 @@
       <scroll-view
         class="table-body-scroll"
         :style="tableBodyScrollStyle"
-        scroll-y
+        :scroll-y="false"
+        :bounces="false"
         scroll-with-animation
         :scroll-into-view="tableBodyScrollIntoViewId"
       >
@@ -63,10 +65,11 @@
               </view>
 
               <view
-                v-for="dayNumber in visibleDayNumbers"
+                v-for="dayNumber in allDayNumbers"
                 :key="`course-${panel.role}-${panel.week}-${row.section}-${dayNumber}`"
                 class="day-col cell"
                 :class="{
+                  'day-col-hidden': !isDayVisible(dayNumber),
                   busy: row.cells[dayNumber - 1].busy,
                   'out-of-week': row.cells[dayNumber - 1].isOutOfWeek,
                   'today-column': isTodayColumn(panel.week, dayNumber),
@@ -92,8 +95,8 @@
                     />
                   </view>
                   <text class="cell-title">{{ renderCellTitle(row.cells[dayNumber - 1].labels) }}</text>
-                  <text v-if="row.cells[dayNumber - 1].hasPracticeCourse" class="cell-practice-tag">实践</text>
                   <text v-if="row.cells[dayNumber - 1].classroomLabel" class="cell-room">{{ row.cells[dayNumber - 1].classroomLabel }}</text>
+                  <text v-if="row.cells[dayNumber - 1].hasPracticeCourse" class="cell-practice-tag">实践</text>
                 </view>
               </view>
             </view>
@@ -108,7 +111,7 @@
               <view class="today-column-outline-base" />
               <view class="today-column-outline-flow">
                 <view class="today-column-flow-reveal-window">
-                  <image class="today-column-flow-image" :src="TODAY_COLUMN_FLOW_IMAGE_SRC" mode="scaleToFill" />
+                  <image class="today-column-flow-image" :src="todayColumnFlowImageSrc" mode="scaleToFill" />
                 </view>
               </view>
             </view>
@@ -129,8 +132,20 @@ const SCHEDULE_HEAD_ROW_HEIGHT = "96rpx";
 const SCHEDULE_BODY_ROW_HEIGHT = "104rpx";
 const SCHEDULE_HEAD_ROW_HEIGHT_UPX = 96;
 const SCHEDULE_BODY_MIN_HEIGHT_UPX = 420;
+const TODAY_COLUMN_OUTLINE_BOTTOM_EXTEND = "20rpx";
 const HIDDEN_OVERLAY_STYLE: CSSProperties = { display: "none" };
-const TODAY_COLUMN_FLOW_IMAGE_SRC = "/static/schedule/today-column-flow.png";
+
+type ThemeKey = "black" | "purple" | "green" | "pink" | "blue" | "yellow" | "orange";
+
+const THEME_FLOW_IMAGE_SRC_MAP: Record<ThemeKey, string> = {
+  black: "/static/schedule/flow/today-column-flow-black.png",
+  purple: "/static/schedule/flow/today-column-flow-purple.png",
+  green: "/static/schedule/flow/today-column-flow-green.png",
+  pink: "/static/schedule/flow/today-column-flow-pink.png",
+  blue: "/static/schedule/flow/today-column-flow-blue.png",
+  yellow: "/static/schedule/flow/today-column-flow-yellow.png",
+  orange: "/static/schedule/flow/today-column-flow-orange.png",
+};
 
 interface IncludedScheduleLike {
   id: string;
@@ -143,6 +158,7 @@ const props = defineProps<{
   scheduleTrackStyle: CSSProperties;
   scheduleWeekPanels: ScheduleWeekPanel[];
   weekdayLabels: string[];
+  themeKey: ThemeKey;
   visibleDayNumbers: number[];
   tableBodyScrollIntoViewId: string;
   getOwnerDotStyle: (ownerId: string) => CSSProperties;
@@ -159,9 +175,18 @@ const props = defineProps<{
   onScheduleTouchEnd: (...args: any[]) => void;
   onScheduleTouchCancel: (...args: any[]) => void;
   onScheduleMouseDown: (...args: any[]) => void;
-  onScheduleMouseMove: (...args: any[]) => void;
-  onScheduleMouseUp: (...args: any[]) => void;
 }>();
+
+const todayColumnFlowImageSrc = computed(() => {
+  return THEME_FLOW_IMAGE_SRC_MAP[props.themeKey] || THEME_FLOW_IMAGE_SRC_MAP.black;
+});
+
+const allDayNumbers = [1, 2, 3, 4, 5, 6, 7] as const;
+const visibleDayNumberSet = computed(() => new Set(props.visibleDayNumbers));
+
+const isDayVisible = (dayNumber: number) => {
+  return visibleDayNumberSet.value.has(dayNumber);
+};
 
 const todayColumnOverlayStyleByWeek = computed<Record<number, CSSProperties>>(() => {
   const dayCount = props.visibleDayNumbers.length;
@@ -182,7 +207,7 @@ const todayColumnOverlayStyleByWeek = computed<Record<number, CSSProperties>>(()
     styleMap[panel.week] = {
       left: `calc(${SCHEDULE_TIME_COLUMN_WIDTH} + (100% - ${SCHEDULE_TIME_COLUMN_WIDTH}) * ${todayIndex} / ${dayCount})`,
       width: `calc((100% - ${SCHEDULE_TIME_COLUMN_WIDTH}) / ${dayCount})`,
-      height: `calc(${SCHEDULE_HEAD_ROW_HEIGHT} + ${panel.rows.length} * ${SCHEDULE_BODY_ROW_HEIGHT})`,
+      height: `calc(${SCHEDULE_HEAD_ROW_HEIGHT} + ${panel.rows.length} * ${SCHEDULE_BODY_ROW_HEIGHT} + ${TODAY_COLUMN_OUTLINE_BOTTOM_EXTEND})`,
     };
   }
   return styleMap;
@@ -398,12 +423,32 @@ onUnmounted(() => {
 }
 
 .day-col {
-  flex: 1;
+  flex: 1 1 0;
+  max-width: 100%;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
+  overflow: visible;
+  will-change: max-width, opacity, transform;
+  transition:
+    flex-basis 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    max-width 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 180ms ease,
+    padding 220ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.day-col.day-col-hidden {
+  flex: 0 0 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding-left: 0;
+  padding-right: 0;
+  pointer-events: none;
+  transform: scaleX(0.9);
 }
 
 .day-col:last-child {
@@ -508,19 +553,28 @@ onUnmounted(() => {
   padding: 0;
   box-sizing: border-box;
   pointer-events: none;
+  overflow: visible;
 }
 
 .cell-title {
+  width: 100%;
   font-size: 19rpx;
   line-height: 1.28;
   color: var(--text-main);
   font-weight: 600;
+  max-height: 2.56em;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .cell-room {
+  width: 100%;
   font-size: 15rpx;
   line-height: 1.2;
   color: var(--text-sub);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .cell-practice-tag {
@@ -575,7 +629,7 @@ onUnmounted(() => {
   pointer-events: none;
   opacity: 0;
   will-change: opacity;
-  animation: today-column-outline-entry 720ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: today-column-outline-entry 860ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .today-column-outline-base {
@@ -604,7 +658,7 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: inherit;
   will-change: height, opacity;
-  animation: today-column-flow-window-reveal 780ms cubic-bezier(0.22, 1, 0.36, 1) 120ms 1 forwards;
+  animation: today-column-flow-window-reveal 1080ms cubic-bezier(0.19, 1, 0.22, 1) 40ms 1 forwards;
 }
 
 .today-column-flow-image {
@@ -620,12 +674,6 @@ onUnmounted(() => {
   0% {
     opacity: 0;
   }
-  14% {
-    opacity: 0.56;
-  }
-  58% {
-    opacity: 1;
-  }
   100% {
     opacity: 1;
   }
@@ -634,11 +682,7 @@ onUnmounted(() => {
 @keyframes today-column-flow-window-reveal {
   0% {
     height: 0%;
-    opacity: 0.32;
-  }
-  30% {
-    height: 38%;
-    opacity: 0.76;
+    opacity: 0;
   }
   100% {
     height: 100%;
