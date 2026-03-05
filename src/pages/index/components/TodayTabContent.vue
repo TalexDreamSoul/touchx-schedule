@@ -1,85 +1,87 @@
 <template>
-  <view class="today-greeting-top">{{ todayGreetingText }}</view>
+  <view class="today-page-shell">
+    <view class="today-greeting-top">{{ todayGreetingText }}</view>
 
-  <view v-if="!isAuthed || shouldShowStudyCard" class="lesson-widget-block">
-    <view class="lesson-widget-head">
-      <view class="lesson-widget-title">今日待上课程</view>
-      <view class="lesson-widget-count">{{ isAuthed ? `${pendingCourseCount} 门` : "待授权" }}</view>
-    </view>
-    <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
-    <template v-else>
-      <scroll-view v-if="pendingCourseItems.length > 0" class="lesson-widget-scroll" scroll-x :show-scrollbar="false">
-        <view class="lesson-widget-list">
-          <view
-            v-for="item in pendingCourseItems"
-            :key="item.key"
-            class="lesson-widget-item"
-            :class="{ 'has-owner-tag': shouldShowPendingCourseOwner(item.course) }"
-            :style="getCourseCardStyle(item.course)"
-            @click="handleTodayCourseClick(item.course)"
-          >
-            <view class="lesson-widget-mark" />
-            <view class="lesson-widget-main">
-              <view class="lesson-widget-name-row">
-                <view class="lesson-widget-name">{{ item.course.name }}</view>
-                <text v-if="isPracticeCourse(item.course)" class="practice-tag">实践</text>
-              </view>
-              <view class="lesson-widget-reminder">{{ getItemDepartureReminderText(item) }}</view>
-            </view>
-            <view class="lesson-widget-time">
-              <view>{{ item.startTime }}</view>
-              <view>{{ item.endTime }}</view>
-            </view>
-            <view v-if="shouldShowPendingCourseOwner(item.course)" class="lesson-widget-owner-tag">
-              来自 {{ item.course.ownerName }}
-            </view>
-          </view>
-        </view>
-      </scroll-view>
-      <view v-else class="today-ready empty">今天暂无待上课程。</view>
-
-    </template>
-  </view>
-
-  <view class="card">
-    <view class="section-title">今日课程</view>
-    <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
-    <template v-else>
-      <view v-if="todayCourses.length > 0" class="section-sub">今天有 {{ todayCourses.length }} 门课，共 {{ todaySectionLoad }} 节</view>
-      <view v-if="todayCourses.length === 0" class="tip">今天没有安排课程。</view>
-      <scroll-view v-else class="today-list-scroll" scroll-y :show-scrollbar="false" :style="{ height: todayListScrollHeight }">
-        <view class="today-list">
-          <view
-            v-for="course in todayCourses"
-            :key="`today-${course.ownerId}-${course.id}`"
-            class="today-item"
-            :class="{ accent: isFocusCourse(course) }"
-            :style="getCourseCardStyle(course)"
-            @click="handleTodayCourseClick(course)"
-          >
-            <view class="today-item-main">
-              <view class="today-course-row">
-                <view class="today-course">{{ course.name }}</view>
-                <text v-if="isPracticeCourse(course)" class="practice-tag">实践</text>
-              </view>
-              <view class="today-owner">{{ course.ownerName }}</view>
-              <view class="today-item-meta">教室：{{ formatCourseClassroom(course) }}</view>
-              <view class="today-item-meta">教师：{{ formatCourseTeacher(course) }}</view>
-            </view>
-            <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
-          </view>
-        </view>
-      </scroll-view>
-    </template>
-  </view>
-
-  <view class="card">
-    <view class="today-semester-card">
-      <view class="today-semester-title">我的加入</view>
-      <view class="today-semester-main">
-        你已经开学 {{ semesterElapsed.totalDays }} 天 {{ semesterElapsed.totalWeeks }} 周 {{ semesterElapsed.totalHours }} 小时
+    <view v-if="!isAuthed || shouldShowStudyCard" class="lesson-widget-block">
+      <view class="lesson-widget-head">
+        <view class="lesson-widget-title">今日待上课程</view>
+        <view class="lesson-widget-count">{{ isAuthed ? `${pendingCourseCount} 门` : "待授权" }}</view>
       </view>
-      <view class="today-semester-note">* 以 3 月 1 日早上 8:00 作为起始计时</view>
+      <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
+      <template v-else>
+        <scroll-view v-if="pendingCourseItems.length > 0" class="lesson-widget-scroll" scroll-x :show-scrollbar="false">
+          <view class="lesson-widget-list">
+            <view
+              v-for="item in pendingCourseItems"
+              :key="item.key"
+              class="lesson-widget-item"
+              :class="{ 'has-owner-tag': shouldShowPendingCourseOwner(item.course) }"
+              :style="getCourseCardStyle(item.course)"
+              @click="handleTodayCourseClick(item.course)"
+            >
+              <view class="lesson-widget-mark" />
+              <view class="lesson-widget-main">
+                <view class="lesson-widget-name-row">
+                  <view class="lesson-widget-name">{{ item.course.name }}</view>
+                  <text v-if="isPracticeCourse(item.course)" class="practice-tag">实践</text>
+                </view>
+                <view class="lesson-widget-reminder">{{ getItemDepartureReminderText(item) }}</view>
+              </view>
+              <view class="lesson-widget-time">
+                <view>{{ item.startTime }}</view>
+                <view>{{ item.endTime }}</view>
+              </view>
+              <view v-if="shouldShowPendingCourseOwner(item.course)" class="lesson-widget-owner-tag">
+                来自 {{ item.course.ownerName }}
+              </view>
+            </view>
+          </view>
+        </scroll-view>
+        <view v-else class="today-ready empty">今天暂无待上课程。</view>
+
+      </template>
+    </view>
+
+    <view class="card">
+      <view class="section-title">今日课程</view>
+      <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
+      <template v-else>
+        <view v-if="todayCourses.length > 0" class="section-sub">今天有 {{ todayCourses.length }} 门课，共 {{ todaySectionLoad }} 节</view>
+        <view v-if="todayCourses.length === 0" class="tip">今天没有安排课程。</view>
+        <scroll-view v-else class="today-list-scroll" scroll-y :show-scrollbar="false" :style="{ height: todayListScrollHeight }">
+          <view class="today-list">
+            <view
+              v-for="course in todayCourses"
+              :key="`today-${course.ownerId}-${course.id}`"
+              class="today-item"
+              :class="{ accent: isFocusCourse(course) }"
+              :style="getCourseCardStyle(course)"
+              @click="handleTodayCourseClick(course)"
+            >
+              <view class="today-item-main">
+                <view class="today-course-row">
+                  <view class="today-course">{{ course.name }}</view>
+                  <text v-if="isPracticeCourse(course)" class="practice-tag">实践</text>
+                </view>
+                <view class="today-owner">{{ course.ownerName }}</view>
+                <view class="today-item-meta">教室：{{ formatCourseClassroom(course) }}</view>
+                <view class="today-item-meta">教师：{{ formatCourseTeacher(course) }}</view>
+              </view>
+              <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
+            </view>
+          </view>
+        </scroll-view>
+      </template>
+    </view>
+
+    <view class="card">
+      <view class="today-semester-card">
+        <view class="today-semester-title">我的加入</view>
+        <view class="today-semester-main">
+          你已经开学 {{ semesterElapsed.totalDays }} 天 {{ semesterElapsed.totalWeeks }} 周 {{ semesterElapsed.totalHours }} 小时
+        </view>
+        <view class="today-semester-note">* 以 3 月 1 日早上 8:00 作为起始计时</view>
+      </view>
     </view>
   </view>
 </template>
@@ -342,6 +344,10 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
 </script>
 
 <style scoped>
+.today-page-shell {
+  padding: 0 0.5rem;
+}
+
 .card {
   position: relative;
   overflow: hidden;

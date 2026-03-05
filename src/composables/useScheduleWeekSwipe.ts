@@ -36,7 +36,7 @@ interface UseScheduleWeekSwipeOptions {
 }
 
 const SCHEDULE_TAB_KEY = "schedule";
-const WEEK_SWIPE_TRIGGER_DISTANCE = 80;
+const WEEK_SWIPE_TRIGGER_RATIO = 0.5;
 const WEEK_SWIPE_MAX_VERTICAL_DRIFT = 34;
 const WEEK_SWIPE_INTENT_LOCK_DISTANCE = 8;
 const WEEK_SWIPE_ACTIVATE_DISTANCE = 14;
@@ -168,6 +168,11 @@ export const useScheduleWeekSwipe = ({
     return clampNumber(target, WEEK_SWIPE_MIN_DURATION_MS, Math.min(WEEK_SWIPE_MAX_DURATION_MS, fallbackMs));
   };
 
+  const resolveSwipeTriggerDistance = () => {
+    const viewportWidth = Math.max(1, scheduleSwipeViewportWidth.value);
+    return viewportWidth * WEEK_SWIPE_TRIGGER_RATIO;
+  };
+
   const setScheduleSwipeOffset = (offset: number, animated: boolean, onFinished?: () => void, durationMs = WEEK_SWIPE_BASE_DURATION_MS) => {
     clearScheduleSwipeRaf();
     clearScheduleSwipeTimer();
@@ -287,11 +292,14 @@ export const useScheduleWeekSwipe = ({
 
     const deltaX = wasTracking ? currentOffset : resolvedEndPoint.x - startPoint.x;
     const deltaY = Math.abs(resolvedEndPoint.y - startPoint.y);
-    const distancePassed = Math.abs(deltaX) >= WEEK_SWIPE_TRIGGER_DISTANCE;
+    const triggerDistance = resolveSwipeTriggerDistance();
+    const absDeltaX = Math.abs(deltaX);
+    const distancePassed = absDeltaX >= triggerDistance;
     const velocityPassed = Math.abs(safeVelocityX) >= WEEK_SWIPE_VELOCITY_TRIGGER;
     const projectedDeltaX = deltaX + safeVelocityX * WEEK_SWIPE_MOMENTUM_FACTOR;
-    const momentumPassed = Math.abs(projectedDeltaX) >= WEEK_SWIPE_TRIGGER_DISTANCE;
-    if ((!distancePassed && !velocityPassed && !momentumPassed) || deltaY > WEEK_SWIPE_MAX_VERTICAL_DRIFT) {
+    const momentumPassed = Math.abs(projectedDeltaX) >= triggerDistance;
+    const blockedByVerticalDrift = deltaY > WEEK_SWIPE_MAX_VERTICAL_DRIFT && deltaY > absDeltaX;
+    if ((!distancePassed && !velocityPassed && !momentumPassed) || blockedByVerticalDrift) {
       if (Math.abs(deltaX) >= WEEK_SWIPE_ACTIVATE_DISTANCE) {
         ignoreTapUntil.value = Date.now() + 220;
       }

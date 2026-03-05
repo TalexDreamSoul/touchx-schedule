@@ -270,24 +270,32 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.card {
-  background: var(--card-bg);
-  border-radius: 14rpx;
-  padding: 16rpx;
-  border: 1rpx solid var(--line);
-}
-
 .schedule-card {
-  background: var(--card-bg);
-  border: 1rpx solid var(--line);
+  position: relative;
+  /* border: 1rpx solid var(--line); */
   border-radius: 20rpx;
-  padding: 10rpx;
-  margin-bottom: 0;
+  margin-top: 0.25rem;
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
 }
+
+/* .schedule-card::before {
+  content: "";
+  position: absolute;
+
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  pointer-events: none;
+  z-index: -1;
+  background: var(--card-bg);
+  border-radius: 20rpx;
+  opacity: 0.25;
+} */
 
 .schedule-card .owner-legend {
   margin-left: 4rpx;
@@ -318,7 +326,7 @@ onUnmounted(() => {
 
 .table-wrap {
   width: 100%;
-  border-radius: 16rpx;
+  border-radius: 28px;
   overflow: hidden;
   background: var(--muted-bg);
   position: relative;

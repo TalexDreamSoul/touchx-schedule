@@ -2994,9 +2994,10 @@ function formatMonthDay(date: Date) {
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
-  padding: 20rpx 20rpx 140rpx;
+  padding: 0 0.5rem;
+  /* padding: 20rpx 20rpx 140rpx;
   padding: 20rpx 20rpx calc(140rpx + env(safe-area-inset-bottom));
-  padding: 20rpx 20rpx calc(140rpx + constant(safe-area-inset-bottom));
+  padding: 20rpx 20rpx calc(140rpx + constant(safe-area-inset-bottom)); */
   display: flex;
   flex-direction: column;
 }
