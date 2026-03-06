@@ -1,0 +1,104 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "",
+        "mp-weixin": {
+          "navigationStyle": "custom"
+        }
+      }
+    },
+    {
+      "path": "pages/profile/account",
+      "style": {
+        "navigationBarTitleText": "账号与授权"
+      }
+    },
+    {
+      "path": "pages/profile/avatar",
+      "style": {
+        "navigationBarTitleText": "微信头像"
+      }
+    },
+    {
+      "path": "pages/profile/student-no",
+      "style": {
+        "navigationBarTitleText": "编辑学号"
+      }
+    },
+    {
+      "path": "pages/profile/bind-student",
+      "style": {
+        "navigationBarTitleText": "绑定课表"
+      }
+    },
+    {
+      "path": "pages/profile/bind-guide",
+      "style": {
+        "navigationBarTitleText": "绑定指引"
+      }
+    },
+    {
+      "path": "pages/profile/subscribe",
+      "style": {
+        "navigationBarTitleText": "通知与订阅"
+      }
+    },
+    {
+      "path": "pages/profile/preferences",
+      "style": {
+        "navigationBarTitleText": "偏好设置"
+      }
+    },
+    {
+      "path": "pages/profile/food-campaign",
+      "style": {
+        "navigationBarTitleText": "食物竞选"
+      }
+    },
+    {
+      "path": "pages/profile/food-campaign-detail",
+      "style": {
+        "navigationBarTitleText": "竞选详情",
+        "mp-weixin": {
+          "enableShareAppMessage": true,
+          "enableShareTimeline": true
+        }
+      }
+    },
+    {
+      "path": "pages/profile/food-campaign-create",
+      "style": {
+        "navigationBarTitleText": "发起竞选"
+      }
+    },
+    {
+      "path": "pages/profile/food-candidate-pool",
+      "style": {
+        "navigationBarTitleText": "待选食物池"
+      }
+    },
+    {
+      "path": "pages/profile/food-campaign-history",
+      "style": {
+        "navigationBarTitleText": "竞选历史筛选"
+      }
+    },
+    {
+      "path": "pages/profile/food-campaign-invitees",
+      "style": {
+        "navigationBarTitleText": "选择参与人"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "",
+    "navigationBarBackgroundColor": "#F2F6FF",
+    "backgroundColor": "#F2F6FF",
+    "mp-weixin": {
+      "navigationStyle": "custom"
+    }
+  }
+}

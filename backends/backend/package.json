@@ -1,0 +1,19 @@
+{
+  "name": "@touchx/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev --host 0.0.0.0 --port 8787",
+    "build": "nuxt build",
+    "preview": "nuxt preview --host 0.0.0.0 --port 8787",
+    "deploy": "nuxt build && wrangler --cwd .output deploy",
+    "type-check": "nuxt typecheck"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260301.0",
+    "nuxt": "^3.17.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.7.0"
+  }
+}
