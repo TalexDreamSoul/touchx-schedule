@@ -151,6 +151,19 @@ const STORAGE_SCHEDULE_CACHE_SOURCE_KEY = "touchx_v2_schedule_cache_source";
 const MAX_COMPARE_OWNERS = 7;
 const DEFAULT_TERM_WEEK1_MONDAY = localTermMeta.week1Monday;
 const DEFAULT_TERM_MAX_WEEK = localTermMeta.maxWeek;
+const DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE: Record<string, string> = {
+  "2026-04-04": "休",
+  "2026-04-05": "休",
+  "2026-04-06": "休",
+  "2026-05-01": "休",
+  "2026-05-02": "休",
+  "2026-05-03": "休",
+  "2026-05-04": "休",
+  "2026-05-05": "休",
+  "2026-06-19": "休",
+  "2026-06-20": "休",
+  "2026-06-21": "休",
+};
 const RUNTIME_BACKEND_DEFAULT_MODE = resolveBackendRuntimeDefaultMode();
 const DEFAULT_BACKEND_BASE_URL = RUNTIME_BACKEND_DEFAULT_MODE === "local" ? LOCAL_BACKEND_BASE_URL : ONLINE_BACKEND_BASE_URL;
 
@@ -161,6 +174,7 @@ const scheduleDataSource = ref<ScheduleDataSource>("local");
 const scheduleCacheAt = ref(0);
 const runtimeTermWeek1Monday = ref(DEFAULT_TERM_WEEK1_MONDAY);
 const runtimeTermMaxWeek = ref(DEFAULT_TERM_MAX_WEEK);
+const runtimeHolidayLabelByDate = ref<Record<string, string>>({ ...DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE });
 const runtimeSectionTimes = ref<SectionTime[]>([...localSectionTimes]);
 const runtimeWeekdayLabels = ref<string[]>([...localWeekdayLabels]);
 
@@ -301,6 +315,10 @@ interface BackendSchedulePayload {
     week1Monday?: string;
     maxWeek?: number;
   };
+  holidays?: Array<{
+    date?: string;
+    label?: string;
+  }>;
   sectionTimes?: Array<{
     section: number;
     start: string;
@@ -314,6 +332,7 @@ interface BackendSchedulePayload {
 
 interface BackendSingleSchedulePayload {
   term?: BackendSchedulePayload["term"];
+  holidays?: BackendSchedulePayload["holidays"];
   sectionTimes?: BackendSchedulePayload["sectionTimes"];
   weekdayLabels?: string[];
   student?: StudentSchedule;
@@ -1192,6 +1211,13 @@ const estimateCommuteMinutes = (classroom?: string | null) => {
   return 7;
 };
 
+const resolveSpecialPreClassLeadMinutes = (day: number, startTime: string) => {
+  if (day === 5 && String(startTime || "").trim() === "14:30") {
+    return 60;
+  }
+  return 0;
+};
+
 const subtractMinutesFromTime = (timeText: string, minutes: number) => {
   const match = /^(\d{1,2}):(\d{2})$/.exec((timeText || "").trim());
   if (!match) {
@@ -1211,12 +1237,15 @@ const subtractMinutesFromTime = (timeText: string, minutes: number) => {
 const departureReminder = computed(() => {
   const next = todayBackendBrief.value?.nextCourse;
   if (next) {
+    const specialLeadMinutes = resolveSpecialPreClassLeadMinutes(todayInfo.value.weekday, next.startTime);
     const commuteMinutes = next.commuteMinutes > 0 ? next.commuteMinutes : estimateCommuteMinutes(next.classroom);
-    const leaveAt = subtractMinutesFromTime(next.startTime, commuteMinutes);
+    const leadMinutes = Math.max(commuteMinutes, specialLeadMinutes);
+    const leaveAt = subtractMinutesFromTime(next.startTime, leadMinutes);
     return {
       courseName: next.name,
       timeRange: `${next.startTime}-${next.endTime}`,
       commuteMinutes,
+      leadMinutes,
       leaveAt,
     };
   }
@@ -1227,11 +1256,14 @@ const departureReminder = computed(() => {
   }
   const commuteMinutes = estimateCommuteMinutes(info.course.classroom);
   const startTime = sectionTimes.value[info.course.startSection - 1]?.start ?? "--:--";
+  const specialLeadMinutes = resolveSpecialPreClassLeadMinutes(info.course.day, startTime);
+  const leadMinutes = Math.max(commuteMinutes, specialLeadMinutes);
   return {
     courseName: info.course.name,
     timeRange: `${startTime}-${sectionTimes.value[info.course.endSection - 1]?.end ?? "--:--"}`,
     commuteMinutes,
-    leaveAt: subtractMinutesFromTime(startTime, commuteMinutes),
+    leadMinutes,
+    leaveAt: subtractMinutesFromTime(startTime, leadMinutes),
   };
 });
 
@@ -1398,6 +1430,36 @@ const normalizeScheduleWeekdayLabels = (value: unknown) => {
   return rows;
 };
 
+const normalizeScheduleHolidayLabelByDate = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return { ...DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE };
+  }
+  const nextMap: Record<string, string> = {};
+  value.forEach((item) => {
+    if (typeof item === "string") {
+      const date = item.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        nextMap[date] = "休";
+      }
+      return;
+    }
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const row = item as { date?: string; label?: string };
+    const date = String(row.date || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return;
+    }
+    const label = String(row.label || "").trim() || "休";
+    nextMap[date] = label;
+  });
+  if (Object.keys(nextMap).length > 0) {
+    return nextMap;
+  }
+  return { ...DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE };
+};
+
 const syncWeekValues = () => {
   currentWeek.value = resolveWeekByDate(new Date());
   if (selectedWeek.value > termMaxWeek.value) {
@@ -1408,9 +1470,15 @@ const syncWeekValues = () => {
   }
 };
 
+const syncSelectedWeekToCurrent = () => {
+  syncWeekValues();
+  selectedWeek.value = currentWeek.value;
+};
+
 const applyRuntimeScheduleMeta = (payload?: BackendSchedulePayload) => {
   runtimeTermWeek1Monday.value = normalizeScheduleWeek1Monday(payload?.term?.week1Monday);
   runtimeTermMaxWeek.value = normalizeScheduleMaxWeek(payload?.term?.maxWeek);
+  runtimeHolidayLabelByDate.value = normalizeScheduleHolidayLabelByDate(payload?.holidays);
   runtimeSectionTimes.value = normalizeScheduleSectionTimes(payload?.sectionTimes);
   runtimeWeekdayLabels.value = normalizeScheduleWeekdayLabels(payload?.weekdayLabels);
   syncWeekValues();
@@ -2024,10 +2092,7 @@ const refreshCurrentTabData = async (tab: TabKey) => {
 
 onMounted(() => {
   resolveTopSafeInset();
-  const savedWeek = Number(uni.getStorageSync(STORAGE_SELECTED_WEEK_KEY));
-  if (savedWeek >= 1 && savedWeek <= termMaxWeek.value) {
-    selectedWeek.value = savedWeek;
-  }
+  syncSelectedWeekToCurrent();
 
   syncDisplayStateFromStorage();
 
@@ -2073,6 +2138,7 @@ onMounted(() => {
 
 onShow(() => {
   syncDisplayStateFromStorage();
+  syncSelectedWeekToCurrent();
   const endpoint = enforceBackendEndpointStorage();
   applyBackendEndpointMode(endpoint.mode, false);
   void refreshThemeImageMap();
@@ -2657,6 +2723,22 @@ const visibleScheduleDayNumbers = computed(() => {
   return showWeekend.value ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5];
 });
 
+const toDateKey = (date: Date) => {
+  const year = `${date.getFullYear()}`.padStart(4, "0");
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const getScheduleDayBadgeText = (week: number, day: number) => {
+  const safeWeek = Math.max(1, Number(week || 1));
+  const safeDay = Math.max(1, Math.min(7, Number(day || 1)));
+  const base = parseDate(termWeek1Monday.value);
+  const targetDate = addDays(base, (safeWeek - 1) * 7 + (safeDay - 1));
+  const dateKey = toDateKey(targetDate);
+  return runtimeHolidayLabelByDate.value[dateKey] || "";
+};
+
 const resolveScheduleTopHeaderProps = (tabKey: TabKey) => ({
   isScheduleTab: tabKey === "schedule",
   headerTitle: tabKey === "profile" ? "我的" : "",
@@ -2715,6 +2797,7 @@ const scheduleTabProps = computed(() => ({
   weekdayLabels: weekdayLabels.value,
   themeKey: themeKey.value,
   visibleDayNumbers: visibleScheduleDayNumbers.value,
+  getDayBadgeText: getScheduleDayBadgeText,
   tableBodyScrollIntoViewId: scheduleTableScrollIntoViewId.value,
   getOwnerDotStyle,
   getOwnerMarkerStyle,

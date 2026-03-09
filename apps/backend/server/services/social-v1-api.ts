@@ -80,17 +80,37 @@ const SECTION_TIMES: Array<{
   end: string;
   part: "上午" | "下午" | "晚上";
 }> = [
-  { section: 1, start: "08:00", end: "08:45", part: "上午" },
-  { section: 2, start: "08:55", end: "09:40", part: "上午" },
-  { section: 3, start: "10:00", end: "10:45", part: "上午" },
-  { section: 4, start: "10:55", end: "11:40", part: "上午" },
-  { section: 5, start: "14:00", end: "14:45", part: "下午" },
-  { section: 6, start: "14:55", end: "15:40", part: "下午" },
-  { section: 7, start: "16:00", end: "16:45", part: "下午" },
-  { section: 8, start: "16:55", end: "17:40", part: "下午" },
+  { section: 1, start: "08:30", end: "09:15", part: "上午" },
+  { section: 2, start: "09:20", end: "10:05", part: "上午" },
+  { section: 3, start: "10:25", end: "11:10", part: "上午" },
+  { section: 4, start: "11:15", end: "12:00", part: "上午" },
+  { section: 5, start: "14:30", end: "15:15", part: "下午" },
+  { section: 6, start: "15:20", end: "16:05", part: "下午" },
+  { section: 7, start: "16:25", end: "17:10", part: "下午" },
+  { section: 8, start: "17:15", end: "18:00", part: "下午" },
   { section: 9, start: "19:00", end: "19:45", part: "晚上" },
-  { section: 10, start: "19:55", end: "20:40", part: "晚上" },
-  { section: 11, start: "20:50", end: "21:35", part: "晚上" },
+  { section: 10, start: "19:50", end: "20:35", part: "晚上" },
+  { section: 11, start: "20:40", end: "21:25", part: "晚上" },
+];
+
+const LEGACY_TERM_META = {
+  name: "2025-2026-2",
+  week1Monday: "2026-03-02",
+  maxWeek: 25,
+};
+
+const LEGACY_TERM_HOLIDAYS = [
+  { date: "2026-04-04", label: "休" },
+  { date: "2026-04-05", label: "休" },
+  { date: "2026-04-06", label: "休" },
+  { date: "2026-05-01", label: "休" },
+  { date: "2026-05-02", label: "休" },
+  { date: "2026-05-03", label: "休" },
+  { date: "2026-05-04", label: "休" },
+  { date: "2026-05-05", label: "休" },
+  { date: "2026-06-19", label: "休" },
+  { date: "2026-06-20", label: "休" },
+  { date: "2026-06-21", label: "休" },
 ];
 
 const asString = (value: unknown) => String(value || "").trim();
@@ -839,10 +859,40 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
   const dayLabel = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][dayNo - 1] || "周一";
   const entries = resolvePublishedEntriesByUser(store, user).filter((item) => item.day === dayNo);
   const sorted = [...entries].sort((left, right) => left.startSection - right.startSection);
-  const nextEntry = sorted[0] || null;
   const sectionMap = new Map(SECTION_TIMES.map((item) => [item.section, item] as const));
-  const startSlot = nextEntry ? sectionMap.get(nextEntry.startSection) || null : null;
-  const endSlot = nextEntry ? sectionMap.get(nextEntry.endSection) || null : null;
+  const toTodayTimestamp = (timeText: string) => {
+    const [hour, minute] = String(timeText || "").split(":").map((item) => Number(item));
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+      return NaN;
+    }
+    const clone = new Date(now);
+    clone.setHours(hour, minute, 0, 0);
+    return clone.getTime();
+  };
+  const nowTs = now.getTime();
+  const nextCandidate = sorted
+    .map((entry) => {
+      const startSlot = sectionMap.get(entry.startSection) || null;
+      const endSlot = sectionMap.get(entry.endSection) || null;
+      if (!startSlot || !endSlot) {
+        return null;
+      }
+      const startTs = toTodayTimestamp(startSlot.start);
+      const endTs = toTodayTimestamp(endSlot.end);
+      if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
+        return null;
+      }
+      return {
+        entry,
+        startSlot,
+        endSlot,
+        startTs,
+        endTs,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .filter((item) => item.endTs > nowTs)
+    .sort((left, right) => left.startTs - right.startTs)[0] || null;
   const tips: string[] = [];
   if (sorted.length === 0) {
     tips.push("今日无课，可安排复习或运动");
@@ -864,20 +914,23 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
       temperature: "18℃~24℃",
       advice: "建议携带水杯",
     },
-    nextCourse: nextEntry
+    nextCourse: nextCandidate
       ? {
-          name: nextEntry.courseName,
-          startSection: nextEntry.startSection,
-          endSection: nextEntry.endSection,
-          startTime: startSlot?.start || "",
-          endTime: endSlot?.end || "",
-          minutesToStart: 30,
-          classroom: nextEntry.classroom || null,
-          teacher: nextEntry.teacher || null,
+          name: nextCandidate.entry.courseName,
+          startSection: nextCandidate.entry.startSection,
+          endSection: nextCandidate.entry.endSection,
+          startTime: nextCandidate.startSlot.start,
+          endTime: nextCandidate.endSlot.end,
+          minutesToStart: Math.max(1, Math.ceil((nextCandidate.startTs - nowTs) / (60 * 1000))),
+          classroom: nextCandidate.entry.classroom || null,
+          teacher: nextCandidate.entry.teacher || null,
           buildingLabel: "教学区",
-          commuteMinutes: 12,
+          commuteMinutes: dayNo === 5 && nextCandidate.startSlot.start === "14:30" ? 60 : 12,
           prepMinutes: 10,
-          leaveInMinutes: 18,
+          leaveInMinutes: Math.max(
+            0,
+            Math.ceil((nextCandidate.startTs - nowTs) / (60 * 1000)) - (dayNo === 5 && nextCandidate.startSlot.start === "14:30" ? 60 : 12),
+          ),
           prepareItems: ["学生卡", "水杯"],
           from: "cloud",
         }
@@ -1888,13 +1941,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     return {
       ok: true,
-      term: {
-        name: "2025-2026-1",
-        week1Monday: "2026-02-23",
-        maxWeek: 20,
-      },
+      term: LEGACY_TERM_META,
       sectionTimes: SECTION_TIMES,
       weekdayLabels: ["一", "二", "三", "四", "五", "六", "日"],
+      holidays: LEGACY_TERM_HOLIDAYS,
       student: toLegacyScheduleStudentPayload(store, targetUser, user),
       generatedAt: Date.now(),
     };

@@ -29,7 +29,10 @@
                   'day-col-hidden': !isDayVisible(dayNumber),
                 }"
               >
-                {{ weekdayLabels[dayNumber - 1] }}
+                <view class="day-head-main">
+                  <text>{{ weekdayLabels[dayNumber - 1] }}</text>
+                  <text v-if="getDayBadgeText(panel.week, dayNumber)" class="day-holiday-tag">{{ getDayBadgeText(panel.week, dayNumber) }}</text>
+                </view>
               </view>
             </view>
           </view>
@@ -160,6 +163,7 @@ const props = defineProps<{
   weekdayLabels: string[];
   themeKey: ThemeKey;
   visibleDayNumbers: number[];
+  getDayBadgeText: (week: number, day: number) => string;
   tableBodyScrollIntoViewId: string;
   getOwnerDotStyle: (ownerId: string) => CSSProperties;
   getOwnerMarkerStyle: (ownerId: string) => CSSProperties;
@@ -498,6 +502,24 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--text-main);
   background: var(--muted-bg);
+}
+
+.day-head-main {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  min-width: 0;
+}
+
+.day-holiday-tag {
+  font-size: 16rpx;
+  line-height: 1;
+  color: #d24747;
+  border: 1rpx solid rgba(210, 71, 71, 0.35);
+  border-radius: 999rpx;
+  padding: 1rpx 6rpx;
+  background: rgba(210, 71, 71, 0.08);
 }
 
 .section-no {

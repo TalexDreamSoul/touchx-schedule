@@ -41,6 +41,7 @@
         <view class="lesson-widget-title">今日待上课程</view>
         <view class="lesson-widget-count">{{ isAuthed ? `${pendingCourseCount} 门` : "待授权" }}</view>
       </view>
+      <view v-if="fridayEarlyNoticeText" class="lesson-special-notice">{{ fridayEarlyNoticeText }}</view>
       <view v-if="!isAuthed" class="auth-gate-line" @click="onAuthorize">去授权</view>
       <template v-else>
         <scroll-view v-if="pendingCourseItems.length > 0" class="lesson-widget-scroll" scroll-x :show-scrollbar="false">
@@ -170,6 +171,7 @@ interface DepartureReminderLike {
   courseName: string;
   timeRange: string;
   commuteMinutes: number;
+  leadMinutes?: number;
   leaveAt: string;
 }
 
@@ -253,6 +255,20 @@ const pendingCourseItems = computed<PendingCourseItem[]>(() => {
   }
 
   return items.sort((a, b) => a.startTs - b.startTs);
+});
+
+const fridayEarlyNoticeText = computed(() => {
+  if (props.todayInfo.weekdayLabel !== "周五") {
+    return "";
+  }
+  const hasTwoThirtyCourse = props.todayCourses.some((course) => {
+    const startTime = props.getSectionStartTime(course.startSection);
+    return startTime === "14:30";
+  });
+  if (!hasTwoThirtyCourse) {
+    return "";
+  }
+  return "今日周五下午 14:30 课程建议提前 1 小时准备。";
 });
 
 const pendingCourseCount = computed(() => {
@@ -371,6 +387,10 @@ const getItemDepartureReminderText = (item: PendingCourseItem) => {
   const itemTimeRange = `${item.startTime}-${item.endTime}`;
   const reminder = props.departureReminder;
   if (reminder && reminder.courseName === item.course.name && reminder.timeRange === itemTimeRange) {
+    const leadMinutes = Number(reminder.leadMinutes || reminder.commuteMinutes || 0);
+    if (leadMinutes >= 60) {
+      return `该课建议提前 ${leadMinutes} 分钟准备，建议 ${reminder.leaveAt} 出发。`;
+    }
     return `走过去约 ${reminder.commuteMinutes} 分钟，建议 ${reminder.leaveAt} 出发。`;
   }
   const commuteMinutes = DEFAULT_COMMUTE_MINUTES;
@@ -458,6 +478,18 @@ const formatFoodCampaignTime = (timestamp: number) => {
   align-items: center;
   justify-content: space-between;
   gap: 12rpx;
+}
+
+.lesson-special-notice {
+  margin-top: 8rpx;
+  margin-bottom: 8rpx;
+  padding: 8rpx 10rpx;
+  border-radius: 10rpx;
+  font-size: 20rpx;
+  line-height: 1.3;
+  color: #9c2f2f;
+  border: 1rpx solid rgba(196, 75, 75, 0.3);
+  background: rgba(196, 75, 75, 0.08);
 }
 
 .lesson-widget-title {

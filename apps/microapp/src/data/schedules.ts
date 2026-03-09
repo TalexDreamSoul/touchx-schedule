@@ -46,7 +46,7 @@ const studentProfileMetaById: Record<string, StudentProfileMeta> = {
   liuxinrong: { studentNo: "2305200106", classLabel: "软件工程23(5)班" },
   goujiaxiang: { studentNo: "2305200330", classLabel: "软件工程23(1)班" },
   yanying: { studentNo: "2307300134", classLabel: "广播电视编导23(1)班" },
-  mawanqing: { studentNo: "239610012", classLabel: "体育教育23(2)班" },
+  mawanqing: { studentNo: "2396100121", classLabel: "体育教育23(2)班" },
   tangzixian: { studentNo: "2305100613", classLabel: "计算机科学与技术23(3)班" },
 } as const;
 
