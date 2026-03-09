@@ -13,7 +13,7 @@
     <view class="page-content-layer">
       <view class="tab-screen-stage">
         <view class="tab-screen-track" :style="tabScreenTrackStyle">
-          <view class="tab-screen-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(0) }">
+          <view class="tab-screen-panel today-tab-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(0) }">
             <schedule-top-header v-bind="todayScheduleTopHeaderProps" @include-click="openIncludePicker" @week-click="openWeekPicker" />
             <view class="content">
               <today-tab-content v-bind="todayTabProps" />
@@ -44,8 +44,9 @@
         :pending="quickAuthPending"
         :hint-text="authStatusHint"
         :show-student-no-input="true"
+        :require-student-no="true"
         :student-no-value="quickAuthStudentNo"
-        student-no-placeholder="可选：学号（留空按机器人绑定识别）"
+        student-no-placeholder="请输入学号（必填）"
         :require-agreement="true"
         :agreement-checked="quickAuthAgreementChecked"
         confirm-text="微信授权并登录"
@@ -105,8 +106,11 @@ import ScheduleTopHeader from "./components/ScheduleTopHeader.vue";
 import TodayTabContent from "./components/TodayTabContent.vue";
 import { buildCoursePracticeKey, getWeekCourses, normalizePracticeCourseKey } from "@/utils/schedule";
 import {
+  enforceBackendEndpointStorage,
   fetchMiniProgramCode,
   isAuthSessionInvalidError,
+  LOCAL_BACKEND_BASE_URL,
+  ONLINE_BACKEND_BASE_URL,
   readLocalWallpaperPath,
   resolveBackendMediaUrl,
   resolveBackendRuntimeDefaultMode,
@@ -147,8 +151,6 @@ const STORAGE_SCHEDULE_CACHE_SOURCE_KEY = "touchx_v2_schedule_cache_source";
 const MAX_COMPARE_OWNERS = 7;
 const DEFAULT_TERM_WEEK1_MONDAY = localTermMeta.week1Monday;
 const DEFAULT_TERM_MAX_WEEK = localTermMeta.maxWeek;
-const LOCAL_BACKEND_BASE_URL = String(import.meta.env.VITE_LOCAL_BACKEND_BASE_URL || "http://127.0.0.1:9986").trim();
-const ONLINE_BACKEND_BASE_URL = String(import.meta.env.VITE_ONLINE_BACKEND_BASE_URL || "https://schedule-ends.tagzxia.com").trim();
 const RUNTIME_BACKEND_DEFAULT_MODE = resolveBackendRuntimeDefaultMode();
 const DEFAULT_BACKEND_BASE_URL = RUNTIME_BACKEND_DEFAULT_MODE === "local" ? LOCAL_BACKEND_BASE_URL : ONLINE_BACKEND_BASE_URL;
 
@@ -269,8 +271,9 @@ interface TodayFoodCampaignHighlightItem {
 }
 
 interface AuthUserProfile {
-  openId: string;
+  openId?: string;
   studentId: string;
+  studentNo?: string;
   studentName: string;
   classLabel?: string;
   nickname: string;
@@ -385,7 +388,7 @@ const themeWallpaperEnabled = ref(true);
 const themeWallpaperBlurEnabled = ref(true);
 const themeWallpaperEffectLevel = ref<ThemeWallpaperEffectLevel>("medium");
 
-const { inferBackendEndpointModeByUrl, applyBackendEndpointMode, requestBackendGet, requestBackendPost } = useBackendApi({
+const { applyBackendEndpointMode, requestBackendGet, requestBackendPost } = useBackendApi({
   backendBaseUrl,
   backendEndpointMode,
   authToken,
@@ -678,7 +681,7 @@ const pageThemeStyle = computed((): Record<string, string> => {
 
 const refreshThemeImageMap = async () => {
   try {
-    const response = await requestBackendGet<BackendThemeImagesResponse>("/api/theme-images");
+    const response = await requestBackendGet<BackendThemeImagesResponse>("/api/v1/theme-images");
     const nextMap = normalizeThemeImageMap(response.images || {});
     const updatedAt = Number(response.updatedAt || Date.now());
     if (updatedAt > 0 && themeImageUpdatedAt.value > 0 && updatedAt < themeImageUpdatedAt.value) {
@@ -731,11 +734,12 @@ const resolveRequestErrorMessage = (error: unknown, fallback = "请求失败") =
   if (!rawMessage) {
     return fallback;
   }
+  const urlSuffix = rawMessage.match(/（https?:\/\/[^）]+）/)?.[0] || "";
   if (/timeout/i.test(rawMessage)) {
-    return "网络较慢，请稍后重试";
+    return `网络较慢，请稍后重试${urlSuffix}`;
   }
   if (/request:fail/i.test(rawMessage)) {
-    return "网络请求失败，请检查网络或后端地址";
+    return `网络请求失败，请检查网络或后端地址${urlSuffix}`;
   }
   return rawMessage;
 };
@@ -1499,8 +1503,8 @@ const loadScheduleForStudent = async (studentId: string) => {
   }
   try {
     const payload = await requestBackendGet<BackendSingleSchedulePayload>(
-      "/api/schedules/student",
-      { student_id: studentId },
+      "/api/v1/schedules/student",
+      { studentId },
       true,
     );
     const row = normalizeSingleStudentSchedulePayload(payload);
@@ -1614,7 +1618,7 @@ const runBackendProbe = async () => {
     return true;
   } catch (error) {
     backendProbeStatus.value = "offline";
-    todayBackendError.value = "后端连接失败，请确认服务是否已启动。";
+    todayBackendError.value = resolveRequestErrorMessage(error, "后端连接失败，请确认服务是否已启动。");
     return false;
   }
 };
@@ -1634,13 +1638,18 @@ const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
     return null;
   }
   const data = raw as Partial<AuthUserProfile>;
-  if (!data.openId) {
+  const studentId = String(data.studentId || "").trim();
+  const studentNo = String(data.studentNo || "").trim();
+  if (!studentId && !studentNo) {
     return null;
   }
+  const openId = String(data.openId || "").trim() || `wx_${studentNo || studentId}`;
+  const studentName = String(data.studentName || "").trim() || studentNo || studentId;
   return {
-    openId: String(data.openId),
-    studentId: String(data.studentId || ""),
-    studentName: String(data.studentName || ""),
+    openId,
+    studentId,
+    studentNo,
+    studentName,
     classLabel: String(data.classLabel || ""),
     nickname: String(data.nickname || ""),
     avatarUrl: String(data.avatarUrl || ""),
@@ -1663,13 +1672,23 @@ const restoreAuthSessionFromStorage = () => {
 };
 
 const requestAuthProfile = async () => {
-  const response = await requestBackendGet<BackendAuthMeResponse>("/api/auth/me", {}, true);
-  if (!response.user || !response.user.openId) {
+  const response = await requestBackendGet<BackendAuthMeResponse>("/api/v1/auth/me", {}, true);
+  const studentId = String(response.user?.studentId || "").trim();
+  const studentNo = String(response.user?.studentNo || "").trim();
+  if (!response.user || (!studentId && !studentNo)) {
     throw new Error("登录状态异常");
   }
   authMode.value = response.mode === "wechat" ? "wechat" : "mock";
   authExpiresAt.value = Number(response.expiresAt || 0);
-  authUser.value = response.user;
+  authUser.value = {
+    openId: String(response.user.openId || "").trim() || `wx_${studentNo || studentId}`,
+    studentId,
+    studentNo,
+    studentName: String(response.user.studentName || "").trim() || studentNo || studentId,
+    classLabel: String(response.user.classLabel || ""),
+    nickname: String(response.user.nickname || ""),
+    avatarUrl: String(response.user.avatarUrl || ""),
+  };
   authStatusHint.value = "";
   persistAuthSession();
 };
@@ -1685,7 +1704,7 @@ const refreshSocialDashboard = async () => {
   const previousIncludedIds = [...includedStudentIds.value];
   try {
     const response = await refreshSocialDashboardData(
-      () => requestBackendGet<SocialDashboardResponse>("/api/social/me", {}, true),
+      () => requestBackendGet<SocialDashboardResponse>("/api/v1/social/me", {}, true),
       backendBaseUrl.value,
     );
     await applyDashboardStateToView(response, previousIncludedIds);
@@ -1739,30 +1758,43 @@ const runQuickAuthLogin = async () => {
     return;
   }
   const studentNo = String(quickAuthStudentNo.value || "").trim();
+  if (!studentNo) {
+    authStatusHint.value = "请先填写学号";
+    uni.showToast({ title: "请先填写学号", icon: "none", duration: 1600 });
+    return;
+  }
+  if (!/^\d{6,32}$/.test(studentNo)) {
+    authStatusHint.value = "学号格式不正确";
+    uni.showToast({ title: "学号格式不正确", icon: "none", duration: 1600 });
+    return;
+  }
   const studentId = resolveStudentIdByStudentNo(studentNo);
   quickAuthPending.value = true;
   authStatusHint.value = "";
   try {
     const code = await fetchMiniProgramCode();
     const profile = await tryGetWechatProfile();
-    const response = await requestBackendPost<BackendAuthLoginResponse>("/api/auth/wechat-login", {
+    const response = await requestBackendPost<BackendAuthLoginResponse>("/api/v1/auth/wechat-login", {
       code,
-      student_id: studentId || undefined,
-      student_no: studentNo,
+      studentId: studentId || undefined,
+      studentNo,
       nickname: profile.nickname || "",
-      avatar_url: profile.avatarUrl || "",
-      client_platform: resolveClientPlatform(),
+      avatarUrl: profile.avatarUrl || "",
+      clientPlatform: resolveClientPlatform(),
     });
-    if (!response.token || !response.user?.openId) {
+    if (!response.token || !response.user) {
       throw new Error("授权失败，请重试");
     }
+    const resolvedStudentNo = String(response.user.studentNo || "").trim() || studentNo;
+    const resolvedStudentId = String(response.user.studentId || "").trim() || studentId;
     authToken.value = String(response.token || "").trim();
     authExpiresAt.value = Number(response.expiresAt || 0);
     authMode.value = response.mode === "wechat" ? "wechat" : "mock";
     authUser.value = {
-      openId: String(response.user.openId || ""),
-      studentId: String(response.user.studentId || ""),
-      studentName: String(response.user.studentName || ""),
+      openId: String(response.user.openId || "").trim() || `wx_${resolvedStudentNo || resolvedStudentId}`,
+      studentId: resolvedStudentId,
+      studentNo: resolvedStudentNo,
+      studentName: String(response.user.studentName || "").trim() || resolvedStudentNo || resolvedStudentId,
       classLabel: String(response.user.classLabel || ""),
       nickname: String(response.user.nickname || ""),
       avatarUrl: String(response.user.avatarUrl || ""),
@@ -1791,7 +1823,7 @@ async function unsubscribeStudent(targetStudentId: string) {
   }
   socialActionPending.value = true;
   try {
-    await requestBackendPost("/api/social/subscribe/remove", { target_student_id: targetStudentId }, true);
+    await requestBackendPost("/api/v1/social/subscribe/remove", { targetStudentId }, true);
     uni.showToast({ title: "已取消订阅", icon: "none", duration: 1200 });
     await refreshSocialDashboard();
   } catch (error) {
@@ -1819,9 +1851,9 @@ async function togglePracticeCourse(course: DisplayCourse) {
   practiceTogglePendingCourseKey.value = courseKey;
   try {
     const response = await requestBackendPost<BackendPracticeCourseToggleResponse>(
-      "/api/social/practice-course",
+      "/api/v1/social/practice-course",
       {
-        course_key: courseKey,
+        courseKey,
         enabled: nextEnabled,
       },
       true,
@@ -1861,7 +1893,7 @@ const refreshTodayBrief = async () => {
     return;
   }
   try {
-    const brief = await requestBackendGet<BackendTodayBrief>("/api/today-brief", { student_id: activeStudentId.value });
+    const brief = await requestBackendGet<BackendTodayBrief>("/api/v1/today-brief", { studentId: activeStudentId.value });
     todayBackendBrief.value = brief;
     todayBackendError.value = "";
   } catch (error) {
@@ -1884,7 +1916,7 @@ const refreshTodayFoodCampaigns = async () => {
     return;
   }
   try {
-    const response = await requestBackendGet<FoodCampaignListResponse>("/api/social/food-campaigns", { status: "all" }, true);
+    const response = await requestBackendGet<FoodCampaignListResponse>("/api/v1/social/food-campaigns", { status: "all" }, true);
     const items = Array.isArray(response.items) ? response.items : [];
     todayFoodCampaigns.value = items.map((item) => ({
       campaignId: String(item.campaignId || ""),
@@ -1999,17 +2031,8 @@ onMounted(() => {
 
   syncDisplayStateFromStorage();
 
-  if (RUNTIME_BACKEND_DEFAULT_MODE === "local") {
-    const savedMode = String(uni.getStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY) || "").trim();
-    const legacyUrl = String(uni.getStorageSync(STORAGE_BACKEND_BASE_URL_KEY) || "").trim();
-    const mode: BackendEndpointMode =
-      savedMode === "local" || savedMode === "online"
-        ? (savedMode as BackendEndpointMode)
-        : inferBackendEndpointModeByUrl(legacyUrl || DEFAULT_BACKEND_BASE_URL);
-    applyBackendEndpointMode(mode);
-  } else {
-    applyBackendEndpointMode("online");
-  }
+  const endpoint = enforceBackendEndpointStorage();
+  applyBackendEndpointMode(endpoint.mode, false);
   void refreshThemeImageMap();
   restoreAuthSessionFromStorage();
 
@@ -2050,6 +2073,8 @@ onMounted(() => {
 
 onShow(() => {
   syncDisplayStateFromStorage();
+  const endpoint = enforceBackendEndpointStorage();
+  applyBackendEndpointMode(endpoint.mode, false);
   void refreshThemeImageMap();
   restoreAuthSessionFromStorage();
   void refreshCurrentTabData(activeTab.value);
@@ -2171,7 +2196,7 @@ const openTodayFoodCampaign = (payload: unknown = "") => {
   }
   const targetId = typeof payload === "string" ? payload.trim() : "";
   const url = targetId
-    ? `/pages/profile/food-campaign-detail?campaign_id=${encodeURIComponent(targetId)}`
+    ? `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(targetId)}`
     : "/pages/profile/food-campaign";
   uni.navigateTo({ url });
 };
@@ -2292,41 +2317,19 @@ const toggleShowNonCurrentWeekCourses = () => {
 const pickBackendEndpointMode = () => {
   if (!isCurrentUserAdmin.value) {
     uni.showToast({
-      title: "仅管理员可切换后端",
+      title: "仅管理员可查看后端状态",
       icon: "none",
       duration: 1600,
     });
     return;
   }
-  if (RUNTIME_BACKEND_DEFAULT_MODE !== "local") {
-    uni.showToast({
-      title: "线上版已固定走线上后端",
-      icon: "none",
-      duration: 1600,
-    });
-    return;
-  }
-
-  const itemList = [
-    `本地 (${LOCAL_BACKEND_BASE_URL})`,
-    `线上 (${ONLINE_BACKEND_BASE_URL})`,
-  ];
-  uni.showActionSheet({
-    itemList,
-    success: (result) => {
-      const nextMode: BackendEndpointMode = result.tapIndex === 1 ? "online" : "local";
-      if (nextMode === backendEndpointMode.value) {
-        return;
-      }
-      applyBackendEndpointMode(nextMode);
-      void refreshThemeImageMap();
-      authStatusHint.value = `后端已切换到${nextMode === "online" ? "线上" : "本地"}：${backendBaseUrl.value}`;
-      void runBackendProbe().then((ok) => {
-        if (ok) {
-          void refreshTodayBrief();
-        }
-      });
-    },
+  const endpoint = enforceBackendEndpointStorage("online");
+  applyBackendEndpointMode(endpoint.mode, false);
+  authStatusHint.value = `当前固定线上后端：${backendBaseUrl.value}`;
+  uni.showToast({
+    title: "当前版本固定线上后端",
+    icon: "none",
+    duration: 1600,
   });
 };
 
@@ -2496,8 +2499,8 @@ const setActiveStudent = async (studentId: string) => {
   try {
     try {
       await requestBackendPost(
-        "/api/social/bind-student",
-        { target_student_id: studentId },
+        "/api/v1/social/bind-student",
+        { targetStudentId: studentId },
         true,
       );
     } catch (error) {
@@ -2510,10 +2513,10 @@ const setActiveStudent = async (studentId: string) => {
         return;
       }
       await requestBackendPost(
-        "/api/social/bind-student",
+        "/api/v1/social/bind-student",
         {
-          target_student_id: studentId,
-          target_random_code: code,
+          targetStudentId: studentId,
+          targetRandomCode: code,
         },
         true,
       );
@@ -3011,6 +3014,23 @@ function formatMonthDay(date: Date) {
   min-height: 100vh;
   box-sizing: border-box;
   transition: filter 160ms linear;
+}
+
+.today-tab-panel {
+  height: calc(100vh - 108rpx);
+  height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx);
+  max-height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+}
+
+.today-tab-panel .content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .schedule-tab-panel {

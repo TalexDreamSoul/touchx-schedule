@@ -4,11 +4,8 @@
 
 ```text
 apps/
-  admin-web/        # Vue3 管理端
+  backend/          # Nuxt + Cloudflare Worker（API + ScheduleNexus，一体化）
   microapp/         # uni-app 小程序端
-backends/
-  backend/          # Nuxt + Cloudflare Worker 网关后端
-  legacy-fastapi/   # 旧 FastAPI 后端（迁移过渡）
 packages/
   shared/           # 跨端共享类型与常量
 ```
@@ -21,22 +18,10 @@ packages/
 pnpm install
 ```
 
-启动管理端：
-
-```bash
-pnpm dev:admin
-```
-
 启动 Nuxt 网关后端（Cloudflare 运行模型）：
 
 ```bash
 pnpm dev:backend
-```
-
-启动旧 FastAPI（迁移过渡期）：
-
-```bash
-pnpm dev:legacy
 ```
 
 启动小程序开发：
@@ -48,16 +33,14 @@ pnpm dev:microapp
 ## 构建命令
 
 ```bash
-pnpm build:admin
-pnpm build:admin:legacy
 pnpm build:backend
 pnpm build:microapp
 ```
 
-- `build:admin`：输出 `apps/admin-web/dist`（适合独立部署）
-- `build:admin:legacy`：输出 `backends/legacy-fastapi/admin_dist`（给 legacy-fastapi 托管）
-
 ## Cloudflare 部署（Nuxt 后端）
+
+`wrangler.toml` 位于 `apps/backend/wrangler.toml`（按 workspace 隔离，不放根目录）。
+GitHub 自动部署工作流位于 `/.github/workflows/deploy-backend-cloudflare.yml`。
 
 认证：
 
@@ -71,7 +54,9 @@ pnpm --filter @touchx/backend exec wrangler whoami
 pnpm deploy:backend
 ```
 
-## 当前迁移策略
+## 当前后端入口
 
-- `/api/*` 先由 `backend` 代理到 `legacy-fastapi`，保证接口连续可用。
-- 新功能优先落到 `backend`，旧能力逐步从 `legacy-fastapi` 收敛迁移。
+- API 基线：`/api/v1/*`
+- 管理中台（ScheduleNexus）：`/nexus`
+- 兼容别名：`/admin`（302 到 `/nexus`）
+- 健康检查：`/health`

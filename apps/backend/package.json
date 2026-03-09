@@ -1,0 +1,29 @@
+{
+  "name": "@touchx/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#internal/nuxt/paths": "./internal/nuxt-paths.mjs"
+  },
+  "scripts": {
+    "dev": "bash ./scripts/dev.sh",
+    "build": "nuxt build",
+    "preview": "nuxt preview --host=0.0.0.0 --port=9986",
+    "deploy": "nuxt build && wrangler --cwd .output deploy --domains schedule-backend.tagzxia.com --keep-vars",
+    "type-check": "nuxt typecheck",
+    "smoke:local": "bash ./scripts/smoke-local.sh",
+    "sync:legacy": "node ./scripts/sync-legacy-normalized.mjs"
+  },
+  "dependencies": {
+    "@touchx/shared": "workspace:*",
+    "ufo": "^1.6.1"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260301.0",
+    "@nuxtjs/tailwindcss": "^6.14.0",
+    "nuxt": "^3.17.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.7.0"
+  }
+}

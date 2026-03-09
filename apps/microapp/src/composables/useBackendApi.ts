@@ -1,4 +1,10 @@
 import type { ComputedRef, Ref } from "vue";
+import {
+  normalizeBackendApiPath,
+  resolveBackendErrorMessageFromPayload,
+  unwrapBackendApiPayload,
+} from "@/utils/backend-request";
+import { persistBackendRequestTrace, resolveBackendRuntimeDefaultMode } from "@/utils/profile-service";
 
 type BackendEndpointMode = "local" | "online";
 type MaybeRefString = Ref<string> | ComputedRef<string>;
@@ -28,17 +34,27 @@ export const useBackendApi = ({
   storageBackendBaseUrlKey,
 }: UseBackendApiOptions) => {
   const REQUEST_TIMEOUT = 12000;
+  const runtimeDefaultMode = resolveBackendRuntimeDefaultMode();
 
   const normalizeBackendBaseUrl = (value: string) => {
     const normalized = (value || "").trim().replace(/\/+$/, "");
+    if (runtimeDefaultMode !== "local") {
+      return (onlineBackendBaseUrl || "").trim().replace(/\/+$/, "");
+    }
     return normalized || defaultBackendBaseUrl;
   };
 
   const getBackendBaseUrlByMode = (mode: BackendEndpointMode) => {
+    if (runtimeDefaultMode !== "local") {
+      return onlineBackendBaseUrl;
+    }
     return mode === "online" ? onlineBackendBaseUrl : localBackendBaseUrl;
   };
 
   const inferBackendEndpointModeByUrl = (url: string): BackendEndpointMode => {
+    if (runtimeDefaultMode !== "local") {
+      return "online";
+    }
     const normalized = normalizeBackendBaseUrl(url);
     if (normalized === normalizeBackendBaseUrl(onlineBackendBaseUrl)) {
       return "online";
@@ -47,34 +63,23 @@ export const useBackendApi = ({
   };
 
   const applyBackendEndpointMode = (mode: BackendEndpointMode, persist = true) => {
-    backendEndpointMode.value = mode;
-    backendBaseUrl.value = getBackendBaseUrlByMode(mode);
+    const nextMode: BackendEndpointMode = runtimeDefaultMode === "local" ? mode : "online";
+    backendEndpointMode.value = nextMode;
+    backendBaseUrl.value = getBackendBaseUrlByMode(nextMode);
     if (persist) {
-      uni.setStorageSync(storageBackendEndpointModeKey, mode);
+      uni.setStorageSync(storageBackendEndpointModeKey, nextMode);
       uni.setStorageSync(storageBackendBaseUrlKey, backendBaseUrl.value);
     }
   };
 
   const buildBackendUrl = (path: string, query: Record<string, string> = {}) => {
     const base = normalizeBackendBaseUrl(backendBaseUrl.value);
+    const normalizedPath = normalizeBackendApiPath(path);
     const search = Object.entries(query)
       .filter(([, value]) => value !== "")
       .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
       .join("&");
-    return `${base}${path}${search ? `?${search}` : ""}`;
-  };
-
-  const parseBackendErrorMessage = (statusCode: number, data: unknown) => {
-    const payload = (data || {}) as { detail?: string; message?: string };
-    const detail = typeof payload.detail === "string" && payload.detail.trim() ? payload.detail.trim() : "";
-    const message = typeof payload.message === "string" && payload.message.trim() ? payload.message.trim() : "";
-    if (detail) {
-      return detail;
-    }
-    if (message) {
-      return message;
-    }
-    return `HTTP ${statusCode}`;
+    return `${base}${normalizedPath}${search ? `?${search}` : ""}`;
   };
 
   const buildBackendRequestError = (message: string, statusCode = 0): BackendRequestError => {
@@ -96,6 +101,14 @@ export const useBackendApi = ({
     return text;
   };
 
+  const attachRequestUrlToMessage = (message: string, requestUrl: string) => {
+    const url = String(requestUrl || "").trim();
+    if (!url) {
+      return message;
+    }
+    return `${message}（${url}）`;
+  };
+
   const getAuthRequestHeaders = (withAuth: boolean) => {
     const headers: Record<string, string> = {};
     if (!withAuth) {
@@ -110,6 +123,7 @@ export const useBackendApi = ({
 
   const requestBackendGet = <T>(path: string, query: Record<string, string> = {}, withAuth = false) => {
     return new Promise<T>((resolve, reject) => {
+      const requestUrl = buildBackendUrl(path, query);
       let headers: Record<string, string> = {};
       try {
         headers = getAuthRequestHeaders(withAuth);
@@ -118,20 +132,60 @@ export const useBackendApi = ({
         return;
       }
       uni.request({
-        url: buildBackendUrl(path, query),
+        url: requestUrl,
         method: "GET",
         timeout: REQUEST_TIMEOUT,
         header: headers,
         success: (res) => {
           const statusCode = Number(res.statusCode || 0);
           if (statusCode >= 200 && statusCode < 300) {
-            resolve((res.data || {}) as T);
+            try {
+              resolve(unwrapBackendApiPayload<T>(res.data || {}));
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "请求失败";
+              persistBackendRequestTrace({
+                method: "GET",
+                url: requestUrl,
+                statusCode,
+                ok: false,
+                errorMessage: message,
+                at: Date.now(),
+              });
+              reject(buildBackendRequestError(message, statusCode));
+              return;
+            }
+            persistBackendRequestTrace({
+              method: "GET",
+              url: requestUrl,
+              statusCode,
+              ok: true,
+              errorMessage: "",
+              at: Date.now(),
+            });
             return;
           }
-          reject(buildBackendRequestError(parseBackendErrorMessage(statusCode, res.data), statusCode));
+          const message = attachRequestUrlToMessage(resolveBackendErrorMessageFromPayload(statusCode, res.data), requestUrl);
+          persistBackendRequestTrace({
+            method: "GET",
+            url: requestUrl,
+            statusCode,
+            ok: false,
+            errorMessage: message,
+            at: Date.now(),
+          });
+          reject(buildBackendRequestError(message, statusCode));
         },
         fail: (err) => {
-          reject(new Error(parseRequestFailMessage(err?.errMsg)));
+          const message = attachRequestUrlToMessage(parseRequestFailMessage(err?.errMsg), requestUrl);
+          persistBackendRequestTrace({
+            method: "GET",
+            url: requestUrl,
+            statusCode: 0,
+            ok: false,
+            errorMessage: message,
+            at: Date.now(),
+          });
+          reject(new Error(message));
         },
       });
     });
@@ -139,6 +193,7 @@ export const useBackendApi = ({
 
   const requestBackendPost = <T>(path: string, data: Record<string, unknown>, withAuth = false) => {
     return new Promise<T>((resolve, reject) => {
+      const requestUrl = buildBackendUrl(path);
       let headers: Record<string, string> = {};
       try {
         headers = {
@@ -150,7 +205,7 @@ export const useBackendApi = ({
         return;
       }
       uni.request({
-        url: buildBackendUrl(path),
+        url: requestUrl,
         method: "POST",
         timeout: REQUEST_TIMEOUT,
         data,
@@ -158,13 +213,53 @@ export const useBackendApi = ({
         success: (res) => {
           const statusCode = Number(res.statusCode || 0);
           if (statusCode >= 200 && statusCode < 300) {
-            resolve((res.data || {}) as T);
+            try {
+              resolve(unwrapBackendApiPayload<T>(res.data || {}));
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "请求失败";
+              persistBackendRequestTrace({
+                method: "POST",
+                url: requestUrl,
+                statusCode,
+                ok: false,
+                errorMessage: message,
+                at: Date.now(),
+              });
+              reject(buildBackendRequestError(message, statusCode));
+              return;
+            }
+            persistBackendRequestTrace({
+              method: "POST",
+              url: requestUrl,
+              statusCode,
+              ok: true,
+              errorMessage: "",
+              at: Date.now(),
+            });
             return;
           }
-          reject(buildBackendRequestError(parseBackendErrorMessage(statusCode, res.data), statusCode));
+          const message = attachRequestUrlToMessage(resolveBackendErrorMessageFromPayload(statusCode, res.data), requestUrl);
+          persistBackendRequestTrace({
+            method: "POST",
+            url: requestUrl,
+            statusCode,
+            ok: false,
+            errorMessage: message,
+            at: Date.now(),
+          });
+          reject(buildBackendRequestError(message, statusCode));
         },
         fail: (err) => {
-          reject(new Error(parseRequestFailMessage(err?.errMsg)));
+          const message = attachRequestUrlToMessage(parseRequestFailMessage(err?.errMsg), requestUrl);
+          persistBackendRequestTrace({
+            method: "POST",
+            url: requestUrl,
+            statusCode: 0,
+            ok: false,
+            errorMessage: message,
+            at: Date.now(),
+          });
+          reject(new Error(message));
         },
       });
     });

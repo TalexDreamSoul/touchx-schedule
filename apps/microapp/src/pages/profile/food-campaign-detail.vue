@@ -1,10 +1,10 @@
 <template>
-  <PageContainer title="竞选详情">
+  <PageContainer title="拼单详情">
     <view class="page">
-      <!-- 竞选头部信息卡片 -->
+      <!-- 拼单头部信息卡片 -->
       <view class="detail-hero">
         <view class="detail-hero-top">
-          <view class="detail-hero-title">{{ previewCampaign?.title || "食物竞选" }}</view>
+          <view class="detail-hero-title">{{ previewCampaign?.title || "食物拼单" }}</view>
           <view class="status-badge" :class="statusBadgeClass">{{ statusLabel }}</view>
         </view>
 
@@ -15,8 +15,8 @@
               <view class="meta-value">{{ joinModeLabel(previewCampaign?.joinMode) }}</view>
             </view>
             <view class="meta-item">
-              <view class="meta-label">投票模式</view>
-              <view class="meta-value">{{ previewCampaign?.isAnonymous ? "匿名投票" : "实名投票" }}</view>
+              <view class="meta-label">拼单模式</view>
+              <view class="meta-value">{{ previewCampaign?.isAnonymous ? "匿名选择" : "实名选择" }}</view>
             </view>
             <view class="meta-item">
               <view class="meta-label">参与人数</view>
@@ -41,7 +41,7 @@
         </template>
         <view v-else class="auth-hint">
           <view class="auth-hint-icon">🔒</view>
-          <view class="auth-hint-text">登录后可查看候选食物与投票详情</view>
+          <view class="auth-hint-text">登录后可查看候选食物与选择详情</view>
         </view>
 
         <view class="detail-hero-actions">
@@ -52,14 +52,14 @@
       <!-- 未授权 -->
       <view class="action-card" v-if="!isAuthed">
         <view class="action-card-title">需要授权</view>
-        <view class="action-card-desc">登录后可查看完整候选食物与投票信息</view>
+        <view class="action-card-desc">登录后可查看完整候选食物与选择信息</view>
         <button class="action-btn accent" @click="goAuthorizePage">去登录授权</button>
       </view>
 
       <!-- 已授权但未加入 -->
       <view class="action-card" v-if="isAuthed && !campaignDetail && isCampaignOpen">
-        <view class="action-card-title">加入竞选</view>
-        <view class="action-card-desc">你尚未加入该竞选，加入后即可查看候选与投票</view>
+        <view class="action-card-title">加入拼单</view>
+        <view class="action-card-desc">你尚未加入该拼单，加入后即可查看候选与选择</view>
         <view class="action-field" v-if="previewCampaign?.joinMode === 'password'">
           <view class="action-field-label">参与密码</view>
           <input v-model.trim="joinAccessPassword" class="action-input" type="text" password placeholder="请输入参与密码" />
@@ -71,41 +71,20 @@
 
       <!-- 已结束且未加入 -->
       <view class="action-card muted" v-if="isAuthed && !campaignDetail && !isCampaignOpen">
-        <view class="action-card-title">竞选已结束</view>
-        <view class="action-card-desc">该竞选已结束，无法再加入参与</view>
+        <view class="action-card-title">拼单已结束</view>
+        <view class="action-card-desc">该拼单已结束，无法再加入参与</view>
       </view>
 
       <!-- 完整详情 -->
       <template v-if="campaignDetail">
-        <!-- 操作栏 -->
-        <view class="ops-bar" v-if="campaignDetail.canSupplement || campaignDetail.canApprove">
-          <button
-            class="ops-btn"
-            :class="{ pending: pending.supplement }"
-            :disabled="!campaignDetail.canSupplement"
-            @click="supplementCandidate"
-          >追加候选</button>
-          <button
-            class="ops-btn danger"
-            :class="{ pending: pending.close }"
-            :disabled="!campaignDetail.canApprove"
-            @click="confirmCloseCampaign"
-          >截止竞选</button>
-          <button
-            class="ops-btn ghost"
-            @click="showParticipantSheet = true"
-            v-if="campaignDetail.participants.length > 0"
-          >参与者 ({{ campaignDetail.participants.length }})</button>
-        </view>
-
-        <!-- 候选食物投票 -->
+        <!-- 候选食物（置顶） -->
         <view class="vote-section">
           <view class="vote-header">
             <view class="vote-title">候选食物</view>
             <view class="vote-hint" v-if="campaignDetail.canVote">
               可投 {{ campaignDetail.maxVotesPerUser }} 票，已选 {{ voteSelectionSet.size }} 项
             </view>
-            <view class="vote-hint" v-else-if="!isCampaignOpen">投票已截止</view>
+            <view class="vote-hint" v-else-if="!isCampaignOpen">选择已截止</view>
           </view>
 
           <view v-if="campaignDetail.candidates.length === 0" class="empty-block">
@@ -132,6 +111,9 @@
                 <text class="food-detail-sep">·</text>
                 <text>¥{{ formatNumber(item.dynamicPriceMin) }}~{{ formatNumber(item.dynamicPriceMax) }}</text>
               </view>
+              <view class="food-nutrition">
+                热量约 {{ formatNumber(item.caloriesKcal) }} kcal · {{ formatExerciseEquivalentText(item) }}
+              </view>
             </view>
           </view>
 
@@ -142,29 +124,50 @@
             @click="submitVote"
             v-if="campaignDetail.canVote"
           >
-            {{ pending.vote ? "提交中..." : (voteSelectionSet.size > 0 ? "提交投票" : "请先选择候选") }}
+            {{ pending.vote ? "提交中..." : (voteSelectionSet.size > 0 ? "提交选择" : "请先选择候选") }}
           </button>
         </view>
 
-        <!-- 投票明细 -->
+        <!-- 操作栏 -->
+        <view class="ops-bar" v-if="campaignDetail.canSupplement || campaignDetail.canApprove">
+          <button
+            class="ops-btn"
+            :class="{ pending: pending.supplement }"
+            :disabled="!campaignDetail.canSupplement"
+            @click="supplementCandidate"
+          >追加候选</button>
+          <button
+            class="ops-btn danger"
+            :class="{ pending: pending.close }"
+            :disabled="!campaignDetail.canApprove"
+            @click="confirmCloseCampaign"
+          >结束拼单</button>
+          <button
+            class="ops-btn ghost"
+            @click="showParticipantSheet = true"
+            v-if="campaignDetail.participants.length > 0"
+          >参与者 ({{ campaignDetail.participants.length }})</button>
+        </view>
+
+        <!-- 选择明细 -->
         <view class="detail-section" v-if="campaignDetail.voteDetails.length > 0">
           <view class="detail-section-header">
-            <view class="detail-section-title">投票明细</view>
+            <view class="detail-section-title">选择明细</view>
             <view class="detail-section-badge">{{ visibilityLabel }}</view>
           </view>
           <view v-for="item in campaignDetail.voteDetails" :key="`vote-${item.voterStudentId}`" class="voter-row">
             <view class="voter-name">{{ item.voterName }}</view>
-            <view class="voter-picks">{{ (item.selectedFoodNames || []).join("、") || "未投票" }}</view>
+            <view class="voter-picks">{{ (item.selectedFoodNames || []).join("、") || "未选择" }}</view>
           </view>
         </view>
 
-        <!-- 投票为空 -->
+        <!-- 选择为空 -->
         <view class="detail-section" v-else-if="campaignDetail.voteDetailsVisibility !== 'none'">
           <view class="detail-section-header">
-            <view class="detail-section-title">投票明细</view>
+            <view class="detail-section-title">选择明细</view>
           </view>
           <view class="empty-block">
-            <view class="empty-block-text">暂无可见的投票记录</view>
+            <view class="empty-block-text">暂无可见的选择记录</view>
           </view>
         </view>
       </template>
@@ -204,11 +207,11 @@
       <!-- 截止确认弹窗 -->
       <view class="sheet-mask" v-if="showCloseConfirm" @click.self="showCloseConfirm = false">
         <view class="confirm-dialog" @click.stop>
-          <view class="confirm-title">确认截止竞选？</view>
-          <view class="confirm-desc">截止后参与者将无法继续投票，此操作不可撤销。</view>
+          <view class="confirm-title">确认结束拼单？</view>
+          <view class="confirm-desc">结束后参与者将无法继续选择，此操作不可撤销。</view>
           <view class="confirm-actions">
             <button class="confirm-btn cancel" @click="showCloseConfirm = false">再想想</button>
-            <button class="confirm-btn danger" :class="{ pending: pending.close }" @click="closeCampaign">确认截止</button>
+            <button class="confirm-btn danger" :class="{ pending: pending.close }" @click="closeCampaign">确认结束</button>
           </view>
         </view>
       </view>
@@ -218,7 +221,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { onLoad, onShow, onShareAppMessage, onShareTimeline } from "@dcloudio/uni-app";
+import { onHide, onLoad, onShow, onShareAppMessage, onShareTimeline, onUnload } from "@dcloudio/uni-app";
 import PageContainer from "@/components/PageContainer.vue";
 import {
   isAuthSessionInvalidError,
@@ -252,6 +255,11 @@ interface FoodCandidateItem {
   voteCount: number;
   dynamicPriceMin: number;
   dynamicPriceMax: number;
+  caloriesKcal: number;
+  exerciseEquivalentMinutes?: {
+    running: number;
+    uphill: number;
+  };
   slotIndex: number;
 }
 
@@ -290,6 +298,9 @@ interface CampaignDetailResponse {
   campaign?: FoodCampaignDetail;
 }
 
+const AUTO_REFRESH_INTERVAL_MS = 15 * 1000;
+const DISPLAY_CLOCK_INTERVAL_MS = 1000;
+
 const backendBaseUrl = ref("");
 const authSession = ref<AuthSessionState>({ token: "", expiresAt: 0, mode: "none", user: null });
 const previewCampaign = ref<FoodCampaignPreview | null>(null);
@@ -300,6 +311,7 @@ const routeShareToken = ref("");
 const routeCampaignId = ref("");
 const showParticipantSheet = ref(false);
 const showCloseConfirm = ref(false);
+const nowUnixSeconds = ref(Math.floor(Date.now() / 1000));
 const pending = ref({
   join: false,
   vote: false,
@@ -308,11 +320,43 @@ const pending = ref({
   approve: "",
   reject: "",
 });
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+let displayClockTimer: ReturnType<typeof setInterval> | null = null;
 
 const joinModeLabelMap: Record<FoodCampaignJoinMode, string> = {
   all: "公开参与",
   invite: "邀请制",
   password: "密码参与",
+};
+
+const updateNowUnixSeconds = () => {
+  nowUnixSeconds.value = Math.floor(Date.now() / 1000);
+};
+
+const normalizeUnixSeconds = (value: unknown) => {
+  const raw = Number(value || 0);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return 0;
+  }
+  if (raw >= 1e12) {
+    return Math.floor(raw / 1000);
+  }
+  return Math.floor(raw);
+};
+
+const resolveCampaignDisplayStatus = (status: unknown, closedAt: unknown, deadlineAt: unknown) => {
+  const normalized = String(status || "").trim().toLowerCase() || "open";
+  if (normalized !== "open") {
+    return normalized;
+  }
+  if (normalizeUnixSeconds(closedAt) > 0) {
+    return "closed";
+  }
+  const deadlineUnix = normalizeUnixSeconds(deadlineAt);
+  if (deadlineUnix > 0 && deadlineUnix <= nowUnixSeconds.value) {
+    return "closed";
+  }
+  return "open";
 };
 
 const isAuthed = computed(() => Boolean(authSession.value.token && authSession.value.user));
@@ -325,8 +369,16 @@ const voteSelectionSet = computed(() => {
   return new Set<number>((campaignDetail.value?.viewerVoteFoodIds || []).map((item) => Number(item)));
 });
 
+const resolvedCampaignStatus = computed(() => {
+  return resolveCampaignDisplayStatus(
+    campaignDetail.value?.status || previewCampaign.value?.status,
+    campaignDetail.value?.closedAt || previewCampaign.value?.closedAt,
+    campaignDetail.value?.deadlineAt || previewCampaign.value?.deadlineAt,
+  );
+});
+
 const statusLabel = computed(() => {
-  const status = String(previewCampaign.value?.status || "").trim().toLowerCase();
+  const status = String(resolvedCampaignStatus.value || "").trim().toLowerCase();
   if (status === "open") return "进行中";
   if (status === "closed") return "已结束";
   if (status === "cancelled") return "已取消";
@@ -334,15 +386,14 @@ const statusLabel = computed(() => {
 });
 
 const statusBadgeClass = computed(() => {
-  const status = String(previewCampaign.value?.status || "").trim().toLowerCase();
+  const status = String(resolvedCampaignStatus.value || "").trim().toLowerCase();
   if (status === "open") return "badge-live";
   if (status === "closed") return "badge-ended";
   return "badge-muted";
 });
 
 const isCampaignOpen = computed(() => {
-  const status = String(campaignDetail.value?.status || previewCampaign.value?.status || "").trim().toLowerCase();
-  return status === "open";
+  return String(resolvedCampaignStatus.value || "").trim().toLowerCase() === "open";
 });
 
 const visibilityLabel = computed(() => {
@@ -408,19 +459,19 @@ const mergeDetailToPreview = (detail: FoodCampaignDetail) => {
     shareToken: String(detail.shareToken || previous?.shareToken || ""),
     candidateCount,
     headcount: Number(detail.headcount || previous?.headcount || 0),
-    deadlineAt: Number(detail.deadlineAt || previous?.deadlineAt || 0),
-    closedAt: Number(detail.closedAt || previous?.closedAt || 0),
+    deadlineAt: normalizeUnixSeconds(detail.deadlineAt || previous?.deadlineAt),
+    closedAt: normalizeUnixSeconds(detail.closedAt || previous?.closedAt),
   };
 };
 
 const buildSharePath = () => {
   const token = shareToken.value;
   if (token) {
-    return `/pages/profile/food-campaign-detail?share_token=${encodeURIComponent(token)}`;
+    return `/pages/profile/food-campaign-detail?shareToken=${encodeURIComponent(token)}`;
   }
   const campaignId = String(previewCampaign.value?.campaignId || routeCampaignId.value || "").trim();
   if (campaignId) {
-    return `/pages/profile/food-campaign-detail?campaign_id=${encodeURIComponent(campaignId)}`;
+    return `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(campaignId)}`;
   }
   return "/pages/profile/food-campaign";
 };
@@ -442,13 +493,13 @@ const goAuthorizePage = () => {
 const loadPreview = async () => {
   const params: Record<string, string> = {};
   if (routeShareToken.value) {
-    params.share_token = routeShareToken.value;
+    params.shareToken = routeShareToken.value;
   } else if (routeCampaignId.value) {
-    params.campaign_id = routeCampaignId.value;
+    params.campaignId = routeCampaignId.value;
   } else {
-    throw new Error("竞选参数缺失");
+    throw new Error("拼单参数缺失");
   }
-  const response = await requestBackendGet<CampaignPreviewResponse>(backendBaseUrl.value, "/api/social/food-campaigns/preview", params);
+  const response = await requestBackendGet<CampaignPreviewResponse>(backendBaseUrl.value, "/api/v1/social/food-campaigns/preview", params);
   previewCampaign.value = response.campaign || null;
   if (previewCampaign.value?.campaignId) {
     routeCampaignId.value = String(previewCampaign.value.campaignId || "").trim();
@@ -462,16 +513,16 @@ const loadDetailByCampaignId = async () => {
   ensureAuthed();
   const campaignId = String(routeCampaignId.value || "").trim();
   if (!campaignId) {
-    throw new Error("竞选ID缺失");
+    throw new Error("拼单ID缺失");
   }
   const query: Record<string, string> = {};
   const token = String(routeShareToken.value || "").trim();
   if (token) {
-    query.share_token = token;
+    query.shareToken = token;
   }
   const response = await requestBackendGet<CampaignDetailResponse>(
     backendBaseUrl.value,
-    `/api/social/food-campaigns/${encodeURIComponent(campaignId)}`,
+    `/api/v1/social/food-campaigns/${encodeURIComponent(campaignId)}`,
     query,
     authSession.value.token,
   );
@@ -490,18 +541,20 @@ const joinAndLoadDetail = async (silentOrEvent: boolean | unknown = false) => {
   try {
     ensureAuthed();
     if (!isCampaignOpen.value) {
-      throw new Error("该竞选已结束");
+      throw new Error("该拼单已结束");
     }
     const token = String(routeShareToken.value || previewCampaign.value?.shareToken || "").trim();
-    if (!token) {
-      throw new Error("分享码缺失，无法加入");
+    const campaignId = String(routeCampaignId.value || previewCampaign.value?.campaignId || "").trim();
+    if (!token && !campaignId) {
+      throw new Error("分享码和拼单ID缺失，无法加入");
     }
     const response = await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      "/api/social/food-campaigns/join",
+      "/api/v1/social/food-campaigns/join",
       {
-        share_token: token,
-        access_password: String(joinAccessPassword.value || "").trim(),
+        shareToken: token,
+        campaignId,
+        accessPassword: String(joinAccessPassword.value || "").trim(),
       },
       authSession.value.token,
     );
@@ -529,6 +582,7 @@ const joinAndLoadDetail = async (silentOrEvent: boolean | unknown = false) => {
 };
 
 const refreshState = async () => {
+  updateNowUnixSeconds();
   backendBaseUrl.value = resolveBackendBaseUrlFromStorage();
   authSession.value = readAuthSessionFromStorage();
   campaignDetail.value = null;
@@ -557,7 +611,7 @@ const refreshState = async () => {
       statusText.value = campaignDetail.value ? "已加载完整详情" : "可加入后查看";
       return;
     }
-    statusText.value = isCampaignOpen.value ? "可加入后查看" : "竞选已结束";
+    statusText.value = isCampaignOpen.value ? "可加入后查看" : "拼单已结束";
   } catch (error) {
     if (isAuthSessionInvalidError(error)) {
       authSession.value = { token: "", expiresAt: 0, mode: "none", user: null };
@@ -566,11 +620,42 @@ const refreshState = async () => {
       return;
     }
     campaignDetail.value = null;
-    statusText.value = isCampaignOpen.value ? "可加入后查看" : "竞选已结束";
+    statusText.value = isCampaignOpen.value ? "可加入后查看" : "拼单已结束";
   }
 };
 
 const refreshStateSilently = async () => {
+  try {
+    await refreshState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "加载失败";
+    statusText.value = message;
+  }
+};
+
+const stopAutoRefreshTimer = () => {
+  if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+  if (displayClockTimer) {
+    clearInterval(displayClockTimer);
+    displayClockTimer = null;
+  }
+};
+
+const startAutoRefreshTimer = () => {
+  stopAutoRefreshTimer();
+  updateNowUnixSeconds();
+  displayClockTimer = setInterval(() => {
+    updateNowUnixSeconds();
+  }, DISPLAY_CLOCK_INTERVAL_MS);
+  autoRefreshTimer = setInterval(() => {
+    void refreshStateSilently();
+  }, AUTO_REFRESH_INTERVAL_MS);
+};
+
+const refreshStateWithToast = async () => {
   try {
     await refreshState();
   } catch (error) {
@@ -615,12 +700,12 @@ const submitVote = async () => {
     }
     await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      `/api/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/vote`,
-      { selected_food_ids: selectedIds },
+      `/api/v1/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/vote`,
+      { selectedFoodIds: selectedIds },
       authSession.value.token,
     );
     await loadDetailByCampaignId();
-    uni.showToast({ title: "投票成功", icon: "none", duration: 1200 });
+    uni.showToast({ title: "选择成功", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "提交失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
@@ -638,7 +723,7 @@ const supplementCandidate = async () => {
   try {
     await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      `/api/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/supplement`,
+      `/api/v1/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/supplement`,
       {},
       authSession.value.token,
     );
@@ -665,13 +750,13 @@ const closeCampaign = async () => {
   try {
     await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      `/api/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/close`,
+      `/api/v1/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/close`,
       {},
       authSession.value.token,
     );
     showCloseConfirm.value = false;
     await loadDetailByCampaignId();
-    uni.showToast({ title: "竞选已截止", icon: "none", duration: 1200 });
+    uni.showToast({ title: "拼单已结束", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "截止失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
@@ -689,7 +774,7 @@ const approveParticipant = async (studentId: string) => {
   try {
     await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      `/api/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/participants/${encodeURIComponent(studentId)}/approve`,
+      `/api/v1/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/participants/${encodeURIComponent(studentId)}/approve`,
       {},
       authSession.value.token,
     );
@@ -712,7 +797,7 @@ const rejectParticipant = async (studentId: string) => {
   try {
     await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      `/api/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/participants/${encodeURIComponent(studentId)}/reject`,
+      `/api/v1/social/food-campaigns/${encodeURIComponent(detail.campaignId)}/participants/${encodeURIComponent(studentId)}/reject`,
       {},
       authSession.value.token,
     );
@@ -737,8 +822,34 @@ const formatNumber = (value: unknown) => {
   return num.toFixed(1);
 };
 
+const resolveExerciseEquivalent = (candidate: FoodCandidateItem) => {
+  const embedded = candidate.exerciseEquivalentMinutes;
+  if (embedded && Number(embedded.running) > 0 && Number(embedded.uphill) > 0) {
+    return {
+      running: Math.round(Number(embedded.running)),
+      uphill: Math.round(Number(embedded.uphill)),
+    };
+  }
+  const calories = Math.max(0, Number(candidate.caloriesKcal) || 0);
+  if (calories <= 0) {
+    return {
+      running: 0,
+      uphill: 0,
+    };
+  }
+  return {
+    running: Math.max(1, Math.round(calories / 10)),
+    uphill: Math.max(1, Math.round(calories / 8)),
+  };
+};
+
+const formatExerciseEquivalentText = (candidate: FoodCandidateItem) => {
+  const eq = resolveExerciseEquivalent(candidate);
+  return `跑步 ${eq.running} 分钟 / 爬坡 ${eq.uphill} 分钟`;
+};
+
 const formatTime = (timestamp: unknown) => {
-  const ts = Number(timestamp || 0);
+  const ts = normalizeUnixSeconds(timestamp);
   if (!Number.isFinite(ts) || ts <= 0) {
     return "--";
   }
@@ -768,12 +879,21 @@ onShareTimeline(() => {
   const token = shareToken.value;
   return {
     title,
-    query: token ? `share_token=${encodeURIComponent(token)}` : "",
+    query: token ? `shareToken=${encodeURIComponent(token)}` : "",
   };
 });
 
 onShow(() => {
-  void refreshStateSilently();
+  startAutoRefreshTimer();
+  void refreshStateWithToast();
+});
+
+onHide(() => {
+  stopAutoRefreshTimer();
+});
+
+onUnload(() => {
+  stopAutoRefreshTimer();
 });
 </script>
 
@@ -1143,6 +1263,12 @@ onShow(() => {
 }
 
 .food-details {
+  margin-top: 6rpx;
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+.food-nutrition {
   margin-top: 6rpx;
   font-size: 22rpx;
   color: var(--text-sub);

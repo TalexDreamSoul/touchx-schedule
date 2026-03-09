@@ -1,6 +1,5 @@
 <template>
-  <PageContainer title="编辑学号">
-    <view class="page">
+  <PageViewContainer title="编辑学号">
       <view v-if="!isBound" class="card">
         <view class="empty">请先在“账号与授权”页面绑定课表账号。</view>
         <view class="btn" @click="goAccountPage">去绑定</view>
@@ -15,14 +14,13 @@
         </view>
         <view class="hint">{{ hintText || "当前仅允许编辑已授权账号的学号" }}</view>
       </view>
-    </view>
-  </PageContainer>
+  </PageViewContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
-import PageContainer from "@/components/PageContainer.vue";
+import PageViewContainer from "@/components/PageViewContainer.vue";
 import {
   guardProfilePageAccess,
   readAuthSessionFromStorage,
@@ -50,7 +48,9 @@ const isAuthed = computed(() => Boolean(authSession.value.token && authSession.v
 const isBound = computed(() => Boolean(authSession.value.user?.studentId));
 
 const normalizeStudentNo = (value: unknown) => {
-  return String(value || "").trim().slice(0, 32);
+  return String(value || "")
+    .replace(/\D+/g, "")
+    .slice(0, 32);
 };
 
 const refreshSocialMe = async () => {
@@ -58,7 +58,7 @@ const refreshSocialMe = async () => {
     studentNoDraft.value = "";
     return;
   }
-  const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, authSession.value.token);
+  const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token);
   studentNoDraft.value = normalizeStudentNo(data.me?.studentNo);
 };
 
@@ -87,9 +87,19 @@ const saveStudentNo = async () => {
   savePending.value = true;
   try {
     const studentNo = normalizeStudentNo(studentNoDraft.value);
-    await requestBackendPost(backendBaseUrl.value, "/api/social/profile", { student_no: studentNo }, authSession.value.token);
+    if (!studentNo) {
+      hintText.value = "学号不能为空";
+      uni.showToast({ title: "请先填写学号", icon: "none", duration: 1600 });
+      return;
+    }
+    if (!/^\d{6,32}$/.test(studentNo)) {
+      hintText.value = "学号格式不正确";
+      uni.showToast({ title: "学号格式不正确", icon: "none", duration: 1600 });
+      return;
+    }
+    await requestBackendPost(backendBaseUrl.value, "/api/v1/social/profile", { studentNo }, authSession.value.token);
     studentNoDraft.value = studentNo;
-    hintText.value = studentNo ? "学号已同步到云端" : "已清空云端学号";
+    hintText.value = "学号已同步到云端";
     uni.showToast({ title: "同步成功", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "同步失败";
@@ -113,11 +123,6 @@ onShow(() => {
 </script>
 
 <style scoped>
-.page {
-  padding: 20rpx;
-  box-sizing: border-box;
-}
-
 .card {
   background: var(--card-bg);
   border: 1rpx solid var(--line);

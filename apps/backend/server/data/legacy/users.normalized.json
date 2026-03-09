@@ -1,0 +1,74 @@
+[
+  {
+    "student_id": "caiziling",
+    "name": "蔡子菱",
+    "student_no": "2305200101",
+    "class_label": "软件工程23(5)班",
+    "course_source_student_id": "caiziling",
+    "built_in": "1"
+  },
+  {
+    "student_id": "linfeng",
+    "name": "林峰",
+    "student_no": "2305200109",
+    "class_label": "软件工程23(5)班",
+    "course_source_student_id": "caiziling",
+    "built_in": "1"
+  },
+  {
+    "student_id": "panxiaofeng",
+    "name": "潘晓锋",
+    "student_no": "2305200133",
+    "class_label": "软件工程23(5)班",
+    "course_source_student_id": "caiziling",
+    "built_in": "1"
+  },
+  {
+    "student_id": "liuxinrong",
+    "name": "刘欣荣",
+    "student_no": "2305200106",
+    "class_label": "软件工程23(5)班",
+    "course_source_student_id": "caiziling",
+    "built_in": "1"
+  },
+  {
+    "student_id": "mawanqing",
+    "name": "马晚晴",
+    "student_no": "239610012",
+    "class_label": "体育教育23(2)班",
+    "course_source_student_id": "mawanqing",
+    "built_in": "1"
+  },
+  {
+    "student_id": "tangzixian",
+    "name": "唐子贤",
+    "student_no": "2305100613",
+    "class_label": "计算机科学与技术23(3)班",
+    "course_source_student_id": "tangzixian",
+    "built_in": "1"
+  },
+  {
+    "student_id": "wuxinyu",
+    "name": "伍鑫宇",
+    "student_no": "2305200112",
+    "class_label": "软件工程23(5)班",
+    "course_source_student_id": "caiziling",
+    "built_in": "1"
+  },
+  {
+    "student_id": "goujiaxiang",
+    "name": "苟家祥",
+    "student_no": "2305200330",
+    "class_label": "软件工程23(1)班",
+    "course_source_student_id": "goujiaxiang",
+    "built_in": "1"
+  },
+  {
+    "student_id": "yanying",
+    "name": "严盈",
+    "student_no": "2307300134",
+    "class_label": "广播电视编导23(1)班",
+    "course_source_student_id": "yanying",
+    "built_in": "1"
+  }
+]

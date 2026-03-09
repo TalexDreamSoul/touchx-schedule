@@ -239,7 +239,7 @@ const refreshCampaigns = async () => {
   ensureAuthed();
   const response = await requestBackendGet<CampaignListResponse>(
     backendBaseUrl.value,
-    "/api/social/food-campaigns",
+    "/api/v1/social/food-campaigns",
     { status: "all" },
     authSession.value.token,
   );
@@ -252,7 +252,7 @@ const openCampaign = (campaignId: string) => {
   if (!targetId) {
     return;
   }
-  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaign_id=${encodeURIComponent(targetId)}` });
+  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(targetId)}` });
 };
 
 const formatTime = (timestamp: unknown) => {

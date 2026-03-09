@@ -1,8 +1,14 @@
 import { studentSchedules } from "@/data/schedules";
+import {
+  normalizeBackendApiPath,
+  resolveBackendErrorMessageFromPayload,
+  unwrapBackendApiPayload,
+} from "@/utils/backend-request";
 
 export interface AuthUserProfile {
-  openId: string;
+  openId?: string;
   studentId: string;
+  studentNo?: string;
   studentName: string;
   classLabel?: string;
   nickname: string;
@@ -41,12 +47,24 @@ export const STORAGE_THEME_WALLPAPER_EFFECT_LEVEL_KEY = "touchx_theme_wallpaper_
 export const STORAGE_SCHEDULE_CACHE_TIME_KEY = "touchx_v2_schedule_cache_at";
 export const STORAGE_SCHEDULE_CACHE_SOURCE_KEY = "touchx_v2_schedule_cache_source";
 export const STORAGE_PREFERENCES_WALLPAPER_PATH_KEY = "touchx_v2_preferences_wallpaper_path";
+export const STORAGE_LAST_BACKEND_TRACE_KEY = "touchx_v2_last_backend_trace";
+export const CLIENT_BUILD_TAG = "2026-03-09.7";
 
 export type BackendEndpointMode = "local" | "online";
+export interface BackendRequestTrace {
+  method: "GET" | "POST" | "UPLOAD";
+  url: string;
+  statusCode: number;
+  ok: boolean;
+  errorMessage: string;
+  at: number;
+}
 
-export const LOCAL_BACKEND_BASE_URL = String(import.meta.env.VITE_LOCAL_BACKEND_BASE_URL || "http://127.0.0.1:9986").trim();
-export const ONLINE_BACKEND_BASE_URL = String(import.meta.env.VITE_ONLINE_BACKEND_BASE_URL || "https://schedule-ends.tagzxia.com").trim();
 type MiniProgramEnvVersion = "develop" | "trial" | "release" | "unknown";
+const PROD_ONLINE_BACKEND_BASE_URL = "https://schedule-backend.tagzxia.com";
+
+export const ONLINE_BACKEND_BASE_URL = PROD_ONLINE_BACKEND_BASE_URL;
+export const LOCAL_BACKEND_BASE_URL = ONLINE_BACKEND_BASE_URL;
 
 export const resolveMiniProgramEnvVersion = (): MiniProgramEnvVersion => {
   const wxApi = (globalThis as {
@@ -69,12 +87,19 @@ export const resolveMiniProgramEnvVersion = (): MiniProgramEnvVersion => {
 };
 
 export const resolveBackendRuntimeDefaultMode = (): BackendEndpointMode => {
-  return resolveMiniProgramEnvVersion() === "develop" ? "local" : "online";
+  return "online";
+};
+
+const normalizeRawBackendBaseUrl = (value: string) => {
+  return String(value || "").trim().replace(/\/+$/, "");
 };
 
 export const normalizeBackendBaseUrl = (value: string) => {
-  const normalized = (value || "").trim().replace(/\/+$/, "");
-  return normalized || getBackendBaseUrlByMode(resolveBackendRuntimeDefaultMode());
+  if (resolveBackendRuntimeDefaultMode() !== "local") {
+    return normalizeRawBackendBaseUrl(ONLINE_BACKEND_BASE_URL);
+  }
+  const normalized = normalizeRawBackendBaseUrl(value);
+  return normalized || normalizeRawBackendBaseUrl(LOCAL_BACKEND_BASE_URL);
 };
 
 export const resolveBackendMediaUrl = (baseUrl: string, rawUrl: string) => {
@@ -114,30 +139,89 @@ export const inferBackendEndpointModeByUrl = (url: string): BackendEndpointMode 
   return "local";
 };
 
-export const resolveBackendBaseUrlFromStorage = () => {
-  if (resolveBackendRuntimeDefaultMode() !== "local") {
-    return normalizeBackendBaseUrl(ONLINE_BACKEND_BASE_URL);
+export const enforceBackendEndpointStorage = (preferredMode?: BackendEndpointMode) => {
+  const runtimeDefaultMode = resolveBackendRuntimeDefaultMode();
+  if (runtimeDefaultMode !== "local") {
+    const baseUrl = normalizeBackendBaseUrl(ONLINE_BACKEND_BASE_URL);
+    try {
+      uni.setStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY, "online");
+      uni.setStorageSync(STORAGE_BACKEND_BASE_URL_KEY, baseUrl);
+    } catch (error) {
+      // noop
+    }
+    return {
+      mode: "online" as BackendEndpointMode,
+      baseUrl,
+    };
   }
   const savedMode = String(uni.getStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY) || "").trim();
   const legacyUrl = String(uni.getStorageSync(STORAGE_BACKEND_BASE_URL_KEY) || "").trim();
-  const mode: BackendEndpointMode =
-    savedMode === "local" || savedMode === "online"
-      ? (savedMode as BackendEndpointMode)
-      : inferBackendEndpointModeByUrl(legacyUrl || LOCAL_BACKEND_BASE_URL);
-  return normalizeBackendBaseUrl(getBackendBaseUrlByMode(mode));
+  let mode: BackendEndpointMode;
+  if (preferredMode === "local" || preferredMode === "online") {
+    mode = preferredMode;
+  } else if (savedMode === "local" || savedMode === "online") {
+    mode = savedMode as BackendEndpointMode;
+  } else {
+    mode = inferBackendEndpointModeByUrl(legacyUrl || LOCAL_BACKEND_BASE_URL);
+  }
+  const baseUrl = normalizeBackendBaseUrl(getBackendBaseUrlByMode(mode));
+  try {
+    uni.setStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY, mode);
+    uni.setStorageSync(STORAGE_BACKEND_BASE_URL_KEY, baseUrl);
+  } catch (error) {
+    // noop
+  }
+  return {
+    mode,
+    baseUrl,
+  };
+};
+
+export const resolveBackendBaseUrlFromStorage = () => {
+  return enforceBackendEndpointStorage().baseUrl;
+};
+
+export const persistBackendRequestTrace = (trace: BackendRequestTrace) => {
+  try {
+    uni.setStorageSync(STORAGE_LAST_BACKEND_TRACE_KEY, JSON.stringify(trace));
+  } catch (error) {
+    // noop
+  }
+};
+
+export const readLastBackendRequestTrace = (): BackendRequestTrace | null => {
+  const raw = uni.getStorageSync(STORAGE_LAST_BACKEND_TRACE_KEY);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const payload = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!payload || typeof payload !== "object") {
+      return null;
+    }
+    const methodRaw = String((payload as Record<string, unknown>).method || "").toUpperCase();
+    if (methodRaw !== "GET" && methodRaw !== "POST" && methodRaw !== "UPLOAD") {
+      return null;
+    }
+    const url = String((payload as Record<string, unknown>).url || "").trim();
+    if (!url) {
+      return null;
+    }
+    return {
+      method: methodRaw as BackendRequestTrace["method"],
+      url,
+      statusCode: Number((payload as Record<string, unknown>).statusCode || 0),
+      ok: Boolean((payload as Record<string, unknown>).ok),
+      errorMessage: String((payload as Record<string, unknown>).errorMessage || "").trim(),
+      at: Number((payload as Record<string, unknown>).at || 0),
+    };
+  } catch (error) {
+    return null;
+  }
 };
 
 export const parseBackendErrorMessage = (statusCode: number, data: unknown) => {
-  const payload = (data || {}) as BackendErrorPayload;
-  const detail = typeof payload.detail === "string" && payload.detail.trim() ? payload.detail.trim() : "";
-  const message = typeof payload.message === "string" && payload.message.trim() ? payload.message.trim() : "";
-  if (detail) {
-    return detail;
-  }
-  if (message) {
-    return message;
-  }
-  return `HTTP ${statusCode}`;
+  return resolveBackendErrorMessageFromPayload(statusCode, data);
 };
 
 const buildBackendRequestError = (message: string, statusCode = 0): BackendRequestError => {
@@ -176,36 +260,86 @@ const parseRequestFailMessage = (errMsg: unknown) => {
   return text;
 };
 
+const attachRequestUrlToMessage = (message: string, requestUrl: string) => {
+  const url = String(requestUrl || "").trim();
+  if (!url) {
+    return message;
+  }
+  return `${message}（${url}）`;
+};
+
 const buildBackendUrl = (baseUrl: string, path: string, query: Record<string, string> = {}) => {
   const base = normalizeBackendBaseUrl(baseUrl);
+  const normalizedPath = normalizeBackendApiPath(path);
   const search = Object.entries(query)
     .filter(([, value]) => value !== "")
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
     .join("&");
-  return `${base}${path}${search ? `?${search}` : ""}`;
+  return `${base}${normalizedPath}${search ? `?${search}` : ""}`;
 };
 
 export const requestBackendGet = <T>(baseUrl: string, path: string, query: Record<string, string> = {}, token = "") => {
   return new Promise<T>((resolve, reject) => {
+    const requestUrl = buildBackendUrl(baseUrl, path, query);
     const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
     uni.request({
-      url: buildBackendUrl(baseUrl, path, query),
+      url: requestUrl,
       method: "GET",
       timeout: REQUEST_TIMEOUT,
       header: headers,
       success: (res) => {
         const statusCode = Number(res.statusCode || 0);
         if (statusCode >= 200 && statusCode < 300) {
-          resolve((res.data || {}) as T);
+          try {
+            resolve(unwrapBackendApiPayload<T>(res.data || {}));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "请求失败";
+            persistBackendRequestTrace({
+              method: "GET",
+              url: requestUrl,
+              statusCode,
+              ok: false,
+              errorMessage: message,
+              at: Date.now(),
+            });
+            reject(buildBackendRequestError(message, statusCode));
+            return;
+          }
+          persistBackendRequestTrace({
+            method: "GET",
+            url: requestUrl,
+            statusCode,
+            ok: true,
+            errorMessage: "",
+            at: Date.now(),
+          });
           return;
         }
-        reject(buildBackendRequestError(parseBackendErrorMessage(statusCode, res.data), statusCode));
+        const message = attachRequestUrlToMessage(parseBackendErrorMessage(statusCode, res.data), requestUrl);
+        persistBackendRequestTrace({
+          method: "GET",
+          url: requestUrl,
+          statusCode,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(buildBackendRequestError(message, statusCode));
       },
       fail: (err) => {
-        reject(new Error(parseRequestFailMessage(err?.errMsg)));
+        const message = attachRequestUrlToMessage(parseRequestFailMessage(err?.errMsg), requestUrl);
+        persistBackendRequestTrace({
+          method: "GET",
+          url: requestUrl,
+          statusCode: 0,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(new Error(message));
       },
     });
   });
@@ -218,6 +352,7 @@ export const requestBackendPost = <T>(
   token = "",
 ) => {
   return new Promise<T>((resolve, reject) => {
+    const requestUrl = buildBackendUrl(baseUrl, path);
     const headers: Record<string, string> = {
       "content-type": "application/json",
     };
@@ -225,7 +360,7 @@ export const requestBackendPost = <T>(
       headers.Authorization = `Bearer ${token}`;
     }
     uni.request({
-      url: buildBackendUrl(baseUrl, path),
+      url: requestUrl,
       method: "POST",
       timeout: REQUEST_TIMEOUT,
       data,
@@ -233,13 +368,53 @@ export const requestBackendPost = <T>(
       success: (res) => {
         const statusCode = Number(res.statusCode || 0);
         if (statusCode >= 200 && statusCode < 300) {
-          resolve((res.data || {}) as T);
+          try {
+            resolve(unwrapBackendApiPayload<T>(res.data || {}));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "请求失败";
+            persistBackendRequestTrace({
+              method: "POST",
+              url: requestUrl,
+              statusCode,
+              ok: false,
+              errorMessage: message,
+              at: Date.now(),
+            });
+            reject(buildBackendRequestError(message, statusCode));
+            return;
+          }
+          persistBackendRequestTrace({
+            method: "POST",
+            url: requestUrl,
+            statusCode,
+            ok: true,
+            errorMessage: "",
+            at: Date.now(),
+          });
           return;
         }
-        reject(buildBackendRequestError(parseBackendErrorMessage(statusCode, res.data), statusCode));
+        const message = attachRequestUrlToMessage(parseBackendErrorMessage(statusCode, res.data), requestUrl);
+        persistBackendRequestTrace({
+          method: "POST",
+          url: requestUrl,
+          statusCode,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(buildBackendRequestError(message, statusCode));
       },
       fail: (err) => {
-        reject(new Error(parseRequestFailMessage(err?.errMsg)));
+        const message = attachRequestUrlToMessage(parseRequestFailMessage(err?.errMsg), requestUrl);
+        persistBackendRequestTrace({
+          method: "POST",
+          url: requestUrl,
+          statusCode: 0,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(new Error(message));
       },
     });
   });
@@ -252,12 +427,13 @@ export const uploadBackendImage = <T>(
   token = "",
 ) => {
   return new Promise<T>((resolve, reject) => {
+    const requestUrl = buildBackendUrl(baseUrl, path);
     const headers: Record<string, string> = {};
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
     uni.uploadFile({
-      url: buildBackendUrl(baseUrl, path),
+      url: requestUrl,
       filePath,
       name: "file",
       timeout: 15000,
@@ -271,13 +447,53 @@ export const uploadBackendImage = <T>(
           payload = {};
         }
         if (statusCode >= 200 && statusCode < 300) {
-          resolve(payload as T);
+          try {
+            resolve(unwrapBackendApiPayload<T>(payload));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "上传失败";
+            persistBackendRequestTrace({
+              method: "UPLOAD",
+              url: requestUrl,
+              statusCode,
+              ok: false,
+              errorMessage: message,
+              at: Date.now(),
+            });
+            reject(buildBackendRequestError(message, statusCode));
+            return;
+          }
+          persistBackendRequestTrace({
+            method: "UPLOAD",
+            url: requestUrl,
+            statusCode,
+            ok: true,
+            errorMessage: "",
+            at: Date.now(),
+          });
           return;
         }
-        reject(buildBackendRequestError(parseBackendErrorMessage(statusCode, payload), statusCode));
+        const message = attachRequestUrlToMessage(parseBackendErrorMessage(statusCode, payload), requestUrl);
+        persistBackendRequestTrace({
+          method: "UPLOAD",
+          url: requestUrl,
+          statusCode,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(buildBackendRequestError(message, statusCode));
       },
       fail: (err) => {
-        reject(new Error(err?.errMsg || "upload failed"));
+        const message = attachRequestUrlToMessage(String(err?.errMsg || "upload failed"), requestUrl);
+        persistBackendRequestTrace({
+          method: "UPLOAD",
+          url: requestUrl,
+          statusCode: 0,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(new Error(message));
       },
     });
   });
@@ -298,13 +514,18 @@ const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
     return null;
   }
   const data = raw as Partial<AuthUserProfile>;
-  if (!data.openId) {
+  const studentId = String(data.studentId || "").trim();
+  const studentNo = String(data.studentNo || "").trim();
+  if (!studentId && !studentNo) {
     return null;
   }
+  const openId = String(data.openId || "").trim() || `wx_${studentNo || studentId}`;
+  const studentName = String(data.studentName || "").trim() || studentNo || studentId;
   return {
-    openId: String(data.openId),
-    studentId: String(data.studentId || ""),
-    studentName: String(data.studentName || ""),
+    openId,
+    studentId,
+    studentNo,
+    studentName,
     classLabel: String(data.classLabel || ""),
     nickname: String(data.nickname || ""),
     avatarUrl: String(data.avatarUrl || ""),

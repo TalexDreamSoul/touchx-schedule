@@ -123,7 +123,7 @@ const loadCandidates = async () => {
   }
   loading.value = true;
   try {
-    const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, authSession.value.token);
+    const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token);
     const merged = new Map<string, SocialUserItem>();
     for (const item of data.candidates || []) {
       const studentId = String(item?.studentId || "").trim();

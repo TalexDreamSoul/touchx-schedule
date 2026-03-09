@@ -57,7 +57,7 @@
     <template #default="{ isOpen }">
       <view class="dialog-card dialog-pop-card" :class="{ 'is-open': isOpen }" @click.stop>
         <view class="dialog-title">后端在线检测</view>
-        <view class="dialog-sub">检测 `/health`，在线后拉取 `/api/today-brief`。</view>
+        <view class="dialog-sub">检测 `/health`，在线后拉取 `/api/v1/today-brief`。</view>
         <view class="backend-mock-row">
           <view class="backend-mock-btn" @click="emit('run-backend-probe')">立即检测</view>
           <view class="backend-mock-btn" @click="emit('refresh-today-brief')">刷新今日数据</view>

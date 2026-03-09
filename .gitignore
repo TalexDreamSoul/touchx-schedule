@@ -23,14 +23,12 @@ dist
 # Python cache/runtime artifacts
 __pycache__/
 *.py[cod]
-backends/legacy-fastapi/app/*.db
-backends/legacy-fastapi/app/*.db-*
-backends/legacy-fastapi/.env
 
-# Local release/build outputs
-backends/legacy-fastapi/.venv/
-backends/legacy-fastapi-release*.zip
-backends/backend/.dev.vars
+# Backend local env/build outputs
+apps/backend/.env
+apps/backend/.env.*
+!apps/backend/.env.example
+apps/backend/.dev.vars
 .nuxt/
 .output/
 .wrangler/

@@ -82,7 +82,7 @@
       <template v-else>
         <view v-if="todayCourses.length > 0" class="section-sub">今天有 {{ todayCourses.length }} 门课，共 {{ todaySectionLoad }} 节</view>
         <view v-if="todayCourses.length === 0" class="tip">今天没有安排课程。</view>
-        <scroll-view v-else class="today-list-scroll" scroll-y :show-scrollbar="false" :style="{ height: todayListScrollHeight }">
+        <view v-else class="today-list-scroll">
           <view class="today-list">
             <view
               v-for="course in todayCourses"
@@ -104,7 +104,7 @@
               <view class="today-time">{{ getSectionStartTime(course.startSection) }}</view>
             </view>
           </view>
-        </scroll-view>
+        </view>
       </template>
     </view>
 
@@ -270,16 +270,6 @@ const shouldShowPendingCourseOwner = (course: DisplayCourse) => {
   }
   return course.ownerId !== activeId;
 };
-
-const TODAY_LIST_MAX_VISIBLE_ITEMS = 3;
-const TODAY_ITEM_ESTIMATED_HEIGHT_RPX = 170;
-const TODAY_ITEM_GAP_RPX = 10;
-
-const todayListScrollHeight = computed(() => {
-  const visibleCount = Math.max(1, Math.min(props.todayCourses.length, TODAY_LIST_MAX_VISIBLE_ITEMS));
-  const totalGap = Math.max(0, visibleCount - 1) * TODAY_ITEM_GAP_RPX;
-  return `${visibleCount * TODAY_ITEM_ESTIMATED_HEIGHT_RPX + totalGap}rpx`;
-});
 
 const DEFAULT_COMMUTE_MINUTES = 7;
 const MINUTE_MS = 60 * 1000;

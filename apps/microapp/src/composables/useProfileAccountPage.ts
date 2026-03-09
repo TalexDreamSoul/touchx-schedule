@@ -18,8 +18,9 @@ import {
 import { useSocialDashboard, type SocialDashboardResponse, type SocialUserItem } from "@/composables/useSocialDashboard";
 
 interface AuthUserProfile {
-  openId: string;
+  openId?: string;
   studentId: string;
+  studentNo?: string;
   studentName: string;
   classLabel?: string;
   nickname: string;
@@ -53,11 +54,12 @@ const resolveActionErrorMessage = (error: unknown, fallback: string) => {
   if (!rawMessage) {
     return fallback;
   }
+  const urlSuffix = rawMessage.match(/（https?:\/\/[^）]+）/)?.[0] || "";
   if (/timeout/i.test(rawMessage)) {
-    return "网络请求超时，请稍后重试";
+    return `网络请求超时，请稍后重试${urlSuffix}`;
   }
   if (/request:fail/i.test(rawMessage)) {
-    return "网络请求失败，请检查网络或后端地址";
+    return `网络请求失败，请检查网络或后端地址${urlSuffix}`;
   }
   return rawMessage;
 };
@@ -101,6 +103,28 @@ const normalizeStudentNoInput = (value: unknown) => {
   return String(value || "")
     .replace(/\D+/g, "")
     .slice(0, 32);
+};
+
+const promptStudentNoInput = () => {
+  return new Promise<string | null>((resolve) => {
+    uni.showModal({
+      title: "请输入学号",
+      content: "",
+      editable: true,
+      placeholderText: "仅数字，6-32位",
+      success: (result) => {
+        if (!result.confirm) {
+          resolve(null);
+          return;
+        }
+        const content = normalizeStudentNoInput((result as { content?: string }).content);
+        resolve(content);
+      },
+      fail: () => {
+        resolve(null);
+      },
+    });
+  });
 };
 
 const normalizeRandomCodeInput = (value: unknown) => {
@@ -173,18 +197,22 @@ export const useProfileAccountPage = () => {
     if (!authSession.value.token) {
       return;
     }
-    const data = await requestBackendGet<BackendAuthMeResponse>(backendBaseUrl.value, "/api/auth/me", {}, authSession.value.token);
-    if (!data.user?.openId) {
+    const data = await requestBackendGet<BackendAuthMeResponse>(backendBaseUrl.value, "/api/v1/auth/me", {}, authSession.value.token);
+    const studentId = String(data.user?.studentId || "").trim();
+    const studentNo = String(data.user?.studentNo || "").trim();
+    if (!data.user || (!studentId && !studentNo)) {
       throw new Error("登录状态异常");
     }
+    const openId = String(data.user.openId || "").trim() || `wx_${studentNo || studentId}`;
     persistAuthSessionToStorage({
       token: authSession.value.token,
       expiresAt: Number(data.expiresAt || 0),
       mode: data.mode === "wechat" ? "wechat" : "mock",
       user: {
-        openId: String(data.user.openId || ""),
-        studentId: String(data.user.studentId || ""),
-        studentName: String(data.user.studentName || ""),
+        openId,
+        studentId,
+        studentNo,
+        studentName: String(data.user.studentName || "").trim() || studentNo || studentId,
         classLabel: String(data.user.classLabel || ""),
         nickname: String(data.user.nickname || ""),
         avatarUrl: String(data.user.avatarUrl || ""),
@@ -200,7 +228,7 @@ export const useProfileAccountPage = () => {
       return;
     }
     const data = await refreshSocialDashboardData(() =>
-      requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, authSession.value.token),
+      requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token),
       backendBaseUrl.value,
     );
     avatarUrl.value = resolveBackendMediaUrl(
@@ -247,7 +275,22 @@ export const useProfileAccountPage = () => {
     if (loginPending.value) {
       return;
     }
-    const normalizedStudentNo = normalizeStudentNoInput(studentNo);
+    let normalizedStudentNo = normalizeStudentNoInput(studentNo);
+    if (!normalizedStudentNo) {
+      const manualStudentNo = await promptStudentNoInput();
+      if (manualStudentNo === null) {
+        return;
+      }
+      normalizedStudentNo = normalizeStudentNoInput(manualStudentNo);
+    }
+    if (!normalizedStudentNo) {
+      uni.showToast({ title: "请先填写学号", icon: "none", duration: 1600 });
+      return;
+    }
+    if (!/^\d{6,32}$/.test(normalizedStudentNo)) {
+      uni.showToast({ title: "学号格式不正确", icon: "none", duration: 1600 });
+      return;
+    }
     const studentId = normalizedStudentNo ? resolveStudentIdByStudentNo(normalizedStudentNo) : "";
     loginPending.value = true;
     hintText.value = "";
@@ -256,14 +299,14 @@ export const useProfileAccountPage = () => {
       const profile = await tryGetWechatProfile();
       const data = await requestBackendPost<BackendAuthLoginResponse>(
         backendBaseUrl.value,
-        "/api/auth/wechat-login",
+        "/api/v1/auth/wechat-login",
         {
           code,
-          student_id: studentId || undefined,
-          student_no: normalizedStudentNo,
+          studentId: studentId || undefined,
+          studentNo: normalizedStudentNo,
           nickname: profile.nickname || "",
-          avatar_url: profile.avatarUrl || "",
-          client_platform: resolveClientPlatform(),
+          avatarUrl: profile.avatarUrl || "",
+          clientPlatform: resolveClientPlatform(),
         },
       );
       if (!data.token || !data.user) {
@@ -274,9 +317,10 @@ export const useProfileAccountPage = () => {
         expiresAt: Number(data.expiresAt || 0),
         mode: data.mode === "wechat" ? "wechat" : "mock",
         user: {
-          openId: String(data.user.openId || ""),
+          openId: String(data.user.openId || "").trim() || `wx_${normalizedStudentNo || studentId}`,
           studentId: String(data.user.studentId || ""),
-          studentName: String(data.user.studentName || ""),
+          studentNo: String(data.user.studentNo || ""),
+          studentName: String(data.user.studentName || "").trim() || normalizedStudentNo || studentId,
           classLabel: String(data.user.classLabel || ""),
           nickname: String(data.user.nickname || ""),
           avatarUrl: String(data.user.avatarUrl || ""),
@@ -306,7 +350,7 @@ export const useProfileAccountPage = () => {
     loginPending.value = true;
     try {
       try {
-        await requestBackendPost(backendBaseUrl.value, "/api/auth/logout", {}, authSession.value.token);
+        await requestBackendPost(backendBaseUrl.value, "/api/v1/auth/logout", {}, authSession.value.token);
       } catch (error) {
       }
       clearAuthSessionStorage();
@@ -382,7 +426,7 @@ export const useProfileAccountPage = () => {
       }
       const response = await uploadBackendImage<UploadImageResponse>(
         backendBaseUrl.value,
-        "/api/social/upload/avatar",
+        "/api/v1/social/upload/avatar",
         filePath,
         authSession.value.token,
       );
@@ -453,7 +497,7 @@ export const useProfileAccountPage = () => {
     }
     notifyPending.value = true;
     try {
-      await requestBackendPost(backendBaseUrl.value, "/api/social/notify/unbind", {}, authSession.value.token);
+      await requestBackendPost(backendBaseUrl.value, "/api/v1/social/notify/unbind", {}, authSession.value.token);
       await refreshSocialMe();
       uni.showToast({ title: "已解绑", icon: "none", duration: 1200 });
     } catch (error) {
@@ -493,8 +537,8 @@ export const useProfileAccountPage = () => {
             try {
               const response = await requestBackendPost<UpdateRandomCodeResponse>(
                 backendBaseUrl.value,
-                "/api/social/random-code",
-                { random_code: nextCode },
+                "/api/v1/social/random-code",
+                { randomCode: nextCode },
                 authSession.value.token,
               );
               await refreshSocialMe();
@@ -529,7 +573,7 @@ export const useProfileAccountPage = () => {
         }
         authUnbindPending.value = true;
         try {
-          await requestBackendPost(backendBaseUrl.value, "/api/auth/unbind", {}, authSession.value.token);
+          await requestBackendPost(backendBaseUrl.value, "/api/v1/auth/unbind", {}, authSession.value.token);
           clearAuthSessionStorage();
           authSession.value = readAuthSessionFromStorage();
           clearDashboard(true);

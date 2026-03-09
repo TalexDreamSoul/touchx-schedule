@@ -52,6 +52,7 @@ const props = withDefaults(
     showStudentNoInput?: boolean;
     studentNoValue?: string;
     studentNoPlaceholder?: string;
+    requireStudentNo?: boolean;
     heightPercent?: number;
     requireAgreement?: boolean;
     agreementChecked?: boolean;
@@ -67,6 +68,7 @@ const props = withDefaults(
     showStudentNoInput: false,
     studentNoValue: "",
     studentNoPlaceholder: "请输入学号",
+    requireStudentNo: false,
     heightPercent: 50,
     requireAgreement: false,
     agreementChecked: false,
@@ -120,7 +122,12 @@ const cardInlineStyle = computed(() => {
 });
 
 const confirmDisabled = computed(() => {
-  return Boolean(props.pending || (props.requireAgreement && !props.agreementChecked));
+  const studentNoFilled = String(props.studentNoValue || "").trim() !== "";
+  return Boolean(
+    props.pending ||
+      (props.requireAgreement && !props.agreementChecked) ||
+      (props.showStudentNoInput && props.requireStudentNo && !studentNoFilled),
+  );
 });
 
 watch(

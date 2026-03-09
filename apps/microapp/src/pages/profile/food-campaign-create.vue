@@ -1,12 +1,12 @@
 <template>
-  <PageContainer title="发起竞选">
+  <PageContainer title="发起拼单">
     <view class="page">
-      <!-- 已有进行中竞选提示 -->
+      <!-- 已有进行中拼单提示 -->
       <view class="alert-card" v-if="myOpenCampaign">
         <view class="alert-icon">⚠</view>
         <view class="alert-body">
-          <view class="alert-title">你已有进行中的竞选</view>
-          <view class="alert-desc">{{ myOpenCampaign.title || "今天吃什么" }} · 截止于 {{ formatTime(myOpenCampaign.deadlineAt) }}</view>
+          <view class="alert-title">你已有进行中的拼单</view>
+          <view class="alert-desc">{{ resolveCampaignTitle(myOpenCampaign) }} · 截止于 {{ formatTime(myOpenCampaign.deadlineAt) }}</view>
         </view>
         <button class="alert-action" @click="openExistingCampaign">查看</button>
       </view>
@@ -19,8 +19,8 @@
         </view>
 
         <view class="form-field">
-          <view class="form-label">竞选标题<text class="form-label-opt">（选填）</text></view>
-          <input v-model.trim="createForm.title" class="form-input" type="text" placeholder="默认：今天吃什么" />
+          <view class="form-label">拼单标题<text class="form-label-opt">（选填）</text></view>
+          <input v-model.trim="createForm.title" class="form-input" type="text" placeholder="默认：当前时间发布的拼单" />
         </view>
 
         <view class="form-field">
@@ -54,13 +54,13 @@
         </view>
 
         <view class="form-field">
-          <view class="form-label">投票模式</view>
+          <view class="form-label">选择模式</view>
           <view class="form-chips">
-            <view class="form-chip" :class="{ active: createForm.isAnonymous }" @click="createForm.isAnonymous = true">匿名投票</view>
-            <view class="form-chip" :class="{ active: !createForm.isAnonymous }" @click="createForm.isAnonymous = false">实名投票</view>
+            <view class="form-chip" :class="{ active: createForm.isAnonymous }" @click="createForm.isAnonymous = true">匿名选择</view>
+            <view class="form-chip" :class="{ active: !createForm.isAnonymous }" @click="createForm.isAnonymous = false">实名选择</view>
           </view>
-          <view class="form-hint" v-if="createForm.isAnonymous">投票期间仅自己可见，截止后持分享码可查看实名明细</view>
-          <view class="form-hint" v-else>全程公开可见投票明细</view>
+          <view class="form-hint" v-if="createForm.isAnonymous">选择期间仅自己可见，结束后持分享码可查看实名明细</view>
+          <view class="form-hint" v-else>全程公开可见选择明细</view>
         </view>
       </view>
 
@@ -128,14 +128,14 @@
         <template v-if="showAdvanced">
           <view class="form-row">
             <view class="form-field half">
-              <view class="form-label">每人票数</view>
+              <view class="form-label">每人可选</view>
               <input v-model.trim="createForm.maxVotesPerUser" class="form-input" type="number" placeholder="1" />
-              <view class="form-hint">1~3 票</view>
+              <view class="form-hint">1~3 项</view>
             </view>
             <view class="form-field half">
               <view class="form-label">截止时间</view>
-              <input v-model.trim="createForm.deadlineMinutes" class="form-input" type="number" placeholder="60" />
-              <view class="form-hint">分钟后自动截止</view>
+              <input v-model.trim="createForm.deadlineMinutes" class="form-input" type="number" placeholder="180" />
+              <view class="form-hint">默认 180 分钟，最长 360 分钟</view>
             </view>
           </view>
 
@@ -162,7 +162,7 @@
 
       <!-- 提交按钮 -->
       <button class="submit-btn" :disabled="Boolean(myOpenCampaign)" :class="{ pending: pendingCreate }" @click="createCampaign">
-        {{ pendingCreate ? "创建中..." : "确认发起竞选" }}
+        {{ pendingCreate ? "创建中..." : "确认发起拼单" }}
       </button>
 
       <!-- 创建成功卡片 -->
@@ -172,7 +172,7 @@
           <view class="success-title">创建成功</view>
         </view>
         <view class="success-info">
-          <view class="success-name">{{ createdCampaign.title || "今天吃什么" }}</view>
+          <view class="success-name">{{ resolveCampaignTitle(createdCampaign) }}</view>
           <view class="success-meta">{{ createdCampaign.isAnonymous ? "匿名" : "实名" }} · 分享码：{{ createdCampaign.shareToken || "-" }}</view>
         </view>
         <view class="success-actions">
@@ -329,7 +329,7 @@ const createForm = ref({
   selectedCategoryKeys: [] as string[],
   selectedBrandKeys: [] as string[],
   maxVotesPerUser: "1",
-  deadlineMinutes: "60",
+  deadlineMinutes: "180",
   inviteeStudentIds: [] as string[],
 });
 
@@ -337,7 +337,9 @@ const activeTierOptions = computed(() => {
   return tierOptionsMap[createForm.value.templateKey] || [];
 });
 
-const currentStudentId = computed(() => String(authSession.value.user?.studentId || "").trim());
+const currentUserIdentity = computed(() => {
+  return String(authSession.value.user?.studentId || authSession.value.user?.studentNo || "").trim();
+});
 
 const ensureAuthed = () => {
   if (!authSession.value.token || !authSession.value.user) {
@@ -385,6 +387,9 @@ const buildDeadlineAtIso = (minutesText: string) => {
   const minutes = Number(String(minutesText || "").trim());
   if (!Number.isFinite(minutes) || minutes < 6) {
     throw new Error("截止时间至少 6 分钟");
+  }
+  if (minutes > 360) {
+    throw new Error("截止时间最长 360 分钟");
   }
   return new Date(Date.now() + minutes * 60 * 1000).toISOString();
 };
@@ -478,11 +483,11 @@ const loadFoodFilterOptions = async (silent = false) => {
     ensureAuthed();
     const response = await requestBackendGet<FoodFilterOptionsResponse>(
       backendBaseUrl.value,
-      "/api/social/foods",
+      "/api/v1/social/foods",
       {
-        template_key: createForm.value.templateKey,
+        templateKey: createForm.value.templateKey,
         headcount: "1",
-        category_key: resolveBrandScopedCategoryKey(),
+        categoryKey: resolveBrandScopedCategoryKey(),
       },
       authSession.value.token,
     );
@@ -592,7 +597,7 @@ const buildCampaignSharePath = (shareToken: string) => {
   if (!token) {
     return "";
   }
-  return `/pages/profile/food-campaign-detail?share_token=${encodeURIComponent(token)}`;
+  return `/pages/profile/food-campaign-detail?shareToken=${encodeURIComponent(token)}`;
 };
 
 const copyShareToken = () => {
@@ -628,7 +633,7 @@ const openExistingCampaign = () => {
   if (!campaignId) {
     return;
   }
-  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaign_id=${encodeURIComponent(campaignId)}` });
+  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(campaignId)}` });
 };
 
 const openCreatedCampaign = () => {
@@ -636,18 +641,22 @@ const openCreatedCampaign = () => {
   if (!campaignId) {
     return;
   }
-  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaign_id=${encodeURIComponent(campaignId)}` });
+  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(campaignId)}` });
 };
 
 const refreshMyOpenCampaign = async () => {
   ensureAuthed();
+  const currentId = currentUserIdentity.value;
+  if (!currentId) {
+    myOpenCampaign.value = null;
+    return;
+  }
   const response = await requestBackendGet<CampaignListResponse>(
     backendBaseUrl.value,
-    "/api/social/food-campaigns",
+    "/api/v1/social/food-campaigns",
     { status: "open" },
     authSession.value.token,
   );
-  const currentId = currentStudentId.value;
   const items = Array.isArray(response.items) ? response.items : [];
   myOpenCampaign.value = items.find((item) => String(item.initiatorStudentId || "").trim() === currentId) || null;
 };
@@ -660,7 +669,7 @@ const createCampaign = async () => {
   try {
     ensureAuthed();
     if (myOpenCampaign.value) {
-      throw new Error("你已有进行中竞选，请先截止后再发起");
+      throw new Error("你已有进行中拼单，请先结束后再发起");
     }
     const templateKey = createForm.value.templateKey;
     const selectedTierIds = normalizeSelectedTierIds(templateKey, createForm.value.selectedTierIds);
@@ -677,7 +686,7 @@ const createCampaign = async () => {
     }
     const maxVotes = Number(String(createForm.value.maxVotesPerUser || "").trim());
     if (!Number.isFinite(maxVotes) || maxVotes < 1 || maxVotes > 3) {
-      throw new Error("每人票数必须在 1~3");
+      throw new Error("每人可选数量必须在 1~3");
     }
     const joinMode = createForm.value.joinMode;
     const inviteeStudentIds = normalizeStudentIds(createForm.value.inviteeStudentIds || []);
@@ -692,20 +701,20 @@ const createCampaign = async () => {
     }
     const payload = {
       title: String(createForm.value.title || "").trim(),
-      template_key: templateKey,
-      join_mode: joinMode,
-      join_password: String(createForm.value.joinPassword || "").trim(),
-      is_anonymous: Boolean(createForm.value.isAnonymous),
-      selected_tier_ids: selectedTierIds,
-      category_keys: selectedCategoryKeys,
-      brand_keys: selectedBrandKeys,
-      max_votes_per_user: Math.floor(maxVotes),
-      deadline_at: buildDeadlineAtIso(createForm.value.deadlineMinutes),
-      invitee_student_ids: inviteeStudentIds,
+      templateKey: templateKey,
+      joinMode: joinMode,
+      joinPassword: String(createForm.value.joinPassword || "").trim(),
+      isAnonymous: Boolean(createForm.value.isAnonymous),
+      selectedTierIds: selectedTierIds,
+      categoryKeys: selectedCategoryKeys,
+      brandKeys: selectedBrandKeys,
+      maxVotesPerUser: Math.floor(maxVotes),
+      deadlineAt: buildDeadlineAtIso(createForm.value.deadlineMinutes),
+      inviteeStudentIds: inviteeStudentIds,
     };
     const response = await requestBackendPost<CampaignDetailResponse>(
       backendBaseUrl.value,
-      "/api/social/food-campaigns",
+      "/api/v1/social/food-campaigns",
       payload,
       authSession.value.token,
     );
@@ -735,6 +744,18 @@ const formatTime = (timestamp: unknown) => {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${month}-${day} ${hours}:${minutes}`;
+};
+
+const resolveCampaignTitle = (item: FoodCampaignSummary | FoodCampaignDetail | null | undefined) => {
+  const explicitTitle = String(item?.title || "").trim();
+  if (explicitTitle) {
+    return explicitTitle;
+  }
+  const deadlineAt = Number(item?.deadlineAt || 0);
+  if (Number.isFinite(deadlineAt) && deadlineAt > 0) {
+    return `${formatTime(deadlineAt)} 发布的拼单`;
+  }
+  return "本次拼单";
 };
 
 onShow(() => {

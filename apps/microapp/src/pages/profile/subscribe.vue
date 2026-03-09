@@ -1,6 +1,5 @@
 <template>
-  <PageContainer title="通知与订阅">
-    <view class="page">
+  <PageViewContainer title="通知与订阅">
       <template v-if="!isBound">
         <view class="card">
           <view class="sub">除管理员外，订阅他人课表需输入对方个人页中的 4 位验证码。</view>
@@ -97,14 +96,13 @@
         </view>
 
       </template>
-    </view>
-  </PageContainer>
+  </PageViewContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
-import PageContainer from "@/components/PageContainer.vue";
+import PageViewContainer from "@/components/PageViewContainer.vue";
 import { useSocialDashboard, type SocialDashboardResponse } from "@/composables/useSocialDashboard";
 import {
   guardProfilePageAccess,
@@ -138,7 +136,7 @@ const refreshDashboard = async () => {
     return;
   }
   await refreshSocialDashboardData(() =>
-    requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, authSession.value.token),
+    requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token),
     backendBaseUrl.value,
   );
 };
@@ -226,8 +224,8 @@ const subscribeStudent = async (studentId: string) => {
     try {
       await requestBackendPost(
         backendBaseUrl.value,
-        "/api/social/subscribe",
-        { target_student_id: studentId },
+        "/api/v1/social/subscribe",
+        { targetStudentId: studentId },
         authSession.value.token,
       );
     } catch (error) {
@@ -241,10 +239,10 @@ const subscribeStudent = async (studentId: string) => {
       }
       await requestBackendPost(
         backendBaseUrl.value,
-        "/api/social/subscribe",
+        "/api/v1/social/subscribe",
         {
-          target_student_id: studentId,
-          target_random_code: code,
+          targetStudentId: studentId,
+          targetRandomCode: code,
         },
         authSession.value.token,
       );
@@ -278,8 +276,8 @@ const unsubscribe = async (studentId: string) => {
   try {
     await requestBackendPost(
       backendBaseUrl.value,
-      "/api/social/subscribe/remove",
-      { target_student_id: studentId },
+      "/api/v1/social/subscribe/remove",
+      { targetStudentId: studentId },
       authSession.value.token,
     );
     await refreshDashboard();
@@ -301,11 +299,6 @@ onShow(() => {
 </script>
 
 <style scoped>
-.page {
-  padding: 20rpx;
-  box-sizing: border-box;
-}
-
 .card {
   background: var(--card-bg);
   border: 1rpx solid var(--line);

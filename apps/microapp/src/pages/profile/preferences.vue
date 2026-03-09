@@ -87,6 +87,21 @@
           </view>
         </view>
       </view>
+
+      <view class="card">
+        <view class="title small">连接诊断</view>
+        <view class="setting-row" @click="runConnectivityProbe">
+          <view>
+            <view class="setting-title">在线连通性</view>
+            <view class="setting-sub">{{ backendBaseUrl }}/health</view>
+          </view>
+          <view class="link">{{ connectivityPending ? "检测中" : "检测" }}</view>
+        </view>
+        <view v-if="connectivityResult" class="probe-result">{{ connectivityResult }}</view>
+        <view class="probe-meta">构建版本：{{ clientBuildTag }}</view>
+        <view v-if="lastTraceSummary" class="probe-result">最近请求：{{ lastTraceSummary }}</view>
+        <view v-if="lastTraceWarnText" class="probe-warn">{{ lastTraceWarnText }}</view>
+      </view>
     </view>
   </PageContainer>
 </template>
@@ -97,8 +112,7 @@ import { onShow } from "@dcloudio/uni-app";
 import PageContainer from "@/components/PageContainer.vue";
 import { useSocialDashboard, type SocialDashboardResponse } from "@/composables/useSocialDashboard";
 import {
-  STORAGE_BACKEND_BASE_URL_KEY,
-  STORAGE_BACKEND_ENDPOINT_MODE_KEY,
+  CLIENT_BUILD_TAG,
   STORAGE_PURPLE_UNLOCKED_KEY,
   STORAGE_SCHEDULE_CACHE_SOURCE_KEY,
   STORAGE_SCHEDULE_CACHE_TIME_KEY,
@@ -108,15 +122,15 @@ import {
   STORAGE_THEME_WALLPAPER_EFFECT_LEVEL_KEY,
   STORAGE_THEME_WALLPAPER_ENABLED_KEY,
   type BackendEndpointMode,
-  getBackendBaseUrlByMode,
+  enforceBackendEndpointStorage,
   guardProfilePageAccess,
+  readLastBackendRequestTrace,
   readLocalWallpaperPath,
   readAuthSessionFromStorage,
   requestBackendGet,
   requestBackendPost,
   uploadBackendImage,
   resolveBackendMediaUrl,
-  resolveBackendBaseUrlFromStorage,
   resolveBackendRuntimeDefaultMode,
   saveLocalWallpaperPath,
 } from "@/utils/profile-service";
@@ -157,6 +171,11 @@ const themeWallpaperEnabled = ref(true);
 const themeWallpaperBlurEnabled = ref(true);
 const themeWallpaperEffectLevel = ref<ThemeWallpaperEffectLevel>("medium");
 const authToken = ref("");
+const connectivityPending = ref(false);
+const connectivityResult = ref("");
+const clientBuildTag = CLIENT_BUILD_TAG;
+const lastTraceSummary = ref("");
+const lastTraceWarnText = ref("");
 const isBound = computed(() => Boolean(dashboard.value?.me?.studentId));
 const themeWallpaperSwitchVisible = computed(() => {
   return Boolean(String(themeImageMap.value[themeKey.value] || "").trim());
@@ -233,13 +252,9 @@ const loadSettings = () => {
     themeKey.value = "black";
   }
 
-  backendBaseUrl.value = resolveBackendBaseUrlFromStorage();
-  if (runtimeBackendDefaultMode === "local") {
-    const savedMode = String(uni.getStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY) || "").trim();
-    backendMode.value = savedMode === "online" ? "online" : "local";
-  } else {
-    backendMode.value = "online";
-  }
+  const endpoint = enforceBackendEndpointStorage();
+  backendBaseUrl.value = endpoint.baseUrl;
+  backendMode.value = endpoint.mode;
   scheduleSource.value = String(uni.getStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY) || "local");
   scheduleCacheAt.value = Number(uni.getStorageSync(STORAGE_SCHEDULE_CACHE_TIME_KEY) || 0);
   wallpaperUrl.value = resolveBackendMediaUrl(backendBaseUrl.value, readLocalWallpaperPath());
@@ -254,6 +269,20 @@ const loadSettings = () => {
   themeWallpaperEffectLevel.value = resolveThemeWallpaperEffectLevel(
     uni.getStorageSync(STORAGE_THEME_WALLPAPER_EFFECT_LEVEL_KEY),
   );
+  const trace = readLastBackendRequestTrace();
+  if (trace) {
+    const when = trace.at > 0 ? new Date(trace.at) : null;
+    const whenLabel = when
+      ? `${`${when.getHours()}`.padStart(2, "0")}:${`${when.getMinutes()}`.padStart(2, "0")}:${`${when.getSeconds()}`.padStart(2, "0")}`
+      : "--:--:--";
+    lastTraceSummary.value = `${trace.method} ${trace.url} · status=${trace.statusCode || 0} · ${trace.ok ? "OK" : trace.errorMessage || "FAIL"} · ${whenLabel}`;
+    lastTraceWarnText.value = /127\.0\.0\.1|localhost/i.test(trace.url)
+      ? "警告：检测到请求仍指向本地地址"
+      : "";
+  } else {
+    lastTraceSummary.value = "";
+    lastTraceWarnText.value = "";
+  }
 };
 
 const normalizeThemeImageMap = (raw: unknown) => {
@@ -277,7 +306,7 @@ const normalizeThemeImageMap = (raw: unknown) => {
 
 const refreshThemeImageMap = async () => {
   try {
-    const response = await requestBackendGet<{ images?: Record<string, string> }>(backendBaseUrl.value, "/api/theme-images");
+    const response = await requestBackendGet<{ images?: Record<string, string> }>(backendBaseUrl.value, "/api/v1/theme-images");
     themeImageMap.value = normalizeThemeImageMap(response.images || {});
   } catch (error) {
     themeImageMap.value = {};
@@ -293,7 +322,7 @@ const refreshAdminStatus = async () => {
   }
   try {
     const data = await refreshSocialDashboardData(() =>
-      requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, session.token),
+      requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, session.token),
       backendBaseUrl.value,
     );
     const cloudWallpaper = resolveBackendMediaUrl(backendBaseUrl.value, String(data.me?.wallpaperUrl || "").trim());
@@ -389,19 +418,53 @@ const pickBackendMode = () => {
   if (!isAdmin.value) {
     return;
   }
-  if (runtimeBackendDefaultMode !== "local") {
-    uni.showToast({ title: "线上版已固定线上后端", icon: "none", duration: 1600 });
+  const endpoint = enforceBackendEndpointStorage("online");
+  backendMode.value = endpoint.mode;
+  backendBaseUrl.value = endpoint.baseUrl;
+  uni.showToast({ title: "当前版本固定线上后端", icon: "none", duration: 1600 });
+};
+
+const resolveActionErrorMessage = (error: unknown, fallback: string) => {
+  const message = error instanceof Error ? String(error.message || "").trim() : "";
+  return message || fallback;
+};
+
+const runConnectivityProbe = async () => {
+  if (connectivityPending.value) {
     return;
   }
-  uni.showActionSheet({
-    itemList: ["本地 (http://127.0.0.1:9986)", "线上 (https://schedule-ends.tagzxia.com)"],
-    success: (result) => {
-      backendMode.value = result.tapIndex === 1 ? "online" : "local";
-      backendBaseUrl.value = getBackendBaseUrlByMode(backendMode.value);
-      uni.setStorageSync(STORAGE_BACKEND_ENDPOINT_MODE_KEY, backendMode.value);
-      uni.setStorageSync(STORAGE_BACKEND_BASE_URL_KEY, backendBaseUrl.value);
-    },
-  });
+  const endpoint = enforceBackendEndpointStorage();
+  backendBaseUrl.value = endpoint.baseUrl;
+  backendMode.value = endpoint.mode;
+  connectivityPending.value = true;
+  try {
+    const response = await requestBackendGet<{ ok?: boolean; service?: string; mode?: string }>(
+      backendBaseUrl.value,
+      "/health",
+    );
+    const service = String(response.service || "").trim();
+    const runtimeMode = String(response.mode || "").trim();
+    const details = [service, runtimeMode].filter((item) => item);
+    connectivityResult.value = `连通成功：${backendBaseUrl.value}/health${details.length > 0 ? ` · ${details.join(" / ")}` : ""}`;
+    uni.showToast({ title: "在线后端连通成功", icon: "none", duration: 1500 });
+  } catch (error) {
+    const message = resolveActionErrorMessage(error, "连通失败");
+    connectivityResult.value = `连通失败：${backendBaseUrl.value}/health · ${message}`;
+    uni.showToast({ title: message, icon: "none", duration: 2000 });
+  } finally {
+    connectivityPending.value = false;
+    const trace = readLastBackendRequestTrace();
+    if (trace) {
+      const when = trace.at > 0 ? new Date(trace.at) : null;
+      const whenLabel = when
+        ? `${`${when.getHours()}`.padStart(2, "0")}:${`${when.getMinutes()}`.padStart(2, "0")}:${`${when.getSeconds()}`.padStart(2, "0")}`
+        : "--:--:--";
+      lastTraceSummary.value = `${trace.method} ${trace.url} · status=${trace.statusCode || 0} · ${trace.ok ? "OK" : trace.errorMessage || "FAIL"} · ${whenLabel}`;
+      lastTraceWarnText.value = /127\.0\.0\.1|localhost/i.test(trace.url)
+        ? "警告：检测到请求仍指向本地地址"
+        : "";
+    }
+  }
 };
 
 const getLocalFileSize = (filePath: string) => {
@@ -461,7 +524,7 @@ const uploadWallpaper = async () => {
     }
     const response = await uploadBackendImage<{ wallpaperUrl?: string; me?: { wallpaperUrl?: string } }>(
       backendBaseUrl.value,
-      "/api/social/upload/wallpaper",
+      "/api/v1/social/upload/wallpaper",
       filePath,
       authToken.value,
     );
@@ -497,7 +560,7 @@ const clearWallpaper = async () => {
   }
   wallpaperPending.value = true;
   try {
-    await requestBackendPost(backendBaseUrl.value, "/api/social/profile", { wallpaper_url: "" }, authToken.value);
+    await requestBackendPost(backendBaseUrl.value, "/api/v1/social/profile", { wallpaperUrl: "" }, authToken.value);
     wallpaperUrl.value = "";
     saveLocalWallpaperPath("");
     uni.showToast({ title: "已清除", icon: "none", duration: 1200 });
@@ -693,5 +756,24 @@ onShow(() => {
   font-size: 22rpx;
   color: var(--accent);
   font-weight: 600;
+}
+
+.probe-result {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+  word-break: break-all;
+}
+
+.probe-meta {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+
+.probe-warn {
+  margin-top: 8rpx;
+  font-size: 20rpx;
+  color: #cf3d3d;
 }
 </style>

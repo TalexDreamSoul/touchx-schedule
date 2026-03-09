@@ -4,20 +4,11 @@
   "version": "0.1.0",
   "scripts": {
     "dev:microapp": "pnpm --filter @touchx/microapp dev:mp-weixin",
-    "dev:admin": "pnpm --filter @touchx/admin-web dev",
     "dev:backend": "pnpm --filter @touchx/backend dev",
-    "dev:legacy": "cd ./backends/legacy-fastapi && ./start.sh --dev",
     "build:microapp": "pnpm --filter @touchx/microapp build:mp-weixin",
-    "build:admin": "pnpm --filter @touchx/admin-web build",
-    "build:admin:legacy": "pnpm --filter @touchx/admin-web build:legacy",
     "build:backend": "pnpm --filter @touchx/backend build",
     "preview:backend": "pnpm --filter @touchx/backend preview",
-    "deploy:backend": "pnpm --filter @touchx/backend deploy",
-    "admin:dev": "pnpm --filter @touchx/admin-web dev",
-    "admin:build": "pnpm --filter @touchx/admin-web build",
-    "admin:preview": "pnpm --filter @touchx/admin-web preview",
-    "dev:mp-weixin": "pnpm --filter @touchx/microapp dev:mp-weixin",
-    "build:mp-weixin": "pnpm --filter @touchx/microapp build:mp-weixin",
+    "deploy:backend": "pnpm --filter @touchx/backend run deploy",
     "type-check": "pnpm -r --if-present type-check"
   }
 }

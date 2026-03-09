@@ -1,6 +1,5 @@
 <template>
-  <PageContainer title="绑定课表">
-    <view class="page">
+  <PageViewContainer title="绑定课表">
       <view v-if="!isAuthed" class="card">
         <view class="empty">请先在“账号与授权”页面完成授权登录。</view>
         <view class="btn" @click="goAccountPage">去账号与授权</view>
@@ -33,14 +32,13 @@
 
         <view v-if="hintText" class="hint">{{ hintText }}</view>
       </view>
-    </view>
-  </PageContainer>
+  </PageViewContainer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
-import PageContainer from "@/components/PageContainer.vue";
+import PageViewContainer from "@/components/PageViewContainer.vue";
 import {
   guardProfilePageAccess,
   persistAuthSessionToStorage,
@@ -140,7 +138,7 @@ const refreshStudents = async () => {
   loading.value = true;
   hintText.value = "";
   try {
-    const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/social/me", {}, authSession.value.token);
+    const data = await requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token);
     const merged = new Map<string, SocialUserItem>();
     const me = data.me;
     if (me?.studentId) {
@@ -179,8 +177,8 @@ const bindTargetStudent = async (studentId: string) => {
     try {
       data = await requestBackendPost<BindStudentResponse>(
         backendBaseUrl.value,
-        "/api/social/bind-student",
-        { target_student_id: targetStudentId },
+        "/api/v1/social/bind-student",
+        { targetStudentId },
         authSession.value.token,
       );
     } catch (error) {
@@ -194,10 +192,10 @@ const bindTargetStudent = async (studentId: string) => {
       }
       data = await requestBackendPost<BindStudentResponse>(
         backendBaseUrl.value,
-        "/api/social/bind-student",
+        "/api/v1/social/bind-student",
         {
-          target_student_id: targetStudentId,
-          target_random_code: code,
+          targetStudentId,
+          targetRandomCode: code,
         },
         authSession.value.token,
       );
@@ -250,11 +248,6 @@ onShow(() => {
 </script>
 
 <style scoped>
-.page {
-  padding: 20rpx;
-  box-sizing: border-box;
-}
-
 .card {
   background: var(--card-bg);
   border: 1rpx solid var(--line);

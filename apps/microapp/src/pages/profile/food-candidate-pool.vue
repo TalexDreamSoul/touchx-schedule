@@ -69,6 +69,9 @@
             <text>¥{{ formatNumber(item.partyPriceMin) }}~{{ formatNumber(item.partyPriceMax) }}</text>
           </view>
         </view>
+        <view class="food-item-note food-item-nutrition">
+          热量约 {{ formatNumber(item.caloriesKcal) }} kcal · {{ formatExerciseEquivalentText(item) }}
+        </view>
         <view class="food-item-note" v-if="item.brandCombo">热销搭配：{{ item.brandCombo }}</view>
         <view class="food-item-note" v-if="item.note">{{ item.note }}</view>
         <view class="food-item-footer" v-if="item.createdByStudentId">
@@ -143,6 +146,11 @@
               </view>
 
               <view class="sheet-field">
+                <view class="sheet-label">热量（kcal）</view>
+                <input v-model.trim="submitForm.caloriesKcal" class="sheet-input" type="number" placeholder="例如：520" />
+              </view>
+
+              <view class="sheet-field">
                 <view class="sheet-label">备注</view>
                 <textarea v-model.trim="submitForm.note" class="sheet-textarea" placeholder="补充说明…" />
               </view>
@@ -173,6 +181,11 @@ import {
 
 type CandidateStatus = "all" | "approved" | "pending_eat" | "pending_review";
 
+interface ExerciseEquivalentMinutes {
+  running: number;
+  uphill: number;
+}
+
 interface FoodCandidateItem {
   foodKey: string;
   name: string;
@@ -190,6 +203,8 @@ interface FoodCandidateItem {
   dailyPriceMax: number;
   partyPriceMin: number;
   partyPriceMax: number;
+  caloriesKcal: number;
+  exerciseEquivalentMinutes?: ExerciseEquivalentMinutes;
 }
 
 interface FoodCandidateListResponse {
@@ -239,6 +254,7 @@ const submitForm = ref({
   partyMin: "",
   partyMax: "",
   distanceKm: "",
+  caloriesKcal: "",
   note: "",
 });
 
@@ -254,6 +270,41 @@ const formatNumber = (value: unknown) => {
     return "0";
   }
   return `${Math.round(num * 100) / 100}`;
+};
+
+const calculateExerciseEquivalent = (caloriesKcal: unknown): ExerciseEquivalentMinutes => {
+  const kcal = Math.max(0, Number(caloriesKcal) || 0);
+  if (kcal <= 0) {
+    return {
+      running: 0,
+      uphill: 0,
+    };
+  }
+  return {
+    running: Math.max(1, Math.round(kcal / 10)),
+    uphill: Math.max(1, Math.round(kcal / 8)),
+  };
+};
+
+const normalizeExerciseEquivalent = (value: unknown, caloriesKcal: number): ExerciseEquivalentMinutes => {
+  if (!value || typeof value !== "object") {
+    return calculateExerciseEquivalent(caloriesKcal);
+  }
+  const data = value as Partial<ExerciseEquivalentMinutes>;
+  const running = Number(data.running || 0);
+  const uphill = Number(data.uphill || 0);
+  if (running <= 0 || uphill <= 0) {
+    return calculateExerciseEquivalent(caloriesKcal);
+  }
+  return {
+    running: Math.round(running),
+    uphill: Math.round(uphill),
+  };
+};
+
+const formatExerciseEquivalentText = (item: FoodCandidateItem) => {
+  const eq = normalizeExerciseEquivalent(item.exerciseEquivalentMinutes, item.caloriesKcal);
+  return `跑步 ${eq.running} 分钟 / 爬坡 ${eq.uphill} 分钟`;
 };
 
 const statusLabel = (status: unknown) => {
@@ -299,6 +350,8 @@ const normalizeItems = (items: FoodCandidateItem[]) => {
       dailyPriceMax: Number(item.dailyPriceMax || 0),
       partyPriceMin: Number(item.partyPriceMin || 0),
       partyPriceMax: Number(item.partyPriceMax || 0),
+      caloriesKcal: Number(item.caloriesKcal || 0),
+      exerciseEquivalentMinutes: normalizeExerciseEquivalent(item.exerciseEquivalentMinutes, Number(item.caloriesKcal || 0)),
     });
   }
   return result;
@@ -313,13 +366,13 @@ const loadCandidates = async () => {
     ensureAuthed();
     const response = await requestBackendGet<FoodCandidateListResponse>(
       backendBaseUrl.value,
-      "/api/social/food-candidates",
+      "/api/v1/social/food-candidates",
       {
         status: filters.value.status,
-        category_key: String(filters.value.categoryKey || "").trim(),
-        brand_key: String(filters.value.brandKey || "").trim(),
+        categoryKey: String(filters.value.categoryKey || "").trim(),
+        brandKey: String(filters.value.brandKey || "").trim(),
         keyword: String(filters.value.keyword || "").trim(),
-        mine_only: filters.value.mineOnly ? "1" : "0",
+        mineOnly: filters.value.mineOnly ? "1" : "0",
       },
       authSession.value.token,
     );
@@ -362,6 +415,7 @@ const submitCandidate = async () => {
     const partyMin = readPriceValue(submitForm.value.partyMin, "聚会最低价");
     const partyMax = readPriceValue(submitForm.value.partyMax, "聚会最高价");
     const distanceKm = readPriceValue(submitForm.value.distanceKm, "距离");
+    const caloriesKcal = readPriceValue(submitForm.value.caloriesKcal, "热量");
     if (dailyMax < dailyMin) {
       throw new Error("日常最高价不能低于最低价");
     }
@@ -370,20 +424,21 @@ const submitCandidate = async () => {
     }
     const payload = {
       name,
-      category_key: categoryKey,
-      brand_key: String(submitForm.value.brandKey || "").trim(),
-      brand_name: String(submitForm.value.brandName || "").trim(),
-      brand_combo: String(submitForm.value.brandCombo || "").trim(),
-      daily_price_min: dailyMin,
-      daily_price_max: dailyMax,
-      party_price_min: partyMin,
-      party_price_max: partyMax,
-      distance_km: distanceKm,
+      categoryKey,
+      brandKey: String(submitForm.value.brandKey || "").trim(),
+      brandName: String(submitForm.value.brandName || "").trim(),
+      brandCombo: String(submitForm.value.brandCombo || "").trim(),
+      dailyPriceMin: dailyMin,
+      dailyPriceMax: dailyMax,
+      partyPriceMin: partyMin,
+      partyPriceMax: partyMax,
+      distanceKm,
+      caloriesKcal,
       note: String(submitForm.value.note || "").trim(),
     };
     await requestBackendPost<FoodCandidateSubmitResponse>(
       backendBaseUrl.value,
-      "/api/social/food-candidates",
+      "/api/v1/social/food-candidates",
       payload,
       authSession.value.token,
     );
@@ -398,6 +453,7 @@ const submitCandidate = async () => {
       partyMin: "",
       partyMax: "",
       distanceKm: "",
+      caloriesKcal: "",
       note: "",
     };
     showSubmitSheet.value = false;
@@ -688,6 +744,10 @@ onShow(() => {
   font-size: 22rpx;
   color: var(--text-main);
   line-height: 1.4;
+}
+
+.food-item-nutrition {
+  color: var(--text-sub);
 }
 
 .food-item-footer {
