@@ -2003,16 +2003,17 @@ const refreshTodayFoodCampaigns = async () => {
 
 const todayFoodCampaignHighlights = computed<TodayFoodCampaignHighlightItem[]>(() => {
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const closedWindowThreshold = nowSeconds - 3 * 60 * 60;
+  const recentClosedThreshold = nowSeconds - 6 * 60 * 60;
   const openItems = todayFoodCampaigns.value
     .filter((item) => normalizeFoodCampaignStatus(item.status) === "open")
     .sort((left, right) => Number(left.deadlineAt || 0) - Number(right.deadlineAt || 0));
-  const closedItems = todayFoodCampaigns.value
+  const latestRecentClosed = todayFoodCampaigns.value
     .filter((item) => normalizeFoodCampaignStatus(item.status) !== "open")
-    .filter((item) => Number(item.closedAt || item.deadlineAt || 0) >= closedWindowThreshold)
-    .sort((left, right) => Number(right.closedAt || right.deadlineAt || 0) - Number(left.closedAt || left.deadlineAt || 0));
+    .filter((item) => Number(item.closedAt || item.deadlineAt || 0) >= recentClosedThreshold)
+    .sort((left, right) => Number(right.closedAt || right.deadlineAt || 0) - Number(left.closedAt || left.deadlineAt || 0))[0] || null;
 
-  return [...openItems, ...closedItems].slice(0, 5).map((item) => {
+  const scopedItems = latestRecentClosed ? [...openItems, latestRecentClosed] : [...openItems];
+  return scopedItems.map((item) => {
     const status = normalizeFoodCampaignStatus(item.status);
     const timeTs = status === "open"
       ? Number(item.deadlineAt || 0)
