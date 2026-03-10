@@ -263,6 +263,7 @@ interface FoodCampaignSummary {
   campaignId: string;
   title: string;
   status?: string;
+  shareToken?: string;
   joinMode?: "all" | "invite" | "password";
   headcount?: number;
   deadlineAt?: number;
@@ -277,6 +278,7 @@ interface FoodCampaignListResponse {
 
 interface TodayFoodCampaignHighlightItem {
   campaignId: string;
+  shareToken: string;
   title: string;
   status: string;
   statusLabel: string;
@@ -1990,6 +1992,7 @@ const refreshTodayFoodCampaigns = async () => {
       campaignId: String(item.campaignId || ""),
       title: String(item.title || ""),
       status: normalizeFoodCampaignStatus(item.status),
+      shareToken: String(item.shareToken || ""),
       joinMode: item.joinMode,
       headcount: Number(item.headcount || 0),
       deadlineAt: Number(item.deadlineAt || 0),
@@ -2006,9 +2009,11 @@ const todayFoodCampaignHighlights = computed<TodayFoodCampaignHighlightItem[]>((
   const recentClosedThreshold = nowSeconds - 6 * 60 * 60;
   const openItems = todayFoodCampaigns.value
     .filter((item) => normalizeFoodCampaignStatus(item.status) === "open")
+    .filter((item) => String(item.campaignId || "").trim())
     .sort((left, right) => Number(left.deadlineAt || 0) - Number(right.deadlineAt || 0));
   const latestRecentClosed = todayFoodCampaigns.value
-    .filter((item) => normalizeFoodCampaignStatus(item.status) !== "open")
+    .filter((item) => normalizeFoodCampaignStatus(item.status) === "closed")
+    .filter((item) => String(item.campaignId || "").trim())
     .filter((item) => Number(item.closedAt || item.deadlineAt || 0) >= recentClosedThreshold)
     .sort((left, right) => Number(right.closedAt || right.deadlineAt || 0) - Number(left.closedAt || left.deadlineAt || 0))[0] || null;
 
@@ -2020,6 +2025,7 @@ const todayFoodCampaignHighlights = computed<TodayFoodCampaignHighlightItem[]>((
       : Number(item.closedAt || item.deadlineAt || 0);
     return {
       campaignId: item.campaignId,
+      shareToken: String(item.shareToken || ""),
       title: item.title,
       status,
       statusLabel: status === "open" ? "进行中" : "已截止",
@@ -2261,9 +2267,23 @@ const openTodayFoodCampaign = (payload: unknown = "") => {
     openQuickAuthDialog();
     return;
   }
-  const targetId = typeof payload === "string" ? payload.trim() : "";
-  const url = targetId
-    ? `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(targetId)}`
+  let campaignId = "";
+  let shareToken = "";
+  if (typeof payload === "string") {
+    campaignId = payload.trim();
+  } else if (payload && typeof payload === "object") {
+    campaignId = String((payload as { campaignId?: unknown }).campaignId || "").trim();
+    shareToken = String((payload as { shareToken?: unknown }).shareToken || "").trim();
+  }
+  const params: string[] = [];
+  if (campaignId) {
+    params.push(`campaignId=${encodeURIComponent(campaignId)}`);
+  }
+  if (shareToken) {
+    params.push(`shareToken=${encodeURIComponent(shareToken)}`);
+  }
+  const url = params.length > 0
+    ? `/pages/profile/food-campaign-detail?${params.join("&")}`
     : "/pages/profile/food-campaign";
   uni.navigateTo({ url });
 };

@@ -18,7 +18,7 @@
           v-for="item in props.foodCampaignHighlights"
           :key="`food-campaign-${item.campaignId}`"
           class="food-campaign-item"
-          @click="props.onFoodCampaignClick(item.campaignId)"
+          @click="props.onFoodCampaignClick({ campaignId: item.campaignId, shareToken: item.shareToken })"
         >
           <view class="food-campaign-dot" :class="{ live: item.status === 'open' }" />
           <view class="food-campaign-main">
@@ -118,6 +118,23 @@
         <view class="today-semester-note">* 以 3 月 1 日早上 8:00 作为起始计时</view>
       </view>
     </view>
+
+    <view class="card party-game-card">
+      <view class="section-title">聚会游戏策划</view>
+      <view class="section-sub">优先 10 人可玩，控制在 20~50 分钟一局</view>
+      <view class="party-game-list">
+        <view v-for="item in partyGamePlans" :key="item.key" class="party-game-item">
+          <view class="party-game-head">
+            <view class="party-game-name">{{ item.name }}</view>
+            <view class="party-game-badge">{{ item.playerRange }}</view>
+          </view>
+          <view class="party-game-meta">{{ item.duration }} · {{ item.prep }}</view>
+          <view class="party-game-desc">{{ item.coreRules }}</view>
+          <view class="party-game-desc">{{ item.twist }}</view>
+          <view class="party-game-tip">主持建议：{{ item.hostTip }}</view>
+        </view>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -177,6 +194,7 @@ interface DepartureReminderLike {
 
 interface TodayFoodCampaignHighlightItem {
   campaignId: string;
+  shareToken: string;
   title: string;
   status: string;
   statusLabel: string;
@@ -191,6 +209,80 @@ interface PendingCourseItem {
   endTime: string;
   startTs: number;
 }
+
+interface PartyGamePlan {
+  key: string;
+  name: string;
+  playerRange: string;
+  duration: string;
+  prep: string;
+  coreRules: string;
+  twist: string;
+  hostTip: string;
+}
+
+const partyGamePlans: PartyGamePlan[] = [
+  {
+    key: "werewolf",
+    name: "狼人杀（快节奏局）",
+    playerRange: "10人",
+    duration: "35-50分钟",
+    prep: "身份卡 + 主持人",
+    coreRules: "2狼+1预+1女巫+1猎人+5民，白天发言限时 45 秒，超时自动过麦。",
+    twist: "第 2 天起开启“遗言 20 秒”，提升信息量并压缩无效拉扯。",
+    hostTip: "提前公布发言顺序，减少插话争抢。",
+  },
+  {
+    key: "undercover",
+    name: "谁是卧底（双卧底版）",
+    playerRange: "8-10人",
+    duration: "20-30分钟",
+    prep: "题库 + 记分板",
+    coreRules: "平民词与卧底词相近，双卧底在场，每轮每人一句描述后投票。",
+    twist: "第 3 轮开始可发起“盲投”，不再复述，增强博弈强度。",
+    hostTip: "题库先按难度分层，前两局只用低难词。",
+  },
+  {
+    key: "avalon",
+    name: "阿瓦隆（10人标准）",
+    playerRange: "10人",
+    duration: "30-45分钟",
+    prep: "身份卡 + 任务牌",
+    coreRules: "梅林/派西维尔/忠臣对抗莫甘娜/刺客/爪牙，五轮任务三胜制。",
+    twist: "任务队长发言限 30 秒，减少长回合拉扯。",
+    hostTip: "首局固定公开失败票定义，避免规则争议。",
+  },
+  {
+    key: "telephone",
+    name: "传声筒（剧情增强）",
+    playerRange: "8-12人",
+    duration: "15-25分钟",
+    prep: "短句题卡",
+    coreRules: "首位看题后耳语传递，末位公开答案并与原句对照。",
+    twist: "加入“情绪限制卡”（愤怒/惊恐/冷静）影响表达方式。",
+    hostTip: "每轮结束立刻复盘误差来源，提升观感。",
+  },
+  {
+    key: "drawguess",
+    name: "你画我猜（接力版）",
+    playerRange: "10人",
+    duration: "20-35分钟",
+    prep: "白板或电子画板",
+    coreRules: "两队轮流接力作画，每棒 20 秒，队友限 1 次猜词机会。",
+    twist: "关键字拆成“主词+限制词”，提高策略配合空间。",
+    hostTip: "题库提前剔除生僻词，保障节奏。",
+  },
+  {
+    key: "turtle",
+    name: "海龟汤（速推理）",
+    playerRange: "6-10人",
+    duration: "20-30分钟",
+    prep: "汤题卡 + 计时器",
+    coreRules: "提问只能回答“是/否/无关”，团队在时限内还原完整故事。",
+    twist: "加入“反转线索”卡，每局最多触发 1 次。",
+    hostTip: "先用短汤热场，再上复杂题防冷场。",
+  },
+];
 
 const parseTimeToTodayTimestamp = (timeText: string) => {
   const match = /^(\d{1,2}):(\d{2})$/.exec((timeText || "").trim());
@@ -211,7 +303,7 @@ const props = defineProps<{
   isAuthed: boolean;
   onAuthorize: () => void;
   onOpenFoodCampaign: () => void;
-  onFoodCampaignClick: (campaignId: string) => void;
+  onFoodCampaignClick: (payload: { campaignId: string; shareToken?: string }) => void;
   activeStudentId: string;
   onTodayCourseClick: (course: DisplayCourse) => void;
   todayGreetingText: string;
@@ -847,5 +939,66 @@ const formatFoodCampaignTime = (timestamp: number) => {
   font-size: 20rpx;
   color: var(--text-sub);
   text-align: right;
+}
+
+.party-game-card {
+  margin-bottom: 12rpx;
+}
+
+.party-game-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.party-game-item {
+  border-radius: 12rpx;
+  border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+  background: color-mix(in srgb, var(--card-bg) 90%, #ffffff 10%);
+  padding: 12rpx;
+}
+
+.party-game-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10rpx;
+}
+
+.party-game-name {
+  font-size: 26rpx;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.party-game-badge {
+  flex-shrink: 0;
+  padding: 2rpx 10rpx;
+  border-radius: 999rpx;
+  font-size: 18rpx;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--muted-bg) 90%);
+  border: 1rpx solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.party-game-meta {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+
+.party-game-desc {
+  margin-top: 6rpx;
+  font-size: 21rpx;
+  color: var(--text-main);
+  line-height: 1.45;
+}
+
+.party-game-tip {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+  line-height: 1.35;
 }
 </style>

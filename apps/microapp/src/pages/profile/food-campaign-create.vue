@@ -600,6 +600,22 @@ const buildCampaignSharePath = (shareToken: string) => {
   return `/pages/profile/food-campaign-detail?shareToken=${encodeURIComponent(token)}`;
 };
 
+const buildCampaignDetailPath = (campaignId: string, shareToken: string) => {
+  const targetId = String(campaignId || "").trim();
+  const token = String(shareToken || "").trim();
+  const params: string[] = [];
+  if (targetId) {
+    params.push(`campaignId=${encodeURIComponent(targetId)}`);
+  }
+  if (token) {
+    params.push(`shareToken=${encodeURIComponent(token)}`);
+  }
+  if (params.length === 0) {
+    return "";
+  }
+  return `/pages/profile/food-campaign-detail?${params.join("&")}`;
+};
+
 const copyShareToken = () => {
   const token = String(createdCampaign.value?.shareToken || "").trim();
   if (!token) {
@@ -633,7 +649,11 @@ const openExistingCampaign = () => {
   if (!campaignId) {
     return;
   }
-  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(campaignId)}` });
+  const path = buildCampaignDetailPath(campaignId, String(myOpenCampaign.value?.shareToken || ""));
+  if (!path) {
+    return;
+  }
+  uni.navigateTo({ url: path });
 };
 
 const openCreatedCampaign = () => {
@@ -641,7 +661,11 @@ const openCreatedCampaign = () => {
   if (!campaignId) {
     return;
   }
-  uni.navigateTo({ url: `/pages/profile/food-campaign-detail?campaignId=${encodeURIComponent(campaignId)}` });
+  const path = buildCampaignDetailPath(campaignId, String(createdCampaign.value?.shareToken || ""));
+  if (!path) {
+    return;
+  }
+  uni.redirectTo({ url: path });
 };
 
 const refreshMyOpenCampaign = async () => {
@@ -724,6 +748,7 @@ const createCampaign = async () => {
     }
     await refreshMyOpenCampaign();
     uni.showToast({ title: "创建成功", icon: "none", duration: 1200 });
+    openCreatedCampaign();
   } catch (error) {
     const message = error instanceof Error ? error.message : "创建失败";
     statusText.value = message;

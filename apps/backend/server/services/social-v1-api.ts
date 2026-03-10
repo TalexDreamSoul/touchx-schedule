@@ -1,4 +1,4 @@
-import { createError, getMethod, getQuery, getRequestURL, type H3Event } from "h3";
+import { createError, getMethod, getQuery, getRequestURL, readMultipartFormData, type H3Event } from "h3";
 import {
   FOOD_CAMPAIGN_OPTION_LIMIT,
   getNexusStore,
@@ -6,6 +6,7 @@ import {
   type FoodCampaignRecord,
   type FoodCampaignVoteRecord,
   type FoodItemRecord,
+  type MediaAssetRecord,
   type FoodPricingRuleRecord,
   type ScheduleEntryRecord,
   type UserRecord,
@@ -16,6 +17,12 @@ import {
   readJsonBody,
   resolveSessionWithUser,
 } from "../utils/api-envelope";
+import {
+  buildR2MediaId,
+  resolveImageExtension,
+  resolveImageMimeType,
+  resolveMediaBucket,
+} from "../utils/media-storage";
 import { createSignedSession } from "../utils/session-token";
 
 type LegacyJoinMode = "all" | "invite" | "password";
@@ -113,7 +120,96 @@ const LEGACY_TERM_HOLIDAYS = [
   { date: "2026-06-21", label: "休" },
 ];
 
+const LEGACY_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+const LEGACY_WALLPAPER_MAX_BYTES = 5 * 1024 * 1024;
+
 const asString = (value: unknown) => String(value || "").trim();
+
+const randomSuffix = () => {
+  return Math.random().toString(36).slice(2, 8);
+};
+
+const sanitizeStoragePart = (value: string) => {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+};
+
+const readLegacyUploadFile = async (event: H3Event, maxBytes: number) => {
+  const parts = await readMultipartFormData(event);
+  const filePart = ensureValue(
+    (parts || []).find((part) => part?.name === "file" && part.data instanceof Uint8Array) || null,
+    400,
+    "UPLOAD_FILE_REQUIRED",
+    "请上传图片文件",
+  );
+  const fileData = filePart.data;
+  if (fileData.length <= 0) {
+    createLegacyError(400, "UPLOAD_FILE_EMPTY", "上传文件为空");
+  }
+  if (fileData.length > maxBytes) {
+    createLegacyError(400, "UPLOAD_FILE_TOO_LARGE", `文件过大，限制 ${Math.floor(maxBytes / 1024 / 1024)}MB`);
+  }
+  const fileName = asString(filePart.filename) || `upload_${Date.now()}.jpg`;
+  const extension = resolveImageExtension(fileName, asString(filePart.type), fileData);
+  const mimeType = resolveImageMimeType(extension, asString(filePart.type) || "application/octet-stream");
+  return {
+    fileData,
+    fileName,
+    extension,
+    mimeType,
+    size: fileData.length,
+  };
+};
+
+const persistLegacyUserMediaUpload = async (
+  event: H3Event,
+  store: NexusStore,
+  user: UserRecord,
+  usage: "avatar" | "wallpaper",
+  maxBytes: number,
+) => {
+  const bucket = ensureValue(resolveMediaBucket(event), 500, "MEDIA_BUCKET_MISSING", "媒体存储未配置，请联系管理员");
+  const upload = await readLegacyUploadFile(event, maxBytes);
+  const owner = sanitizeStoragePart(user.studentNo || user.studentId || user.userId || "anonymous");
+  const objectKey = `touchx/social/${usage}/${owner}/${Date.now()}_${randomSuffix()}.${upload.extension}`;
+  await bucket.put(objectKey, upload.fileData, {
+    httpMetadata: {
+      contentType: upload.mimeType,
+    },
+  });
+  const mediaId = buildR2MediaId(objectKey, upload.extension);
+  const mediaUrl = `/media/${mediaId}`;
+  const existed = store.mediaAssets.find((item) => item.id === mediaId) || null;
+  const nowIso = storeHelpers.nowIso();
+  if (existed) {
+    existed.ownerUserId = user.userId;
+    existed.usage = usage;
+    existed.objectKey = objectKey;
+    existed.url = mediaUrl;
+    existed.mime = upload.mimeType;
+    existed.size = upload.size;
+    existed.referenced = true;
+    existed.updatedAt = nowIso;
+  } else {
+    const asset: MediaAssetRecord = {
+      id: mediaId,
+      ownerUserId: user.userId,
+      usage,
+      objectKey,
+      url: mediaUrl,
+      mime: upload.mimeType,
+      size: upload.size,
+      referenced: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+    store.mediaAssets.unshift(asset);
+  }
+  return mediaUrl;
+};
 
 const resolveLegacyCampaignOptionIds = (
   store: NexusStore,
@@ -1362,8 +1458,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/upload/avatar") {
     const { user } = resolveLegacyAuthContext(event);
-    const seed = encodeURIComponent(user.studentNo || user.userId);
-    user.avatarUrl = `https://api.dicebear.com/9.x/thumbs/svg?seed=${seed}`;
+    user.avatarUrl = await persistLegacyUserMediaUpload(event, store, user, "avatar", LEGACY_AVATAR_MAX_BYTES);
     user.updatedAt = storeHelpers.nowIso();
     return {
       ok: true,
@@ -1376,8 +1471,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/upload/wallpaper") {
     const { user } = resolveLegacyAuthContext(event);
-    const seed = encodeURIComponent(user.studentNo || user.userId);
-    user.wallpaperUrl = `https://picsum.photos/seed/${seed}/1280/720`;
+    user.wallpaperUrl = await persistLegacyUserMediaUpload(event, store, user, "wallpaper", LEGACY_WALLPAPER_MAX_BYTES);
     user.updatedAt = storeHelpers.nowIso();
     return {
       ok: true,
