@@ -123,7 +123,7 @@
       <view class="section-title">聚会游戏策划</view>
       <view class="section-sub">优先 10 人可玩，控制在 20~50 分钟一局</view>
       <view class="party-game-list">
-        <view v-for="item in partyGamePlans" :key="item.key" class="party-game-item">
+        <view v-for="item in partyGamePlans" :key="item.key" class="party-game-item" @click="handlePartyGameClick(item.key)">
           <view class="party-game-head">
             <view class="party-game-name">{{ item.name }}</view>
             <view class="party-game-badge">{{ item.playerRange }}</view>
@@ -131,7 +131,10 @@
           <view class="party-game-meta">{{ item.duration }} · {{ item.prep }}</view>
           <view class="party-game-desc">{{ item.coreRules }}</view>
           <view class="party-game-desc">{{ item.twist }}</view>
-          <view class="party-game-tip">主持建议：{{ item.hostTip }}</view>
+          <view class="party-game-foot">
+            <view class="party-game-tip">主持建议：{{ item.hostTip }}</view>
+            <view class="party-game-enter">进入</view>
+          </view>
         </view>
       </view>
     </view>
@@ -304,6 +307,7 @@ const props = defineProps<{
   onAuthorize: () => void;
   onOpenFoodCampaign: () => void;
   onFoodCampaignClick: (payload: { campaignId: string; shareToken?: string }) => void;
+  onOpenPartyGame: (gameKey: string) => void;
   activeStudentId: string;
   onTodayCourseClick: (course: DisplayCourse) => void;
   todayGreetingText: string;
@@ -369,6 +373,10 @@ const pendingCourseCount = computed(() => {
 
 const handleTodayCourseClick = (course: DisplayCourse) => {
   props.onTodayCourseClick(course);
+};
+
+const handlePartyGameClick = (gameKey: string) => {
+  props.onOpenPartyGame(gameKey);
 };
 
 const shouldShowPendingCourseOwner = (course: DisplayCourse) => {
@@ -957,6 +965,12 @@ const formatFoodCampaignTime = (timestamp: number) => {
   border: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
   background: color-mix(in srgb, var(--card-bg) 90%, #ffffff 10%);
   padding: 12rpx;
+  transition: transform 0.18s ease, border-color 0.18s ease;
+}
+
+.party-game-item:active {
+  transform: translateY(1rpx) scale(0.998);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line) 58%);
 }
 
 .party-game-head {
@@ -996,9 +1010,23 @@ const formatFoodCampaignTime = (timestamp: number) => {
 }
 
 .party-game-tip {
-  margin-top: 6rpx;
   font-size: 20rpx;
   color: var(--text-sub);
   line-height: 1.35;
+}
+
+.party-game-foot {
+  margin-top: 8rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+}
+
+.party-game-enter {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  font-weight: 600;
+  color: var(--accent);
 }
 </style>

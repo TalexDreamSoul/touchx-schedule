@@ -201,6 +201,48 @@ export interface AuditLogRecord {
   createdAt: string;
 }
 
+export interface PartyGameRoomRecord {
+  id: string;
+  roomCode: string;
+  gameKey: string;
+  title: string;
+  status: "waiting" | "playing" | "finished" | "closed";
+  hostUserId: string;
+  maxPlayers: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PartyGameMemberRecord {
+  id: string;
+  roomId: string;
+  userId: string;
+  nickname: string;
+  ready: boolean;
+  online: boolean;
+  joinedAt: string;
+  lastHeartbeatAt: string;
+}
+
+export interface PartyGameStateRecord {
+  roomId: string;
+  version: number;
+  data: Record<string, unknown>;
+  updatedByUserId: string;
+  updatedAt: string;
+}
+
+export interface PartyGameEventRecord {
+  id: string;
+  roomId: string;
+  seq: number;
+  type: string;
+  actorUserId: string;
+  clientActionId: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
 export const FOOD_CAMPAIGN_OPTION_LIMIT = 3;
 export const DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO = "2305100613";
 
@@ -225,6 +267,10 @@ export interface NexusStore {
   botTemplates: BotTemplateRecord[];
   botJobs: BotJobRecord[];
   auditLogs: AuditLogRecord[];
+  partyGameRooms: PartyGameRoomRecord[];
+  partyGameMembers: PartyGameMemberRecord[];
+  partyGameStates: PartyGameStateRecord[];
+  partyGameEvents: PartyGameEventRecord[];
 }
 
 interface LegacyUserRow {
@@ -865,6 +911,10 @@ const buildStoreFromLegacyNormalized = (): NexusStore | null => {
     ],
     botJobs: [],
     auditLogs: [],
+    partyGameRooms: [],
+    partyGameMembers: [],
+    partyGameStates: [],
+    partyGameEvents: [],
   };
 };
 
@@ -1234,6 +1284,10 @@ const bootstrapStore = (): NexusStore => {
     ],
     botJobs: [],
     auditLogs: [],
+    partyGameRooms: [],
+    partyGameMembers: [],
+    partyGameStates: [],
+    partyGameEvents: [],
   };
 };
 

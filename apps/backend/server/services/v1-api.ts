@@ -24,6 +24,10 @@ import {
   type FoodPricingRuleVersionRecord,
   type LocationGridRecord,
   type MediaAssetRecord,
+  type PartyGameEventRecord,
+  type PartyGameMemberRecord,
+  type PartyGameRoomRecord,
+  type PartyGameStateRecord,
   type ScheduleEntryRecord,
   type ScheduleRecord,
   type ScheduleVersionRecord,
@@ -941,6 +945,180 @@ const parsePagination = (query: Record<string, unknown>) => {
   return { limit, offset };
 };
 
+const PARTY_GAME_KEYS = new Set(["werewolf", "undercover", "avalon", "telephone", "drawguess", "turtle"]);
+const PARTY_GAME_OFFLINE_TTL_MS = 45 * 1000;
+const PARTY_GAME_MAX_EVENTS_PER_ROOM = 800;
+
+const sanitizePartyGameKey = (value: unknown) => {
+  const key = asString(value).toLowerCase();
+  if (!PARTY_GAME_KEYS.has(key)) {
+    return "";
+  }
+  return key;
+};
+
+const PARTY_GAME_DEFAULT_TITLE_MAP: Record<string, string> = {
+  werewolf: "狼人杀快节奏局",
+  undercover: "谁是卧底双卧底局",
+  avalon: "阿瓦隆标准局",
+  telephone: "传声筒剧情局",
+  drawguess: "你画我猜接力局",
+  turtle: "海龟汤速推理局",
+};
+
+const resolvePartyGameTitle = (gameKey: string, rawTitle: unknown) => {
+  const title = asString(rawTitle);
+  if (title) {
+    return title;
+  }
+  return PARTY_GAME_DEFAULT_TITLE_MAP[gameKey] || "聚会游戏房间";
+};
+
+const refreshPartyGameMemberOnlineState = (
+  store: ReturnType<typeof getNexusStore>,
+  roomId: string,
+  nowTs = Date.now(),
+) => {
+  store.partyGameMembers.forEach((member) => {
+    if (member.roomId !== roomId) {
+      return;
+    }
+    const lastTs = Date.parse(member.lastHeartbeatAt || "");
+    if (!Number.isFinite(lastTs)) {
+      member.online = false;
+      return;
+    }
+    member.online = nowTs - lastTs <= PARTY_GAME_OFFLINE_TTL_MS;
+  });
+};
+
+const getPartyGameRoomMembers = (store: ReturnType<typeof getNexusStore>, roomId: string) => {
+  return store.partyGameMembers
+    .filter((item) => item.roomId === roomId)
+    .sort((left, right) => Date.parse(left.joinedAt) - Date.parse(right.joinedAt));
+};
+
+const getPartyGameRoomState = (store: ReturnType<typeof getNexusStore>, roomId: string) => {
+  return store.partyGameStates.find((item) => item.roomId === roomId) || null;
+};
+
+const appendPartyGameEvent = (
+  store: ReturnType<typeof getNexusStore>,
+  input: {
+    roomId: string;
+    type: string;
+    actorUserId: string;
+    payload?: Record<string, unknown>;
+    clientActionId?: string;
+  },
+) => {
+  const maxSeq = store.partyGameEvents
+    .filter((item) => item.roomId === input.roomId)
+    .reduce((acc, item) => Math.max(acc, item.seq), 0);
+  const event: PartyGameEventRecord = {
+    id: storeHelpers.createId("pg_event"),
+    roomId: input.roomId,
+    seq: maxSeq + 1,
+    type: asString(input.type) || "party_game.event",
+    actorUserId: input.actorUserId,
+    clientActionId: asString(input.clientActionId),
+    payload: input.payload && typeof input.payload === "object" ? input.payload : {},
+    createdAt: storeHelpers.nowIso(),
+  };
+  store.partyGameEvents.push(event);
+  const roomEventIds = store.partyGameEvents
+    .filter((item) => item.roomId === input.roomId)
+    .sort((left, right) => left.seq - right.seq);
+  if (roomEventIds.length > PARTY_GAME_MAX_EVENTS_PER_ROOM) {
+    const removeCount = roomEventIds.length - PARTY_GAME_MAX_EVENTS_PER_ROOM;
+    const removeIdSet = new Set(roomEventIds.slice(0, removeCount).map((item) => item.id));
+    store.partyGameEvents = store.partyGameEvents.filter((item) => !removeIdSet.has(item.id));
+  }
+  return event;
+};
+
+const toPartyGameRoomSummary = (
+  store: ReturnType<typeof getNexusStore>,
+  room: PartyGameRoomRecord,
+  currentUserId: string,
+) => {
+  refreshPartyGameMemberOnlineState(store, room.id);
+  const members = getPartyGameRoomMembers(store, room.id);
+  const hostUser = store.users.find((item) => item.userId === room.hostUserId) || null;
+  const meMember = members.find((item) => item.userId === currentUserId) || null;
+  return {
+    roomId: room.id,
+    roomCode: room.roomCode,
+    gameKey: room.gameKey,
+    title: room.title,
+    status: room.status,
+    hostUserId: room.hostUserId,
+    hostName: hostUser?.name || hostUser?.nickname || "",
+    maxPlayers: room.maxPlayers,
+    memberCount: members.length,
+    onlineCount: members.filter((item) => item.online).length,
+    readyCount: members.filter((item) => item.ready).length,
+    joined: Boolean(meMember),
+    isHost: room.hostUserId === currentUserId,
+    createdAt: room.createdAt,
+    updatedAt: room.updatedAt,
+  };
+};
+
+const serializePartyGameRoomSnapshot = (
+  store: ReturnType<typeof getNexusStore>,
+  room: PartyGameRoomRecord,
+  currentUserId: string,
+  afterSeq = 0,
+) => {
+  refreshPartyGameMemberOnlineState(store, room.id);
+  const members = getPartyGameRoomMembers(store, room.id).map((item) => {
+    const user = store.users.find((userItem) => userItem.userId === item.userId) || null;
+    return {
+      memberId: item.id,
+      userId: item.userId,
+      studentNo: user?.studentNo || "",
+      nickname: item.nickname || user?.nickname || user?.name || "",
+      ready: item.ready,
+      online: item.online,
+      joinedAt: item.joinedAt,
+      lastHeartbeatAt: item.lastHeartbeatAt,
+      isMe: item.userId === currentUserId,
+      isHost: item.userId === room.hostUserId,
+    };
+  });
+  const state = getPartyGameRoomState(store, room.id);
+  const events = store.partyGameEvents
+    .filter((item) => item.roomId === room.id && item.seq > Math.max(0, Math.floor(afterSeq)))
+    .sort((left, right) => left.seq - right.seq)
+    .slice(-200)
+    .map((item) => ({
+      eventId: item.id,
+      seq: item.seq,
+      type: item.type,
+      actorUserId: item.actorUserId,
+      payload: item.payload,
+      createdAt: item.createdAt,
+      clientActionId: item.clientActionId,
+    }));
+  const latestSeq = store.partyGameEvents
+    .filter((item) => item.roomId === room.id)
+    .reduce((acc, item) => Math.max(acc, item.seq), 0);
+  return {
+    room: toPartyGameRoomSummary(store, room, currentUserId),
+    members,
+    state: {
+      version: state?.version || 0,
+      data: state?.data || {},
+      updatedAt: state?.updatedAt || room.updatedAt,
+      updatedByUserId: state?.updatedByUserId || room.hostUserId,
+    },
+    events,
+    latestSeq,
+    serverTime: storeHelpers.nowIso(),
+  };
+};
+
 export const handleV1Api = async (event: H3Event) => {
   const pathname = getRequestURL(event).pathname;
   const isExplicitV1Path = pathname === "/api/v1" || pathname.startsWith("/api/v1/");
@@ -1145,6 +1323,453 @@ export const handleV1Api = async (event: H3Event) => {
       user: toAuthUserPayload(user),
       role: session.role,
       expiresAt: session.expiresAt,
+    });
+  }
+
+  if (method === "GET" && path === "party-games/rooms") {
+    const { user } = requireUser(event);
+    const gameKey = sanitizePartyGameKey(query.gameKey || query.game_key);
+    const mineOnly = String(query.mine || "").trim() === "1" || String(query.mine || "").trim().toLowerCase() === "true";
+    const statusFilter = asString(query.status).toLowerCase();
+    const items = store.partyGameRooms
+      .filter((room) => {
+        if (room.status === "closed") {
+          return false;
+        }
+        if (gameKey && room.gameKey !== gameKey) {
+          return false;
+        }
+        if (statusFilter && statusFilter !== "all" && room.status !== statusFilter) {
+          return false;
+        }
+        if (!mineOnly) {
+          return true;
+        }
+        return store.partyGameMembers.some((member) => member.roomId === room.id && member.userId === user.userId);
+      })
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, 100)
+      .map((room) => toPartyGameRoomSummary(store, room, user.userId));
+    return ok({
+      items,
+      total: items.length,
+    });
+  }
+
+  if (method === "POST" && path === "party-games/rooms") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{
+      gameKey?: string;
+      title?: string;
+      maxPlayers?: number;
+      nickname?: string;
+    }>(event);
+    const gameKey = sanitizePartyGameKey(body.gameKey);
+    if (!gameKey) {
+      return toApiError(400, "PARTY_GAME_KEY_INVALID", "gameKey 不合法");
+    }
+    const maxPlayers = Math.max(2, Math.min(12, Number(body.maxPlayers || 10)));
+    const room: PartyGameRoomRecord = {
+      id: storeHelpers.createId("pg_room"),
+      roomCode: storeHelpers.generateJoinCode(),
+      gameKey,
+      title: resolvePartyGameTitle(gameKey, body.title),
+      status: "waiting",
+      hostUserId: user.userId,
+      maxPlayers,
+      createdAt: storeHelpers.nowIso(),
+      updatedAt: storeHelpers.nowIso(),
+    };
+    const member: PartyGameMemberRecord = {
+      id: storeHelpers.createId("pg_member"),
+      roomId: room.id,
+      userId: user.userId,
+      nickname: asString(body.nickname) || user.nickname || user.name || user.studentNo,
+      ready: true,
+      online: true,
+      joinedAt: storeHelpers.nowIso(),
+      lastHeartbeatAt: storeHelpers.nowIso(),
+    };
+    const state: PartyGameStateRecord = {
+      roomId: room.id,
+      version: 1,
+      data: {},
+      updatedByUserId: user.userId,
+      updatedAt: storeHelpers.nowIso(),
+    };
+    store.partyGameRooms.unshift(room);
+    store.partyGameMembers.push(member);
+    store.partyGameStates.push(state);
+    appendPartyGameEvent(store, {
+      roomId: room.id,
+      type: "room.created",
+      actorUserId: user.userId,
+      payload: { gameKey: room.gameKey, roomCode: room.roomCode },
+    });
+    appendAudit("party_game_room_create", user.userId, {
+      roomId: room.id,
+      gameKey: room.gameKey,
+      maxPlayers: room.maxPlayers,
+    });
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId));
+  }
+
+  if (method === "POST" && path === "party-games/rooms/join-by-code") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{ roomCode?: string; nickname?: string }>(event);
+    const roomCode = asString(body.roomCode).toUpperCase();
+    if (!roomCode) {
+      return toApiError(400, "PARTY_GAME_ROOM_CODE_REQUIRED", "roomCode 不能为空");
+    }
+    const room = store.partyGameRooms.find((item) => item.roomCode === roomCode) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    let member = store.partyGameMembers.find((item) => item.roomId === room.id && item.userId === user.userId) || null;
+    if (!member) {
+      const memberCount = store.partyGameMembers.filter((item) => item.roomId === room.id).length;
+      if (memberCount >= room.maxPlayers) {
+        return toApiError(400, "PARTY_GAME_ROOM_FULL", "房间已满");
+      }
+      member = {
+        id: storeHelpers.createId("pg_member"),
+        roomId: room.id,
+        userId: user.userId,
+        nickname: asString(body.nickname) || user.nickname || user.name || user.studentNo,
+        ready: false,
+        online: true,
+        joinedAt: storeHelpers.nowIso(),
+        lastHeartbeatAt: storeHelpers.nowIso(),
+      };
+      store.partyGameMembers.push(member);
+      room.updatedAt = storeHelpers.nowIso();
+      appendPartyGameEvent(store, {
+        roomId: room.id,
+        type: "room.member_joined",
+        actorUserId: user.userId,
+        payload: { userId: user.userId },
+      });
+      appendAudit("party_game_room_join", user.userId, { roomId: room.id });
+    } else {
+      member.online = true;
+      member.lastHeartbeatAt = storeHelpers.nowIso();
+      if (asString(body.nickname)) {
+        member.nickname = asString(body.nickname);
+      }
+    }
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId));
+  }
+
+  const partyRoomMatch = path.match(/^party-games\/rooms\/([^/]+)$/);
+  if (method === "GET" && partyRoomMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      return toApiError(403, "PARTY_GAME_ROOM_ACCESS_DENIED", "请先加入房间");
+    }
+    member.online = true;
+    member.lastHeartbeatAt = storeHelpers.nowIso();
+    const afterSeq = Math.max(0, Number(query.afterSeq || query.after_seq || 0));
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId, afterSeq));
+  }
+
+  const partyRoomJoinMatch = path.match(/^party-games\/rooms\/([^/]+)\/join$/);
+  if (method === "POST" && partyRoomJoinMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomJoinMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const body = await readJsonBody<{ nickname?: string }>(event);
+    let member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      const memberCount = store.partyGameMembers.filter((item) => item.roomId === roomId).length;
+      if (memberCount >= room.maxPlayers) {
+        return toApiError(400, "PARTY_GAME_ROOM_FULL", "房间已满");
+      }
+      member = {
+        id: storeHelpers.createId("pg_member"),
+        roomId,
+        userId: user.userId,
+        nickname: asString(body.nickname) || user.nickname || user.name || user.studentNo,
+        ready: false,
+        online: true,
+        joinedAt: storeHelpers.nowIso(),
+        lastHeartbeatAt: storeHelpers.nowIso(),
+      };
+      store.partyGameMembers.push(member);
+      room.updatedAt = storeHelpers.nowIso();
+      appendPartyGameEvent(store, {
+        roomId,
+        type: "room.member_joined",
+        actorUserId: user.userId,
+        payload: { userId: user.userId },
+      });
+      appendAudit("party_game_room_join", user.userId, { roomId });
+    } else {
+      member.online = true;
+      member.lastHeartbeatAt = storeHelpers.nowIso();
+      if (asString(body.nickname)) {
+        member.nickname = asString(body.nickname);
+      }
+    }
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId));
+  }
+
+  const partyRoomLeaveMatch = path.match(/^party-games\/rooms\/([^/]+)\/leave$/);
+  if (method === "POST" && partyRoomLeaveMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomLeaveMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      return toApiError(400, "PARTY_GAME_MEMBER_NOT_FOUND", "当前用户不在该房间");
+    }
+    store.partyGameMembers = store.partyGameMembers.filter((item) => item.id !== member.id);
+    const remainMembers = getPartyGameRoomMembers(store, roomId);
+    let roomClosed = false;
+    if (remainMembers.length === 0) {
+      room.status = "closed";
+      room.updatedAt = storeHelpers.nowIso();
+      roomClosed = true;
+    } else if (room.hostUserId === user.userId) {
+      room.hostUserId = remainMembers[0].userId;
+      room.updatedAt = storeHelpers.nowIso();
+    }
+    appendPartyGameEvent(store, {
+      roomId,
+      type: "room.member_left",
+      actorUserId: user.userId,
+      payload: { userId: user.userId, roomClosed },
+    });
+    appendAudit("party_game_room_leave", user.userId, { roomId, roomClosed });
+    return ok({
+      left: true,
+      roomId,
+      roomClosed,
+      hostUserId: room.hostUserId,
+    });
+  }
+
+  const partyRoomHeartbeatMatch = path.match(/^party-games\/rooms\/([^/]+)\/heartbeat$/);
+  if (method === "POST" && partyRoomHeartbeatMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomHeartbeatMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      return toApiError(403, "PARTY_GAME_ROOM_ACCESS_DENIED", "请先加入房间");
+    }
+    member.online = true;
+    member.lastHeartbeatAt = storeHelpers.nowIso();
+    const body = await readJsonBody<{ ready?: boolean; nickname?: string }>(event);
+    if (typeof body.ready === "boolean") {
+      member.ready = body.ready;
+    }
+    if (asString(body.nickname)) {
+      member.nickname = asString(body.nickname);
+    }
+    room.updatedAt = storeHelpers.nowIso();
+    return ok({
+      roomId,
+      memberId: member.id,
+      online: member.online,
+      ready: member.ready,
+      lastHeartbeatAt: member.lastHeartbeatAt,
+    });
+  }
+
+  const partyRoomStartMatch = path.match(/^party-games\/rooms\/([^/]+)\/start$/);
+  if (method === "POST" && partyRoomStartMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomStartMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    if (room.hostUserId !== user.userId) {
+      return toApiError(403, "PARTY_GAME_ROOM_HOST_ONLY", "仅房主可开始对局");
+    }
+    room.status = "playing";
+    room.updatedAt = storeHelpers.nowIso();
+    appendPartyGameEvent(store, {
+      roomId,
+      type: "room.started",
+      actorUserId: user.userId,
+      payload: {},
+    });
+    appendAudit("party_game_room_start", user.userId, { roomId });
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId));
+  }
+
+  const partyRoomFinishMatch = path.match(/^party-games\/rooms\/([^/]+)\/finish$/);
+  if (method === "POST" && partyRoomFinishMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomFinishMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    if (room.hostUserId !== user.userId) {
+      return toApiError(403, "PARTY_GAME_ROOM_HOST_ONLY", "仅房主可结束对局");
+    }
+    room.status = "finished";
+    room.updatedAt = storeHelpers.nowIso();
+    appendPartyGameEvent(store, {
+      roomId,
+      type: "room.finished",
+      actorUserId: user.userId,
+      payload: {},
+    });
+    appendAudit("party_game_room_finish", user.userId, { roomId });
+    return ok(serializePartyGameRoomSnapshot(store, room, user.userId));
+  }
+
+  const partyRoomSyncStateMatch = path.match(/^party-games\/rooms\/([^/]+)\/sync-state$/);
+  if (method === "POST" && partyRoomSyncStateMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomSyncStateMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      return toApiError(403, "PARTY_GAME_ROOM_ACCESS_DENIED", "请先加入房间");
+    }
+    const body = await readJsonBody<{
+      state?: Record<string, unknown>;
+      baseVersion?: number;
+      roomStatus?: "waiting" | "playing" | "finished";
+      eventType?: string;
+      clientActionId?: string;
+    }>(event);
+    if (!body.state || typeof body.state !== "object" || Array.isArray(body.state)) {
+      return toApiError(400, "PARTY_GAME_STATE_INVALID", "state 必须为 JSON 对象");
+    }
+    let state = getPartyGameRoomState(store, roomId);
+    if (!state) {
+      state = {
+        roomId,
+        version: 1,
+        data: {},
+        updatedByUserId: room.hostUserId,
+        updatedAt: storeHelpers.nowIso(),
+      };
+      store.partyGameStates.push(state);
+    }
+    const baseVersion = Number(body.baseVersion || 0);
+    if (baseVersion > 0 && baseVersion !== state.version) {
+      return toApiError(409, "PARTY_GAME_STATE_VERSION_CONFLICT", "房间状态版本冲突，请先拉取最新状态");
+    }
+    state.version += 1;
+    state.data = { ...body.state };
+    state.updatedAt = storeHelpers.nowIso();
+    state.updatedByUserId = user.userId;
+    if (body.roomStatus === "waiting" || body.roomStatus === "playing" || body.roomStatus === "finished") {
+      room.status = body.roomStatus;
+    }
+    room.updatedAt = storeHelpers.nowIso();
+    const nextEventType = asString(body.eventType) || "state.synced";
+    const duplicatedEvent =
+      body.clientActionId &&
+      store.partyGameEvents.find(
+        (item) =>
+          item.roomId === roomId &&
+          item.actorUserId === user.userId &&
+          item.clientActionId === asString(body.clientActionId),
+      );
+    if (!duplicatedEvent) {
+      appendPartyGameEvent(store, {
+        roomId,
+        type: nextEventType,
+        actorUserId: user.userId,
+        clientActionId: asString(body.clientActionId),
+        payload: { version: state.version },
+      });
+    }
+    return ok({
+      roomId,
+      version: state.version,
+      updatedAt: state.updatedAt,
+      updatedByUserId: state.updatedByUserId,
+      roomStatus: room.status,
+    });
+  }
+
+  const partyRoomActionMatch = path.match(/^party-games\/rooms\/([^/]+)\/actions$/);
+  if (method === "POST" && partyRoomActionMatch) {
+    const { user } = requireUser(event);
+    const roomId = decodeURIComponent(partyRoomActionMatch[1]);
+    const room = store.partyGameRooms.find((item) => item.id === roomId) || null;
+    if (!room || room.status === "closed") {
+      return toApiError(404, "PARTY_GAME_ROOM_NOT_FOUND", "房间不存在或已关闭");
+    }
+    const member = store.partyGameMembers.find((item) => item.roomId === roomId && item.userId === user.userId) || null;
+    if (!member) {
+      return toApiError(403, "PARTY_GAME_ROOM_ACCESS_DENIED", "请先加入房间");
+    }
+    const body = await readJsonBody<{
+      type?: string;
+      payload?: Record<string, unknown>;
+      clientActionId?: string;
+    }>(event);
+    const actionType = asString(body.type);
+    if (!actionType) {
+      return toApiError(400, "PARTY_GAME_ACTION_TYPE_REQUIRED", "type 不能为空");
+    }
+    const clientActionId = asString(body.clientActionId);
+    const duplicatedEvent =
+      clientActionId &&
+      store.partyGameEvents.find(
+        (item) => item.roomId === roomId && item.actorUserId === user.userId && item.clientActionId === clientActionId,
+      );
+    if (duplicatedEvent) {
+      return ok({
+        duplicated: true,
+        event: {
+          eventId: duplicatedEvent.id,
+          seq: duplicatedEvent.seq,
+          type: duplicatedEvent.type,
+          actorUserId: duplicatedEvent.actorUserId,
+          payload: duplicatedEvent.payload,
+          createdAt: duplicatedEvent.createdAt,
+          clientActionId: duplicatedEvent.clientActionId,
+        },
+      });
+    }
+    room.updatedAt = storeHelpers.nowIso();
+    const eventRecord = appendPartyGameEvent(store, {
+      roomId,
+      type: actionType,
+      actorUserId: user.userId,
+      clientActionId,
+      payload: body.payload && typeof body.payload === "object" ? body.payload : {},
+    });
+    return ok({
+      duplicated: false,
+      event: {
+        eventId: eventRecord.id,
+        seq: eventRecord.seq,
+        type: eventRecord.type,
+        actorUserId: eventRecord.actorUserId,
+        payload: eventRecord.payload,
+        createdAt: eventRecord.createdAt,
+        clientActionId: eventRecord.clientActionId,
+      },
+      roomUpdatedAt: room.updatedAt,
     });
   }
 

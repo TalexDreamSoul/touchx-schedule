@@ -223,6 +223,16 @@ const navItems: Array<{ key: TabKey; label: string }> = [
   { key: "schedule", label: "课程表" },
   { key: "profile", label: "我的" },
 ];
+
+const PARTY_GAME_PAGE_PATH_BY_KEY: Record<string, string> = {
+  werewolf: "/pages/party-games/werewolf",
+  undercover: "/pages/party-games/undercover",
+  avalon: "/pages/party-games/avalon",
+  telephone: "/pages/party-games/telephone",
+  drawguess: "/pages/party-games/drawguess",
+  turtle: "/pages/party-games/turtle",
+};
+
 const tabOrder: TabKey[] = ["today", "schedule", "profile"];
 const TAB_SCREEN_ANIMATION_MS = 320;
 
@@ -2296,6 +2306,16 @@ const openProfilePreferencesPage = () => {
   uni.navigateTo({ url: "/pages/profile/preferences" });
 };
 
+const openPartyGamePage = (gameKey: string) => {
+  const key = String(gameKey || "").trim();
+  const path = PARTY_GAME_PAGE_PATH_BY_KEY[key];
+  if (!path) {
+    uni.showToast({ title: "暂未开放该游戏", icon: "none" });
+    return;
+  }
+  uni.navigateTo({ url: path });
+};
+
 const clearTabSwitchTimers = () => {
   if (tabSwitchCleanupTimer) {
     clearTimeout(tabSwitchCleanupTimer);
@@ -2789,6 +2809,7 @@ const todayTabProps = computed(() => ({
   onAuthorize: openQuickAuthDialog,
   onOpenFoodCampaign: () => openTodayFoodCampaign(),
   onFoodCampaignClick: openTodayFoodCampaign,
+  onOpenPartyGame: openPartyGamePage,
   activeStudentId: activeStudentId.value,
   onTodayCourseClick: openTodayCourseDialog,
   todayGreetingText: todayGreetingText.value,

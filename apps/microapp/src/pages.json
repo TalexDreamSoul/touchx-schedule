@@ -12,6 +12,47 @@
   ],
   "subpackages": [
     {
+      "root": "pages/party-games",
+      "pages": [
+        {
+          "path": "werewolf",
+          "style": {
+            "navigationBarTitleText": "狼人杀"
+          }
+        },
+        {
+          "path": "undercover",
+          "style": {
+            "navigationBarTitleText": "谁是卧底"
+          }
+        },
+        {
+          "path": "avalon",
+          "style": {
+            "navigationBarTitleText": "阿瓦隆"
+          }
+        },
+        {
+          "path": "telephone",
+          "style": {
+            "navigationBarTitleText": "传声筒"
+          }
+        },
+        {
+          "path": "drawguess",
+          "style": {
+            "navigationBarTitleText": "你画我猜"
+          }
+        },
+        {
+          "path": "turtle",
+          "style": {
+            "navigationBarTitleText": "海龟汤"
+          }
+        }
+      ]
+    },
+    {
       "root": "pages/profile",
       "pages": [
         {
