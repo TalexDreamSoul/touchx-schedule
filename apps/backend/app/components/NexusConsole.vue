@@ -148,7 +148,7 @@
                 <tbody>
                   <tr v-for="item in usersData" :key="item.userId">
                     <td>{{ item.studentNo }}</td>
-                    <td>{{ item.name || item.nickname }}</td>
+                    <td>{{ formatUserDisplayName(item) }}</td>
                     <td>{{ item.adminRole }}</td>
                     <td><button class="btn" @click="openUserEditModal(item)">编辑</button></td>
                   </tr>
@@ -342,6 +342,151 @@
           </section>
         </template>
 
+        <template v-else-if="activeModuleKey === 'schedule-import'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>课表 PDF 异步导入</h2>
+              <div class="panel-tags">
+                <span class="panel-tag">任务 {{ scheduleImportJobList.length }}</span>
+                <span class="panel-tag">文件 {{ scheduleImportSelectedFiles.length }}</span>
+                <span class="panel-tag">当前 {{ scheduleImportCurrentJob?.jobId || "未选择" }}</span>
+              </div>
+            </header>
+
+            <div class="layout-2col">
+              <div class="form-grid compact">
+                <h3>创建导入任务</h3>
+                <label>
+                  默认学期
+                  <input v-model.trim="scheduleImportDefaultTerm" placeholder="例如：2025-2026-2" />
+                </label>
+                <label>
+                  PDF 文件（可多选）
+                  <input
+                    :key="scheduleImportFileInputKey"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    multiple
+                    @change="onScheduleImportFilesChange"
+                  />
+                </label>
+                <div class="action-col">
+                  <button class="btn primary" type="button" :disabled="loading || scheduleImportMappings.length <= 0" @click="submitScheduleImportJob">
+                    提交导入任务
+                  </button>
+                  <button class="btn" type="button" :disabled="loading" @click="resetScheduleImportForm">清空文件</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <h3 class="sub-title">最近任务</h3>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>任务ID</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="scheduleImportJobList.length <= 0">
+                      <td colspan="2">暂无导入任务</td>
+                    </tr>
+                    <tr v-for="item in scheduleImportJobList" :key="item.jobId">
+                      <td>{{ item.jobId }}</td>
+                      <td class="action-col">
+                        <button class="btn" type="button" :disabled="loading" @click="loadScheduleImportJobStatus(item.jobId)">
+                          查看状态
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div class="action-col">
+                  <button class="btn" type="button" :disabled="loading" @click="runWithLoading(loadScheduleImportJobList)">刷新任务列表</button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="scheduleImportMappings.length > 0" class="table-wrap">
+              <h3 class="sub-title">文件映射（学号可留空，后端自动识别）</h3>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>大小(MB)</th>
+                    <th>学号</th>
+                    <th>学期</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, index) in scheduleImportMappings" :key="`${item.fileName}-${index}`">
+                    <td>{{ item.fileName }}</td>
+                    <td>{{ ((scheduleImportSelectedFiles[index]?.size || 0) / 1024 / 1024).toFixed(2) }}</td>
+                    <td>
+                      <input v-model.trim="item.studentNo" placeholder="可留空自动识别，例如：2305100613" />
+                    </td>
+                    <td>
+                      <input v-model.trim="item.term" placeholder="例如：2025-2026-2" />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div v-if="scheduleImportCurrentJob" class="table-wrap">
+              <h3 class="sub-title">任务详情</h3>
+              <div class="panel-tags" style="margin-bottom: 0.375rem;">
+                <span class="panel-tag">状态 {{ scheduleImportCurrentJob.status }}</span>
+                <span class="panel-tag">
+                  进度 {{ scheduleImportCurrentJob.processedFiles || 0 }}/{{ scheduleImportCurrentJob.totalFiles || 0 }}
+                </span>
+                <span class="panel-tag">成功 {{ scheduleImportCurrentJob.successCount || 0 }}</span>
+                <span class="panel-tag">失败 {{ scheduleImportCurrentJob.failCount || 0 }}</span>
+                <span class="panel-tag">更新 {{ toDisplayDate(scheduleImportCurrentJob.updatedAt) || "-" }}</span>
+              </div>
+              <div class="action-col" style="margin-bottom: 0.375rem;">
+                <button
+                  class="btn"
+                  type="button"
+                  :disabled="loading || !scheduleImportCurrentJobId"
+                  @click="loadScheduleImportJobStatus(scheduleImportCurrentJobId)"
+                >
+                  刷新当前任务
+                </button>
+              </div>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>文件</th>
+                    <th>学号</th>
+                    <th>状态</th>
+                    <th>条目数</th>
+                    <th>课表ID</th>
+                    <th>版本</th>
+                    <th>耗时(ms)</th>
+                    <th>错误</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="!Array.isArray(scheduleImportCurrentJob.results) || scheduleImportCurrentJob.results.length <= 0">
+                    <td colspan="8">暂无结果</td>
+                  </tr>
+                  <tr v-for="item in scheduleImportCurrentJob.results || []" :key="item.itemId">
+                    <td>{{ item.fileName }}</td>
+                    <td>{{ item.studentNo }}</td>
+                    <td>{{ item.status }}</td>
+                    <td>{{ item.entryCount }}</td>
+                    <td>{{ item.scheduleId || "-" }}</td>
+                    <td>{{ item.versionNo || "-" }}</td>
+                    <td>{{ item.durationMs || 0 }}</td>
+                    <td>{{ item.error || "-" }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
+
         <template v-else-if="activeModuleKey === 'foods'">
           <section class="panel">
             <header class="panel-head">
@@ -502,6 +647,155 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'heart-open-word-bank'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>心口难开词库管理</h2>
+              <div class="panel-tags">
+                <span class="panel-tag">词条 {{ heartOpenWordBankData.length }}</span>
+                <span class="panel-tag">筛选 {{ heartOpenWordFilterApplied ? "已应用" : "全部" }}</span>
+                <span class="panel-tag">编辑目标 {{ heartOpenWordEditForm.wordId || "未选择" }}</span>
+              </div>
+            </header>
+
+            <div class="panel-toolbar">
+              <button class="btn" type="button" @click="refreshModule">刷新列表</button>
+              <button class="btn primary" type="button" @click="createHeartOpenWord">新增词条</button>
+              <button class="btn" type="button" :disabled="!heartOpenWordEditForm.wordId" @click="saveHeartOpenWord">保存编辑</button>
+            </div>
+
+            <div class="layout-2col">
+              <div class="form-grid compact">
+                <h3>筛选词条</h3>
+                <label>
+                  关键词
+                  <input v-model.trim="heartOpenWordQueryForm.keyword" placeholder="词语 / 惩罚 / 分类" />
+                </label>
+                <label>
+                  分类
+                  <select v-model="heartOpenWordQueryForm.category">
+                    <option value="">全部分类</option>
+                    <option v-for="item in heartOpenWordCategoryOptions" :key="`heart-open-category-${item}`" :value="item">
+                      {{ item }}
+                    </option>
+                  </select>
+                </label>
+                <label>
+                  难度
+                  <select v-model="heartOpenWordQueryForm.difficulty">
+                    <option value="">全部难度</option>
+                    <option value="easy">简单</option>
+                    <option value="medium">中等</option>
+                    <option value="hard">困难</option>
+                  </select>
+                </label>
+                <label>
+                  启用状态
+                  <select v-model="heartOpenWordQueryForm.enabled">
+                    <option value="">全部</option>
+                    <option value="true">仅启用</option>
+                    <option value="false">仅停用</option>
+                  </select>
+                </label>
+                <div class="action-col">
+                  <button class="btn primary" type="button" @click="applyHeartOpenWordFilter">应用筛选</button>
+                  <button class="btn" type="button" @click="resetHeartOpenWordFilter">重置筛选</button>
+                </div>
+              </div>
+
+              <div class="form-grid compact">
+                <h3>新增词条</h3>
+                <label>
+                  词语
+                  <input v-model.trim="heartOpenWordCreateForm.word" maxlength="60" placeholder="例如：前任名字" />
+                </label>
+                <label>
+                  惩罚
+                  <textarea v-model.trim="heartOpenWordCreateForm.punishment" rows="4" maxlength="240" placeholder="输入惩罚内容" />
+                </label>
+                <label>
+                  分类
+                  <input v-model.trim="heartOpenWordCreateForm.category" maxlength="40" placeholder="例如：情感社死" />
+                </label>
+                <label>
+                  难度
+                  <select v-model="heartOpenWordCreateForm.difficulty">
+                    <option value="easy">简单</option>
+                    <option value="medium">中等</option>
+                    <option value="hard">困难</option>
+                  </select>
+                </label>
+                <label>
+                  <input v-model="heartOpenWordCreateForm.enabled" type="checkbox" />
+                  创建后立即启用
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <h3 class="sub-title">词条列表</h3>
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>词语</th>
+                    <th>惩罚</th>
+                    <th>分类</th>
+                    <th>难度</th>
+                    <th>启用</th>
+                    <th>更新时间</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="item in heartOpenWordBankData" :key="item.wordId">
+                    <td>{{ item.word }}</td>
+                    <td>{{ item.punishment }}</td>
+                    <td>{{ item.category }}</td>
+                    <td>{{ toHeartOpenDifficultyLabel(item.difficulty) }}</td>
+                    <td>{{ item.enabled ? "启用" : "停用" }}</td>
+                    <td>{{ toDisplayDate(item.updatedAt) }}</td>
+                    <td class="action-col">
+                      <button class="btn" type="button" @click="selectHeartOpenWord(item)">编辑</button>
+                      <button class="btn" type="button" @click="toggleHeartOpenWordEnabled(item)">
+                        {{ item.enabled ? "停用" : "启用" }}
+                      </button>
+                      <button class="btn danger" type="button" @click="requestDeleteHeartOpenWord(item)">删除</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="form-grid compact">
+              <h3>编辑词条</h3>
+              <label>
+                词语
+                <input v-model.trim="heartOpenWordEditForm.word" maxlength="60" placeholder="请选择词条后编辑" />
+              </label>
+              <label>
+                惩罚
+                <textarea v-model.trim="heartOpenWordEditForm.punishment" rows="4" maxlength="240" placeholder="请输入惩罚内容" />
+              </label>
+              <label>
+                分类
+                <input v-model.trim="heartOpenWordEditForm.category" maxlength="40" placeholder="例如：情感社死" />
+              </label>
+              <label>
+                难度
+                <select v-model="heartOpenWordEditForm.difficulty">
+                  <option value="easy">简单</option>
+                  <option value="medium">中等</option>
+                  <option value="hard">困难</option>
+                </select>
+              </label>
+              <label>
+                <input v-model="heartOpenWordEditForm.enabled" type="checkbox" />
+                词条启用
+              </label>
             </div>
           </section>
         </template>
@@ -1395,7 +1689,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { buildNexusLoginPath, clearNexusSessionToken, getNexusSessionToken } from "../utils/nexus-auth";
 import { getPreferredNexusTheme, setNexusTheme, type NexusThemeMode } from "../utils/nexus-theme";
 
@@ -1546,7 +1840,9 @@ const modules: ModuleOption[] = [
   { key: "users", label: "用户", hint: "账号、角色与提醒配置", group: "core" },
   { key: "classes", label: "班级", hint: "班级生命周期与成员管理", group: "core" },
   { key: "schedules", label: "课表", hint: "发布、订阅、补丁与冲突", group: "business" },
+  { key: "schedule-import", label: "课表导入", hint: "PDF 异步导入任务", group: "business" },
   { key: "foods", label: "食物", hint: "食物库、热量与价格曲线", group: "business" },
+  { key: "heart-open-word-bank", label: "心口难开词库", hint: "词语与惩罚管理", group: "business" },
   { key: "campaigns", label: "竞选", hint: "匿名投票与活动运营", group: "business" },
   { key: "media", label: "媒体", hint: "头像壁纸与资产审计", group: "business" },
   { key: "bots", label: "机器人", hint: "模板策略与次日播报", group: "business" },
@@ -1660,12 +1956,24 @@ const activeModuleStats = computed(() => {
         `冲突 ${conflictsData.value.length}`,
         `补丁 ${patchesData.value.length}`,
       ];
+    case "schedule-import":
+      return [
+        `任务 ${scheduleImportJobList.value.length}`,
+        `当前 ${scheduleImportCurrentJob.value?.jobId || "未选择"}`,
+        `已完成 ${scheduleImportCurrentJob.value?.processedFiles || 0}/${scheduleImportCurrentJob.value?.totalFiles || 0}`,
+      ];
     case "foods":
       return [
         `食物 ${foodItemsData.value.length}`,
         `分类 ${foodCategoryStats.value.length}`,
         `零热量 ${foodCategoryStatsOverview.value.zeroCaloriesCount}`,
         `规则 ${foodRules.value.length}`,
+      ];
+    case "heart-open-word-bank":
+      return [
+        `词条 ${heartOpenWordBankData.value.length}`,
+        `筛选 ${heartOpenWordFilterApplied.value ? "已应用" : "全部"}`,
+        `编辑对象 ${heartOpenWordEditForm.wordId || "未选择"}`,
       ];
     case "campaigns":
       return [`活动 ${campaignList.value.length}`, `详情 ${campaignDetailData.value ? "已加载" : "未加载"}`];
@@ -1696,6 +2004,37 @@ const foodCategoryOptions = computed(() => {
   return Array.from(map.entries())
     .map(([value, label]) => ({ value, label }))
     .sort((left, right) => left.label.localeCompare(right.label));
+});
+
+const heartOpenDifficultyLabelMap: Record<string, string> = {
+  easy: "简单",
+  medium: "中等",
+  hard: "困难",
+};
+
+const toHeartOpenDifficultyLabel = (difficulty: unknown) => {
+  const key = String(difficulty || "").trim().toLowerCase();
+  return heartOpenDifficultyLabelMap[key] || key || "中等";
+};
+
+const heartOpenWordCategoryOptions = computed(() => {
+  const categorySet = new Set<string>();
+  heartOpenWordBankData.value.forEach((item) => {
+    const category = String(item.category || "").trim();
+    if (category) {
+      categorySet.add(category);
+    }
+  });
+  return Array.from(categorySet.values()).sort((left, right) => left.localeCompare(right, "zh-CN"));
+});
+
+const heartOpenWordFilterApplied = computed(() => {
+  return Boolean(
+    heartOpenWordQueryForm.keyword.trim() ||
+      heartOpenWordQueryForm.category.trim() ||
+      heartOpenWordQueryForm.difficulty.trim() ||
+      heartOpenWordQueryForm.enabled.trim(),
+  );
 });
 
 const foodCategoryStatsOverview = computed(() => {
@@ -1764,10 +2103,14 @@ const schedulesData = ref<any[]>([]);
 const subscriptionsData = ref<any[]>([]);
 const conflictsData = ref<any[]>([]);
 const patchesData = ref<any[]>([]);
+const scheduleImportJobList = ref<any[]>([]);
+const scheduleImportCurrentJob = ref<any | null>(null);
+const scheduleImportCurrentJobId = ref("");
 const foodItemsData = ref<any[]>([]);
 const foodCategoryStats = ref<any[]>([]);
 const foodRules = ref<any[]>([]);
 const foodRuleHistory = ref<any[]>([]);
+const heartOpenWordBankData = ref<any[]>([]);
 const campaignList = ref<any[]>([]);
 const campaignDetailData = ref<any>(null);
 const mediaAssets = ref<any[]>([]);
@@ -1794,6 +2137,30 @@ const userEditor = reactive({
   reminderEnabled: true,
   reminderWindowMinutes: "30,15",
 });
+
+const formatUserDisplayName = (item: { name?: string; nickname?: string; studentNo?: string; studentId?: string }) => {
+  const studentNo = String(item.studentNo || "").trim();
+  const studentId = String(item.studentId || "").trim();
+  const isPlaceholderIdentityText = (value: unknown) => {
+    const normalized = String(value || "").trim();
+    if (!normalized) {
+      return false;
+    }
+    if (normalized === studentNo || normalized === studentId) {
+      return true;
+    }
+    return /^\d{6,32}$/.test(normalized);
+  };
+  const name = String(item.name || "").trim();
+  if (name && !isPlaceholderIdentityText(name)) {
+    return name;
+  }
+  const nickname = String(item.nickname || "").trim();
+  if (nickname && !isPlaceholderIdentityText(nickname)) {
+    return nickname;
+  }
+  return "未设置";
+};
 
 const classCreateForm = reactive({
   classLabel: "",
@@ -1850,6 +2217,12 @@ const schedulePatchForm = reactive({
   patchPayloadText: "{}",
 });
 
+const scheduleImportDefaultTerm = ref("2025-2026-2");
+const scheduleImportSelectedFiles = ref<File[]>([]);
+const scheduleImportMappings = ref<Array<{ fileName: string; studentNo: string; term: string }>>([]);
+const scheduleImportFileInputKey = ref(0);
+let scheduleImportPollingTimer: ReturnType<typeof setTimeout> | null = null;
+
 const foodItemCreateForm = reactive({
   foodName: "",
   merchantName: "",
@@ -1878,6 +2251,30 @@ const foodItemEditForm = reactive({
 const foodQueryForm = reactive({
   categoryKey: "",
   keyword: "",
+});
+
+const heartOpenWordQueryForm = reactive({
+  keyword: "",
+  category: "",
+  difficulty: "",
+  enabled: "",
+});
+
+const heartOpenWordCreateForm = reactive({
+  word: "",
+  punishment: "",
+  category: "",
+  difficulty: "medium",
+  enabled: true,
+});
+
+const heartOpenWordEditForm = reactive({
+  wordId: "",
+  word: "",
+  punishment: "",
+  category: "",
+  difficulty: "medium",
+  enabled: true,
 });
 
 const foodImportForm = reactive({
@@ -2068,6 +2465,169 @@ const openFoodItemEditModal = (item?: any) => {
     return;
   }
   openCrudModal("food-item-edit", "编辑食物", "更新名称、价格、热量与坐标。");
+};
+
+const normalizeHeartOpenDifficulty = (value: unknown) => {
+  const difficulty = String(value || "").trim().toLowerCase();
+  if (difficulty === "easy" || difficulty === "medium" || difficulty === "hard") {
+    return difficulty;
+  }
+  return "medium";
+};
+
+const selectHeartOpenWord = (item: any) => {
+  heartOpenWordEditForm.wordId = String(item.wordId || "");
+  heartOpenWordEditForm.word = String(item.word || "");
+  heartOpenWordEditForm.punishment = String(item.punishment || "");
+  heartOpenWordEditForm.category = String(item.category || "");
+  heartOpenWordEditForm.difficulty = normalizeHeartOpenDifficulty(item.difficulty);
+  heartOpenWordEditForm.enabled = Boolean(item.enabled);
+};
+
+const loadHeartOpenWordBank = async () => {
+  const params = new URLSearchParams();
+  if (heartOpenWordQueryForm.keyword.trim()) {
+    params.set("keyword", heartOpenWordQueryForm.keyword.trim());
+  }
+  if (heartOpenWordQueryForm.category.trim()) {
+    params.set("category", heartOpenWordQueryForm.category.trim());
+  }
+  if (heartOpenWordQueryForm.difficulty.trim()) {
+    params.set("difficulty", normalizeHeartOpenDifficulty(heartOpenWordQueryForm.difficulty));
+  }
+  if (heartOpenWordQueryForm.enabled.trim()) {
+    params.set("enabled", heartOpenWordQueryForm.enabled.trim());
+  }
+  const query = params.toString();
+  const data = await apiRequest<any>(
+    `/api/v1/admin/party-games/heart-open/word-bank${query ? `?${query}` : ""}`,
+  );
+  heartOpenWordBankData.value = data.items || [];
+  if (heartOpenWordBankData.value.length === 0) {
+    heartOpenWordEditForm.wordId = "";
+    heartOpenWordEditForm.word = "";
+    heartOpenWordEditForm.punishment = "";
+    heartOpenWordEditForm.category = "";
+    heartOpenWordEditForm.difficulty = "medium";
+    heartOpenWordEditForm.enabled = true;
+    return;
+  }
+  const matched =
+    heartOpenWordBankData.value.find((item) => String(item.wordId || "") === heartOpenWordEditForm.wordId) || null;
+  if (matched) {
+    selectHeartOpenWord(matched);
+    return;
+  }
+  selectHeartOpenWord(heartOpenWordBankData.value[0]);
+};
+
+const applyHeartOpenWordFilter = async () => {
+  await runWithLoading(async () => {
+    await loadHeartOpenWordBank();
+    setSuccess("词库筛选已生效");
+  });
+};
+
+const resetHeartOpenWordFilter = async () => {
+  heartOpenWordQueryForm.keyword = "";
+  heartOpenWordQueryForm.category = "";
+  heartOpenWordQueryForm.difficulty = "";
+  heartOpenWordQueryForm.enabled = "";
+  await runWithLoading(async () => {
+    await loadHeartOpenWordBank();
+    setSuccess("已重置词库筛选");
+  });
+};
+
+const createHeartOpenWord = async () => {
+  const word = heartOpenWordCreateForm.word.trim();
+  const punishment = heartOpenWordCreateForm.punishment.trim();
+  if (!word) {
+    errorText.value = "请填写词语";
+    return;
+  }
+  if (!punishment) {
+    errorText.value = "请填写惩罚内容";
+    return;
+  }
+  await runWithLoading(async () => {
+    await apiRequest("/api/v1/admin/party-games/heart-open/word-bank", "POST", {
+      word,
+      punishment,
+      category: heartOpenWordCreateForm.category.trim() || "默认",
+      difficulty: normalizeHeartOpenDifficulty(heartOpenWordCreateForm.difficulty),
+      enabled: heartOpenWordCreateForm.enabled,
+    });
+    heartOpenWordCreateForm.word = "";
+    heartOpenWordCreateForm.punishment = "";
+    heartOpenWordCreateForm.category = "";
+    heartOpenWordCreateForm.difficulty = "medium";
+    heartOpenWordCreateForm.enabled = true;
+    await loadHeartOpenWordBank();
+    setSuccess("词条已创建");
+  });
+};
+
+const saveHeartOpenWord = async () => {
+  if (!heartOpenWordEditForm.wordId) {
+    errorText.value = "请先选择要编辑的词条";
+    return;
+  }
+  const word = heartOpenWordEditForm.word.trim();
+  const punishment = heartOpenWordEditForm.punishment.trim();
+  if (!word) {
+    errorText.value = "请填写词语";
+    return;
+  }
+  if (!punishment) {
+    errorText.value = "请填写惩罚内容";
+    return;
+  }
+  await runWithLoading(async () => {
+    await apiRequest(
+      `/api/v1/admin/party-games/heart-open/word-bank/${encodeURIComponent(heartOpenWordEditForm.wordId)}/update`,
+      "POST",
+      {
+        word,
+        punishment,
+        category: heartOpenWordEditForm.category.trim() || "默认",
+        difficulty: normalizeHeartOpenDifficulty(heartOpenWordEditForm.difficulty),
+        enabled: heartOpenWordEditForm.enabled,
+      },
+    );
+    await loadHeartOpenWordBank();
+    setSuccess("词条已更新");
+  });
+};
+
+const toggleHeartOpenWordEnabled = async (item: any) => {
+  const wordId = String(item.wordId || "").trim();
+  if (!wordId) {
+    return;
+  }
+  await runWithLoading(async () => {
+    await apiRequest(
+      `/api/v1/admin/party-games/heart-open/word-bank/${encodeURIComponent(wordId)}/update`,
+      "POST",
+      {
+        enabled: !Boolean(item.enabled),
+      },
+    );
+    await loadHeartOpenWordBank();
+    setSuccess(Boolean(item.enabled) ? "词条已停用" : "词条已启用");
+  });
+};
+
+const deleteHeartOpenWord = async (wordId: string) => {
+  await runWithLoading(async () => {
+    await apiRequest(
+      `/api/v1/admin/party-games/heart-open/word-bank/${encodeURIComponent(wordId)}/delete`,
+      "POST",
+      {},
+    );
+    await loadHeartOpenWordBank();
+    setSuccess("词条已删除");
+  });
 };
 
 const openFoodImportCsvModal = () => {
@@ -2313,6 +2873,24 @@ const requestDeleteFoodItem = (foodId: string, foodName: string) => {
   });
 };
 
+const requestDeleteHeartOpenWord = (item: any) => {
+  const wordId = String(item.wordId || "").trim();
+  const word = String(item.word || "").trim();
+  if (!wordId) {
+    return;
+  }
+  openConfirmDialog({
+    title: "删除心口难开词条",
+    message: `确认删除词语「${word || wordId}」吗？删除后将无法恢复。`,
+    confirmLabel: "确认删除",
+    tone: "danger",
+    requireSecondary: true,
+    secondaryNote: "删除后该词条会立即从前台词库中移除，请谨慎操作。",
+    detailText: `词条ID：${wordId}\n词语：${word || "-"}\n影响：游戏端将不再抽到该词条`,
+    action: () => deleteHeartOpenWord(wordId),
+  });
+};
+
 const requestCloseCampaign = (campaignId: string, title: string) => {
   openConfirmDialog({
     title: "结束投票活动",
@@ -2377,6 +2955,30 @@ const apiRequest = async <T = unknown>(path: string, method: "GET" | "POST" = "G
   return json.data as T;
 };
 
+const apiUploadRequest = async <T = unknown>(path: string, formData: FormData) => {
+  const headers: Record<string, string> = {};
+  if (sessionToken.value) {
+    headers.Authorization = `Bearer ${sessionToken.value}`;
+  }
+  const response = await fetch(path, {
+    method: "POST",
+    headers,
+    credentials: "omit",
+    body: formData,
+  });
+  const json = (await response.json()) as ApiEnvelope<T>;
+  if (response.status === 401 || String(json?.error?.code || "").includes("AUTH")) {
+    sessionToken.value = "";
+    clearNexusSessionToken();
+    await goToLogin();
+    throw new Error("登录已失效，请重新登录");
+  }
+  if (!response.ok || !json.ok) {
+    throw new Error(String(json?.error?.message || `HTTP ${response.status}`));
+  }
+  return json.data as T;
+};
+
 const parseJsonArray = (text: string) => {
   const source = String(text || "").trim();
   if (!source) {
@@ -2419,6 +3021,129 @@ const toDisplayDate = (value: unknown) => {
 
 const toJson = (value: unknown) => {
   return JSON.stringify(value || {}, null, 2);
+};
+
+const clearScheduleImportPolling = () => {
+  if (!scheduleImportPollingTimer) {
+    return;
+  }
+  clearTimeout(scheduleImportPollingTimer);
+  scheduleImportPollingTimer = null;
+};
+
+const inferScheduleImportStudentNo = (fileName: string) => {
+  const matched = String(fileName || "").match(/(\d{6,32})/g) || [];
+  if (matched.length <= 0) {
+    return "";
+  }
+  return matched.sort((left, right) => right.length - left.length)[0] || "";
+};
+
+const isScheduleImportRunning = (job: any) => {
+  const status = String(job?.status || "");
+  return status === "queued" || status === "processing";
+};
+
+const onScheduleImportFilesChange = (event: Event) => {
+  const target = event.target as HTMLInputElement | null;
+  const files = target?.files ? Array.from(target.files.values()) : [];
+  scheduleImportSelectedFiles.value = files;
+  const existingByFileName = new Map<string, { studentNo: string; term: string }>();
+  scheduleImportMappings.value.forEach((item) => {
+    existingByFileName.set(item.fileName, {
+      studentNo: item.studentNo,
+      term: item.term,
+    });
+  });
+  scheduleImportMappings.value = files.map((file) => {
+    const existing = existingByFileName.get(file.name);
+    const inferredStudentNo = inferScheduleImportStudentNo(file.name);
+    return {
+      fileName: file.name,
+      studentNo: existing?.studentNo || inferredStudentNo || "",
+      term: existing?.term || scheduleImportDefaultTerm.value,
+    };
+  });
+};
+
+const resetScheduleImportForm = () => {
+  scheduleImportSelectedFiles.value = [];
+  scheduleImportMappings.value = [];
+  scheduleImportFileInputKey.value += 1;
+};
+
+const loadScheduleImportJobList = async () => {
+  const data = await apiRequest<any>("/api/v1/admin/schedule-import/jobs?limit=20");
+  scheduleImportJobList.value = Array.isArray(data.items) ? data.items : [];
+};
+
+const updateScheduleImportJobStatus = async (jobId: string) => {
+  const normalized = String(jobId || "").trim();
+  if (!normalized) {
+    throw new Error("jobId 不能为空");
+  }
+  const payload = await apiRequest<any>(`/api/v1/admin/schedule-import/jobs/${encodeURIComponent(normalized)}`);
+  scheduleImportCurrentJob.value = payload;
+  scheduleImportCurrentJobId.value = String(payload?.jobId || normalized);
+  if (isScheduleImportRunning(payload)) {
+    clearScheduleImportPolling();
+    scheduleImportPollingTimer = setTimeout(() => {
+      void updateScheduleImportJobStatus(normalized).catch(() => {
+        clearScheduleImportPolling();
+      });
+    }, 3000);
+  } else {
+    clearScheduleImportPolling();
+    await loadScheduleImportJobList();
+  }
+};
+
+const loadScheduleImportJobStatus = async (jobId: string, silent = false) => {
+  const runner = async () => {
+    await updateScheduleImportJobStatus(jobId);
+  };
+  if (silent) {
+    await runner();
+    return;
+  }
+  await runWithLoading(runner);
+};
+
+const submitScheduleImportJob = async () => {
+  if (scheduleImportSelectedFiles.value.length <= 0) {
+    throw new Error("请先选择 PDF 文件");
+  }
+  if (scheduleImportSelectedFiles.value.length !== scheduleImportMappings.value.length) {
+    throw new Error("文件与学号映射不一致，请重新选择文件");
+  }
+  const mappings = scheduleImportMappings.value.map((item) => {
+    const studentNo = String(item.studentNo || "").trim();
+    if (studentNo && !/^\d{6,32}$/.test(studentNo)) {
+      throw new Error(`学号格式非法：${item.fileName}`);
+    }
+    return {
+      fileName: String(item.fileName || "").trim(),
+      studentNo,
+      term: String(item.term || "").trim() || scheduleImportDefaultTerm.value,
+    };
+  });
+  const formData = new FormData();
+  scheduleImportSelectedFiles.value.forEach((file) => {
+    formData.append("files[]", file, file.name);
+  });
+  formData.append("mappings", JSON.stringify(mappings));
+  await runWithLoading(async () => {
+    const payload = await apiUploadRequest<{
+      jobId: string;
+      status: string;
+      totalFiles: number;
+    }>("/api/v1/admin/schedule-import/jobs", formData);
+    scheduleImportCurrentJobId.value = String(payload.jobId || "");
+    await loadScheduleImportJobList();
+    await loadScheduleImportJobStatus(scheduleImportCurrentJobId.value, true);
+    setSuccess(`导入任务已创建：${scheduleImportCurrentJobId.value}`);
+    resetScheduleImportForm();
+  });
 };
 
 const runWithLoading = async (runner: () => Promise<void>) => {
@@ -2577,6 +3302,20 @@ const loadSchedules = async () => {
   if (!schedulePublishForm.scheduleId && schedulesData.value.length > 0) {
     schedulePublishForm.scheduleId = String(schedulesData.value[0].scheduleId || "");
     scheduleSubscribeForm.scheduleId = String(schedulesData.value[0].scheduleId || "");
+  }
+};
+
+const loadScheduleImportModule = async () => {
+  await loadScheduleImportJobList();
+  if (scheduleImportCurrentJobId.value) {
+    await updateScheduleImportJobStatus(scheduleImportCurrentJobId.value);
+    return;
+  }
+  const latestJobId = String(scheduleImportJobList.value[0]?.jobId || "").trim();
+  if (latestJobId) {
+    await updateScheduleImportJobStatus(latestJobId);
+  } else {
+    scheduleImportCurrentJob.value = null;
   }
 };
 
@@ -3111,7 +3850,9 @@ const moduleLoaders: Record<string, () => Promise<void>> = {
   users: loadUsers,
   classes: loadClasses,
   schedules: loadSchedules,
+  "schedule-import": loadScheduleImportModule,
   foods: loadFoods,
+  "heart-open-word-bank": loadHeartOpenWordBank,
   campaigns: loadCampaigns,
   media: async () => {
     await fetchMediaAssets();
@@ -3155,7 +3896,14 @@ onMounted(async () => {
 });
 
 watch(activeModuleKey, () => {
+  if (activeModuleKey.value !== "schedule-import") {
+    clearScheduleImportPolling();
+  }
   void refreshModule();
+});
+
+onBeforeUnmount(() => {
+  clearScheduleImportPolling();
 });
 </script>
 
