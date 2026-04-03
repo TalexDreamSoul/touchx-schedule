@@ -231,6 +231,7 @@ const PARTY_GAME_PAGE_PATH_BY_KEY: Record<string, string> = {
   telephone: "/pages/party-games/telephone",
   drawguess: "/pages/party-games/drawguess",
   turtle: "/pages/party-games/turtle",
+  "heart-open": "/pages/party-games/heart-open",
 };
 
 const tabOrder: TabKey[] = ["today", "schedule", "profile"];
@@ -266,6 +267,15 @@ interface BackendTodayBrief {
     from: string;
   } | null;
   tips?: string[];
+  serverNowIso?: string;
+  serverTimezone?: string;
+  termMeta?: {
+    name?: string;
+    week1Monday?: string;
+    maxWeek?: number;
+    timezone?: string;
+  };
+  currentWeek?: number;
   generatedAt?: string;
 }
 
@@ -326,6 +336,13 @@ interface BackendSchedulePayload {
     name?: string;
     week1Monday?: string;
     maxWeek?: number;
+    timezone?: string;
+  };
+  termMeta?: {
+    name?: string;
+    week1Monday?: string;
+    maxWeek?: number;
+    timezone?: string;
   };
   holidays?: Array<{
     date?: string;
@@ -338,6 +355,8 @@ interface BackendSchedulePayload {
     part: "上午" | "下午" | "晚上";
   }>;
   weekdayLabels?: string[];
+  serverNowIso?: string;
+  serverTimezone?: string;
   students?: StudentSchedule[];
   generatedAt?: number;
 }
@@ -373,7 +392,11 @@ const blurPanelIndex = ref<number | null>(null);
 const scheduleTableScrollIntoViewId = ref("");
 let tabSwitchCleanupTimer: ReturnType<typeof setTimeout> | null = null;
 let scheduleTableScrollIntoViewResetTimer: ReturnType<typeof setTimeout> | null = null;
-const selectedWeek = ref(resolveWeekByDate(new Date()));
+const serverOffsetMs = ref(0);
+const resolveServerNowTs = () => Date.now() + serverOffsetMs.value;
+const minuteTickNow = ref(resolveServerNowTs());
+let minuteTickTimer: ReturnType<typeof setInterval> | null = null;
+const selectedWeek = ref(resolveWeekByDate(new Date(minuteTickNow.value)));
 const themeKey = ref<ThemeKey>("black");
 const showIncludePicker = ref(false);
 const showUserPicker = ref(false);
@@ -466,8 +489,8 @@ const dialogWeek = ref(1);
 const dialogDay = ref(1);
 const dialogSection = ref(1);
 const dialogCourses = ref<DisplayCourse[]>([]);
-const currentWeek = ref(resolveWeekByDate(new Date()));
-const todayWeekday = ref(resolveWeekday(new Date()));
+const currentWeek = ref(resolveWeekByDate(new Date(minuteTickNow.value)));
+const todayWeekday = ref(resolveWeekday(new Date(minuteTickNow.value)));
 const {
   topSafeInset,
   capsuleReserveRight,
@@ -1039,7 +1062,7 @@ const nextUpcomingCourse = computed(() => {
     return null;
   }
 
-  const now = Date.now();
+  const now = minuteTickNow.value;
   let target: { course: DisplayCourse; startTs: number } | null = null;
 
   for (const course of courses) {
@@ -1050,8 +1073,9 @@ const nextUpcomingCourse = computed(() => {
     }
     const [startHour, startMinute] = sectionStart.start.split(":").map((item) => Number(item));
     const [endHour, endMinute] = (sectionEnd?.end ?? sectionStart.end).split(":").map((item) => Number(item));
-    const startDate = new Date();
-    const endDate = new Date();
+    const baseDate = new Date(minuteTickNow.value);
+    const startDate = new Date(baseDate);
+    const endDate = new Date(baseDate);
     startDate.setHours(startHour, startMinute, 0, 0);
     endDate.setHours(endHour, endMinute, 0, 0);
     const startTs = startDate.getTime();
@@ -1069,7 +1093,7 @@ const nextUpcomingCourse = computed(() => {
 });
 
 const todayInfo = computed(() => {
-  const now = new Date();
+  const now = new Date(minuteTickNow.value);
   const week = resolveWeekByDate(now);
   const weekday = resolveWeekday(now);
   return {
@@ -1101,8 +1125,9 @@ const getCourseStartEndTs = (course: DisplayCourse) => {
   if (!sectionStart || !sectionEnd) {
     return null;
   }
-  const start = new Date();
-  const end = new Date();
+  const baseDate = new Date(minuteTickNow.value);
+  const start = new Date(baseDate);
+  const end = new Date(baseDate);
   const [startHour, startMinute] = sectionStart.start.split(":").map((item) => Number(item));
   const [endHour, endMinute] = sectionEnd.end.split(":").map((item) => Number(item));
   start.setHours(startHour, startMinute, 0, 0);
@@ -1123,7 +1148,7 @@ const todayFocusInfo = computed<{
     return null;
   }
 
-  const now = Date.now();
+  const now = minuteTickNow.value;
   let upcoming: { course: DisplayCourse; startTs: number; endTs: number } | null = null;
   let ongoing: { course: DisplayCourse; startTs: number; endTs: number } | null = null;
 
@@ -1159,7 +1184,7 @@ const todayFocusCourse = computed(() => {
 });
 
 const fallbackGreeting = computed(() => {
-  const hour = new Date().getHours();
+  const hour = new Date(minuteTickNow.value).getHours();
   let prefix = "你好";
   if (hour < 6) {
     prefix = "夜深了";
@@ -1186,7 +1211,7 @@ const todayFocusStatusText = computed(() => {
   if (!info) {
     return todayCourses.value.length > 0 ? "今日课程已结束" : "今天暂时没有课程安排";
   }
-  const now = Date.now();
+  const now = minuteTickNow.value;
   if (info.status === "ongoing") {
     const minutes = Math.max(1, Math.ceil((info.endTs - now) / (60 * 1000)));
     return `${minutes} 分钟后下课`;
@@ -1473,7 +1498,9 @@ const normalizeScheduleHolidayLabelByDate = (value: unknown) => {
 };
 
 const syncWeekValues = () => {
-  currentWeek.value = resolveWeekByDate(new Date());
+  const now = new Date(minuteTickNow.value);
+  currentWeek.value = resolveWeekByDate(now);
+  todayWeekday.value = resolveWeekday(now);
   if (selectedWeek.value > termMaxWeek.value) {
     selectedWeek.value = termMaxWeek.value;
   }
@@ -1487,12 +1514,46 @@ const syncSelectedWeekToCurrent = () => {
   selectedWeek.value = currentWeek.value;
 };
 
+const updateServerOffset = (serverNowIso?: string) => {
+  const parsed = Date.parse(String(serverNowIso || "").trim());
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+  serverOffsetMs.value = parsed - Date.now();
+  minuteTickNow.value = resolveServerNowTs();
+};
+
+const refreshMinuteTickNow = () => {
+  minuteTickNow.value = resolveServerNowTs();
+};
+
+const startMinuteTicker = () => {
+  refreshMinuteTickNow();
+  if (minuteTickTimer) {
+    clearInterval(minuteTickTimer);
+    minuteTickTimer = null;
+  }
+  minuteTickTimer = setInterval(() => {
+    refreshMinuteTickNow();
+  }, 60 * 1000);
+};
+
+const stopMinuteTicker = () => {
+  if (!minuteTickTimer) {
+    return;
+  }
+  clearInterval(minuteTickTimer);
+  minuteTickTimer = null;
+};
+
 const applyRuntimeScheduleMeta = (payload?: BackendSchedulePayload) => {
-  runtimeTermWeek1Monday.value = normalizeScheduleWeek1Monday(payload?.term?.week1Monday);
-  runtimeTermMaxWeek.value = normalizeScheduleMaxWeek(payload?.term?.maxWeek);
+  const termMeta = payload?.termMeta || payload?.term;
+  runtimeTermWeek1Monday.value = normalizeScheduleWeek1Monday(termMeta?.week1Monday);
+  runtimeTermMaxWeek.value = normalizeScheduleMaxWeek(termMeta?.maxWeek);
   runtimeHolidayLabelByDate.value = normalizeScheduleHolidayLabelByDate(payload?.holidays);
   runtimeSectionTimes.value = normalizeScheduleSectionTimes(payload?.sectionTimes);
   runtimeWeekdayLabels.value = normalizeScheduleWeekdayLabels(payload?.weekdayLabels);
+  updateServerOffset(payload?.serverNowIso);
   syncWeekValues();
 };
 
@@ -1544,7 +1605,11 @@ const syncDashboardStudentLists = (dashboard: SocialDashboardResponse, preferred
   return registeredUsers;
 };
 
-const applyDashboardStateToView = async (response: SocialDashboardResponse, preferredIncludedIds: string[]) => {
+const applyDashboardStateToView = async (
+  response: SocialDashboardResponse,
+  preferredIncludedIds: string[],
+  options?: { skipActiveScheduleLoad?: boolean },
+) => {
   practiceCourseKeys.value = normalizePracticeCourseKeys(response.me?.practiceCourseKeys || []);
   practiceTogglePendingCourseKey.value = "";
   const cloudWallpaper = String(response.me?.wallpaperUrl || "").trim();
@@ -1567,7 +1632,9 @@ const applyDashboardStateToView = async (response: SocialDashboardResponse, pref
     return;
   }
   uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, nextActiveStudentId);
-  await loadScheduleForStudent(nextActiveStudentId);
+  if (!options?.skipActiveScheduleLoad) {
+    await loadScheduleForStudent(nextActiveStudentId);
+  }
   showUserPicker.value = false;
 };
 
@@ -1724,7 +1791,7 @@ const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
     return null;
   }
   const openId = String(data.openId || "").trim() || `wx_${studentNo || studentId}`;
-  const studentName = String(data.studentName || "").trim() || studentNo || studentId;
+  const studentName = String(data.studentName || "").trim();
   return {
     openId,
     studentId,
@@ -1764,7 +1831,7 @@ const requestAuthProfile = async () => {
     openId: String(response.user.openId || "").trim() || `wx_${studentNo || studentId}`,
     studentId,
     studentNo,
-    studentName: String(response.user.studentName || "").trim() || studentNo || studentId,
+    studentName: String(response.user.studentName || "").trim(),
     classLabel: String(response.user.classLabel || ""),
     nickname: String(response.user.nickname || ""),
     avatarUrl: String(response.user.avatarUrl || ""),
@@ -1773,7 +1840,7 @@ const requestAuthProfile = async () => {
   persistAuthSession();
 };
 
-const refreshSocialDashboard = async () => {
+const refreshSocialDashboard = async (options?: { skipActiveScheduleLoad?: boolean }) => {
   if (!isAuthed.value) {
     practiceCourseKeys.value = [];
     practiceTogglePendingCourseKey.value = "";
@@ -1787,16 +1854,16 @@ const refreshSocialDashboard = async () => {
       () => requestBackendGet<SocialDashboardResponse>("/api/v1/social/me", {}, true),
       backendBaseUrl.value,
     );
-    await applyDashboardStateToView(response, previousIncludedIds);
+    await applyDashboardStateToView(response, previousIncludedIds, options);
   } catch (error) {
     if (hydrateDashboardFromStorage(backendBaseUrl.value) && socialDashboard.value) {
       authStatusHint.value = "网络异常，已使用本地缓存";
-      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds).catch(() => {});
+      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, options).catch(() => {});
       return;
     }
     if (socialDashboard.value) {
       authStatusHint.value = "网络异常，已使用本地缓存";
-      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds).catch(() => {});
+      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, options).catch(() => {});
       return;
     }
     practiceCourseKeys.value = [];
@@ -1874,13 +1941,13 @@ const runQuickAuthLogin = async () => {
       openId: String(response.user.openId || "").trim() || `wx_${resolvedStudentNo || resolvedStudentId}`,
       studentId: resolvedStudentId,
       studentNo: resolvedStudentNo,
-      studentName: String(response.user.studentName || "").trim() || resolvedStudentNo || resolvedStudentId,
+      studentName: String(response.user.studentName || "").trim(),
       classLabel: String(response.user.classLabel || ""),
       nickname: String(response.user.nickname || ""),
       avatarUrl: String(response.user.avatarUrl || ""),
     };
     persistAuthSession();
-    await refreshSocialDashboard();
+    await refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
     showQuickAuthDialog.value = false;
     authStatusHint.value = authUser.value?.studentId ? "" : "登录成功，请先到绑定指引页完成机器人 bind";
     uni.showToast({ title: "授权成功", icon: "none", duration: 1200 });
@@ -1905,7 +1972,7 @@ async function unsubscribeStudent(targetStudentId: string) {
   try {
     await requestBackendPost("/api/v1/social/subscribe/remove", { targetStudentId }, true);
     uni.showToast({ title: "已取消订阅", icon: "none", duration: 1200 });
-    await refreshSocialDashboard();
+    await refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "取消失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
@@ -1974,6 +2041,7 @@ const refreshTodayBrief = async () => {
   }
   try {
     const brief = await requestBackendGet<BackendTodayBrief>("/api/v1/today-brief", { studentId: activeStudentId.value });
+    updateServerOffset(brief.serverNowIso);
     todayBackendBrief.value = brief;
     todayBackendError.value = "";
   } catch (error) {
@@ -2015,7 +2083,7 @@ const refreshTodayFoodCampaigns = async () => {
 };
 
 const todayFoodCampaignHighlights = computed<TodayFoodCampaignHighlightItem[]>(() => {
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowSeconds = Math.floor(minuteTickNow.value / 1000);
   const recentClosedThreshold = nowSeconds - 6 * 60 * 60;
   const openItems = todayFoodCampaigns.value
     .filter((item) => normalizeFoodCampaignStatus(item.status) === "open")
@@ -2108,6 +2176,7 @@ const refreshCurrentTabData = async (tab: TabKey) => {
 };
 
 onMounted(() => {
+  startMinuteTicker();
   resolveTopSafeInset();
   syncSelectedWeekToCurrent();
 
@@ -2140,7 +2209,7 @@ onMounted(() => {
         }
         authStatusHint.value = "网络异常，已保留本地登录缓存";
       });
-      await refreshSocialDashboard();
+      await refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
     } else {
       clearRuntimeScheduleData();
       todayFoodCampaigns.value = [];
@@ -2154,8 +2223,9 @@ onMounted(() => {
 });
 
 onShow(() => {
+  refreshMinuteTickNow();
+  syncWeekValues();
   syncDisplayStateFromStorage();
-  syncSelectedWeekToCurrent();
   const endpoint = enforceBackendEndpointStorage();
   applyBackendEndpointMode(endpoint.mode, false);
   void refreshThemeImageMap();
@@ -2205,6 +2275,10 @@ watch(showWeekend, (value) => {
   uni.setStorageSync(STORAGE_SHOW_WEEKEND_KEY, Boolean(value));
 });
 
+watch(minuteTickNow, () => {
+  syncWeekValues();
+});
+
 watch(activeTab, (value) => {
   const currentIndex = tabOrder.indexOf(value);
   if (currentIndex >= 0 && !isTabSwitching.value) {
@@ -2228,7 +2302,6 @@ watch(activeStudentId, () => {
   if (backendProbeStatus.value === "online") {
     void refreshTodayBrief();
     if (isAuthed.value && activeStudentId.value) {
-      void refreshScheduleData();
       void ensureScheduleLoaded(activeStudentId.value);
     }
   }
@@ -2249,7 +2322,7 @@ watch(backendProbeStatus, (value) => {
           clearAuthSession();
         }
       });
-      void refreshSocialDashboard();
+      void refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
     } else {
       clearRuntimeScheduleData();
     }
@@ -2363,6 +2436,7 @@ const onBottomNavChange = (tabKey: string) => {
 };
 
 onUnmounted(() => {
+  stopMinuteTicker();
   clearTabSwitchTimers();
   clearScheduleTableScrollIntoViewResetTimer();
   blurPanelIndex.value = null;
@@ -2521,7 +2595,7 @@ const openBackendProbeDialog = () => {
             clearAuthSession();
           }
         });
-        void refreshSocialDashboard();
+        void refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
       }
       void refreshTodayBrief();
     }
@@ -2811,6 +2885,7 @@ const todayTabProps = computed(() => ({
   onFoodCampaignClick: openTodayFoodCampaign,
   onOpenPartyGame: openPartyGamePage,
   activeStudentId: activeStudentId.value,
+  nowTs: minuteTickNow.value,
   onTodayCourseClick: openTodayCourseDialog,
   todayGreetingText: todayGreetingText.value,
   todayInfo: todayInfo.value,

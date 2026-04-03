@@ -142,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed } from "vue";
 import type { CSSProperties } from "vue";
 import type { DisplayCourse } from "../types";
 
@@ -151,11 +151,36 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const WEEK_MS = 7 * DAY_MS;
 
-const nowTimestamp = ref(Date.now());
-let timer: ReturnType<typeof setInterval> | null = null;
+const props = defineProps<{
+  isAuthed: boolean;
+  onAuthorize: () => void;
+  onOpenFoodCampaign: () => void;
+  onFoodCampaignClick: (payload: { campaignId: string; shareToken?: string }) => void;
+  onOpenPartyGame: (gameKey: string) => void;
+  activeStudentId: string;
+  nowTs: number;
+  onTodayCourseClick: (course: DisplayCourse) => void;
+  todayGreetingText: string;
+  todayInfo: TodayInfoLike;
+  shouldShowStudyCard: boolean;
+  todayFocusCourse: DisplayCourse | null;
+  todayFocusStatusText: string;
+  departureReminder: DepartureReminderLike | null;
+  todayCourses: DisplayCourse[];
+  todaySectionLoad: number;
+  getCourseCardStyle: (course: DisplayCourse) => CSSProperties;
+  formatSectionRange: (startSection: number, endSection: number) => string;
+  formatCourseClassroom: (course: DisplayCourse) => string;
+  formatCourseTeacher: (course: DisplayCourse) => string;
+  isPracticeCourse: (course: DisplayCourse) => boolean;
+  isFocusCourse: (course: DisplayCourse) => boolean;
+  getSectionStartTime: (section: number) => string;
+  getSectionEndTime: (section: number) => string;
+  foodCampaignHighlights: TodayFoodCampaignHighlightItem[];
+}>();
 
 const semesterElapsed = computed(() => {
-  const elapsedMs = Math.max(0, nowTimestamp.value - SEMESTER_START_AT.getTime());
+  const elapsedMs = Math.max(0, props.nowTs - SEMESTER_START_AT.getTime());
   const totalHours = Math.floor(elapsedMs / HOUR_MS);
   const totalDays = Math.floor(elapsedMs / DAY_MS);
   const totalWeeks = Math.floor(elapsedMs / WEEK_MS);
@@ -164,21 +189,6 @@ const semesterElapsed = computed(() => {
     totalDays,
     totalWeeks,
   };
-});
-
-onMounted(() => {
-  nowTimestamp.value = Date.now();
-  timer = setInterval(() => {
-    nowTimestamp.value = Date.now();
-  }, 60 * 1000);
-});
-
-onUnmounted(() => {
-  if (!timer) {
-    return;
-  }
-  clearInterval(timer);
-  timer = null;
 });
 
 interface TodayInfoLike {
@@ -285,9 +295,19 @@ const partyGamePlans: PartyGamePlan[] = [
     twist: "加入“反转线索”卡，每局最多触发 1 次。",
     hostTip: "先用短汤热场，再上复杂题防冷场。",
   },
+  {
+    key: "heart-open",
+    name: "害你在心口难开",
+    playerRange: "2-N人",
+    duration: "10-30分钟",
+    prep: "词库 + 惩罚卡",
+    coreRules: "先看词、再翻惩罚，执行或用免死金牌跳过。",
+    twist: "每次切下一张前有 2 秒遮挡，防止偷看下一词。",
+    hostTip: "建议按难度先易后难，暖场更快。",
+  },
 ];
 
-const parseTimeToTodayTimestamp = (timeText: string) => {
+const parseTimeToTodayTimestamp = (timeText: string, baseTs: number) => {
   const match = /^(\d{1,2}):(\d{2})$/.exec((timeText || "").trim());
   if (!match) {
     return null;
@@ -297,47 +317,20 @@ const parseTimeToTodayTimestamp = (timeText: string) => {
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
     return null;
   }
-  const target = new Date();
+  const target = new Date(baseTs);
   target.setHours(hour, minute, 0, 0);
   return target.getTime();
 };
 
-const props = defineProps<{
-  isAuthed: boolean;
-  onAuthorize: () => void;
-  onOpenFoodCampaign: () => void;
-  onFoodCampaignClick: (payload: { campaignId: string; shareToken?: string }) => void;
-  onOpenPartyGame: (gameKey: string) => void;
-  activeStudentId: string;
-  onTodayCourseClick: (course: DisplayCourse) => void;
-  todayGreetingText: string;
-  todayInfo: TodayInfoLike;
-  shouldShowStudyCard: boolean;
-  todayFocusCourse: DisplayCourse | null;
-  todayFocusStatusText: string;
-  departureReminder: DepartureReminderLike | null;
-  todayCourses: DisplayCourse[];
-  todaySectionLoad: number;
-  getCourseCardStyle: (course: DisplayCourse) => CSSProperties;
-  formatSectionRange: (startSection: number, endSection: number) => string;
-  formatCourseClassroom: (course: DisplayCourse) => string;
-  formatCourseTeacher: (course: DisplayCourse) => string;
-  isPracticeCourse: (course: DisplayCourse) => boolean;
-  isFocusCourse: (course: DisplayCourse) => boolean;
-  getSectionStartTime: (section: number) => string;
-  getSectionEndTime: (section: number) => string;
-  foodCampaignHighlights: TodayFoodCampaignHighlightItem[];
-}>();
-
 const pendingCourseItems = computed<PendingCourseItem[]>(() => {
-  const now = Date.now();
+  const now = props.nowTs;
   const items: PendingCourseItem[] = [];
 
   for (const course of props.todayCourses) {
     const startTime = props.getSectionStartTime(course.startSection);
     const endTime = props.getSectionEndTime(course.endSection);
-    const startTs = parseTimeToTodayTimestamp(startTime);
-    const endTs = parseTimeToTodayTimestamp(endTime);
+    const startTs = parseTimeToTodayTimestamp(startTime, now);
+    const endTs = parseTimeToTodayTimestamp(endTime, now);
     if (startTs === null || endTs === null || endTs <= now) {
       continue;
     }
@@ -401,8 +394,8 @@ type OngoingCourseReminder =
 
 const resolveOngoingCourseReminder = (course: DisplayCourse, nowTs: number): OngoingCourseReminder | null => {
   for (let section = course.startSection; section < course.endSection; section += 1) {
-    const sectionEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(section));
-    const nextSectionStartTs = parseTimeToTodayTimestamp(props.getSectionStartTime(section + 1));
+    const sectionEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(section), nowTs);
+    const nextSectionStartTs = parseTimeToTodayTimestamp(props.getSectionStartTime(section + 1), nowTs);
     if (sectionEndTs === null || nextSectionStartTs === null) {
       continue;
     }
@@ -421,8 +414,8 @@ const resolveOngoingCourseReminder = (course: DisplayCourse, nowTs: number): Ong
   }
 
   for (let section = course.startSection; section < course.endSection; section += 1) {
-    const sectionEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(section));
-    const nextSectionStartTs = parseTimeToTodayTimestamp(props.getSectionStartTime(section + 1));
+    const sectionEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(section), nowTs);
+    const nextSectionStartTs = parseTimeToTodayTimestamp(props.getSectionStartTime(section + 1), nowTs);
     if (sectionEndTs === null || nextSectionStartTs === null) {
       continue;
     }
@@ -442,7 +435,7 @@ const resolveOngoingCourseReminder = (course: DisplayCourse, nowTs: number): Ong
     };
   }
 
-  const courseEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(course.endSection));
+  const courseEndTs = parseTimeToTodayTimestamp(props.getSectionEndTime(course.endSection), nowTs);
   if (courseEndTs === null || courseEndTs <= nowTs) {
     return null;
   }
@@ -469,7 +462,7 @@ const subtractMinutesFromTime = (timeText: string, minutes: number) => {
 };
 
 const getItemDepartureReminderText = (item: PendingCourseItem) => {
-  const nowTs = Date.now();
+  const nowTs = props.nowTs;
   if (item.startTs <= nowTs) {
     const ongoingReminder = resolveOngoingCourseReminder(item.course, nowTs);
     if (ongoingReminder?.type === "inBreak") {
