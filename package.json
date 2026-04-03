@@ -10,5 +10,8 @@
     "preview:backend": "pnpm --filter @touchx/backend preview",
     "deploy:backend": "pnpm --filter @touchx/backend run deploy",
     "type-check": "pnpm -r --if-present type-check"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
   }
 }

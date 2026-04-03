@@ -64,10 +64,14 @@
             </view>
             <view
               class="sub-action"
-              :class="{ remove: subscribedStudentIdSet.has(item.studentId), pending: pending }"
+              :class="{ remove: subscribedStudentIdSet.has(item.studentId), pending: disableMutations }"
               @click="toggleSubscribe(item.studentId)"
             >
-              {{ subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : "订阅" }}
+              {{
+                disableMutations
+                  ? "处理中..."
+                  : (subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : "订阅")
+              }}
             </view>
           </view>
         </view>
@@ -91,7 +95,13 @@
                 <view class="sub-meta">{{ item.studentNo ? `学号：${item.studentNo}` : "学号未同步" }}</view>
               </view>
             </view>
-            <view class="sub-action remove" @click="unsubscribe(item.studentId)">取消</view>
+            <view
+              class="sub-action remove"
+              :class="{ pending: disableMutations }"
+              @click="unsubscribe(item.studentId)"
+            >
+              {{ disableMutations ? "处理中..." : "取消" }}
+            </view>
           </view>
         </view>
 
@@ -103,7 +113,7 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import PageViewContainer from "@/components/PageViewContainer.vue";
-import { useSocialDashboard, type SocialDashboardResponse } from "@/composables/useSocialDashboard";
+import { useSocialDashboard, type SocialDashboardResponse, type SocialUserItem } from "@/composables/useSocialDashboard";
 import {
   guardProfilePageAccess,
   readAuthSessionFromStorage,
@@ -122,13 +132,109 @@ const {
   subscribedStudentIdSet,
   refreshDashboard: refreshSocialDashboardData,
   hydrateDashboardFromStorage,
+  patchDashboard,
   clearDashboard,
 } = useSocialDashboard();
-const pending = ref(false);
+const bootstrapping = ref(true);
+const pendingByStudentId = ref<Record<string, boolean>>({});
 const brokenAvatarKeys = ref<Record<string, boolean>>({});
+
+interface SocialSubscribeMutationResponse {
+  ok?: boolean;
+  subscribed?: boolean;
+  removed?: boolean;
+  stateRevision?: number;
+}
 
 const isAuthed = computed(() => Boolean(authSession.value.token && authSession.value.user));
 const isBound = computed(() => Boolean(dashboard.value?.me?.studentId));
+const hasPendingMutation = computed(() => Object.values(pendingByStudentId.value).some((value) => Boolean(value)));
+const disableMutations = computed(() => bootstrapping.value || hasPendingMutation.value);
+
+const normalizeStudentId = (value: unknown) => String(value || "").trim();
+
+const setTargetPending = (studentId: string, value: boolean) => {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!normalizedStudentId) {
+    return;
+  }
+  pendingByStudentId.value = {
+    ...pendingByStudentId.value,
+    [normalizedStudentId]: value,
+  };
+};
+
+const isTargetPending = (studentId: string) => {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!normalizedStudentId) {
+    return false;
+  }
+  return Boolean(pendingByStudentId.value[normalizedStudentId]);
+};
+
+const dedupeUsers = (rows: SocialUserItem[]) => {
+  const list: SocialUserItem[] = [];
+  const seen = new Set<string>();
+  rows.forEach((item) => {
+    const studentId = normalizeStudentId(item.studentId);
+    if (!studentId || seen.has(studentId)) {
+      return;
+    }
+    seen.add(studentId);
+    list.push(item);
+  });
+  return list;
+};
+
+const applySubscriptionOptimisticPatch = (studentId: string, subscribed: boolean, minRevision = 0) => {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!normalizedStudentId) {
+    return;
+  }
+  patchDashboard((current) => {
+    if (!current) {
+      return current;
+    }
+    const meStudentId = normalizeStudentId(current.me?.studentId);
+    const subscriptionRows = [...(current.subscriptions || [])];
+    const candidateRows = [...(current.candidates || [])];
+    const existingSubscription = subscriptionRows.find((item) => normalizeStudentId(item.studentId) === normalizedStudentId) || null;
+    const existingCandidate = candidateRows.find((item) => normalizeStudentId(item.studentId) === normalizedStudentId) || null;
+    if (subscribed) {
+      const target = existingSubscription || existingCandidate;
+      if (!target) {
+        return {
+          ...current,
+          stateRevision: Math.max(Number(current.stateRevision || 0), Number(minRevision || 0)),
+        };
+      }
+      const nextSubscriptions = dedupeUsers([...subscriptionRows, target]);
+      const nextCandidates = candidateRows.filter((item) => normalizeStudentId(item.studentId) !== normalizedStudentId);
+      return {
+        ...current,
+        subscriptions: nextSubscriptions,
+        candidates: nextCandidates,
+        stateRevision: Math.max(Number(current.stateRevision || 0), Number(minRevision || 0)),
+      };
+    }
+    const nextSubscriptions = subscriptionRows.filter((item) => normalizeStudentId(item.studentId) !== normalizedStudentId);
+    const removed = existingSubscription;
+    const nextCandidates = [...candidateRows];
+    if (
+      removed &&
+      normalizeStudentId(removed.studentId) !== meStudentId &&
+      !nextCandidates.some((item) => normalizeStudentId(item.studentId) === normalizedStudentId)
+    ) {
+      nextCandidates.unshift(removed);
+    }
+    return {
+      ...current,
+      subscriptions: dedupeUsers(nextSubscriptions),
+      candidates: dedupeUsers(nextCandidates),
+      stateRevision: Math.max(Number(current.stateRevision || 0), Number(minRevision || 0)),
+    };
+  });
+};
 
 const refreshDashboard = async () => {
   if (!isAuthed.value) {
@@ -142,15 +248,19 @@ const refreshDashboard = async () => {
 };
 
 const refreshState = async () => {
+  bootstrapping.value = true;
   backendBaseUrl.value = resolveBackendBaseUrlFromStorage();
   authSession.value = readAuthSessionFromStorage();
   brokenAvatarKeys.value = {};
+  pendingByStudentId.value = {};
   try {
     await refreshDashboard();
   } catch (error) {
     if (!hydrateDashboardFromStorage(backendBaseUrl.value)) {
       clearDashboard();
     }
+  } finally {
+    bootstrapping.value = false;
   }
 };
 
@@ -216,18 +326,21 @@ const shouldPromptRandomCodeByMessage = (message: string) => {
 };
 
 const subscribeStudent = async (studentId: string) => {
-  if (!isAuthed.value || pending.value) {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!isAuthed.value || disableMutations.value || isTargetPending(normalizedStudentId)) {
     return;
   }
-  pending.value = true;
+  setTargetPending(normalizedStudentId, true);
   try {
+    let mutationRevision = 0;
     try {
-      await requestBackendPost(
+      const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
         backendBaseUrl.value,
         "/api/v1/social/subscribe",
-        { targetStudentId: studentId },
+        { targetStudentId: normalizedStudentId },
         authSession.value.token,
       );
+      mutationRevision = Number(payload.stateRevision || 0);
     } catch (error) {
       const firstMessage = error instanceof Error ? error.message : "订阅失败";
       if (!shouldPromptRandomCodeByMessage(firstMessage)) {
@@ -237,56 +350,62 @@ const subscribeStudent = async (studentId: string) => {
       if (code === null || !code) {
         return;
       }
-      await requestBackendPost(
+      const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
         backendBaseUrl.value,
         "/api/v1/social/subscribe",
         {
-          targetStudentId: studentId,
+          targetStudentId: normalizedStudentId,
           targetRandomCode: code,
         },
         authSession.value.token,
       );
+      mutationRevision = Number(payload.stateRevision || 0);
     }
+    applySubscriptionOptimisticPatch(normalizedStudentId, true, mutationRevision);
     await refreshDashboard();
     uni.showToast({ title: "订阅成功", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "订阅失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
   } finally {
-    pending.value = false;
+    setTargetPending(normalizedStudentId, false);
   }
 };
 
 const toggleSubscribe = async (studentId: string) => {
-  if (!isAuthed.value || pending.value) {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!isAuthed.value || bootstrapping.value || isTargetPending(normalizedStudentId)) {
     return;
   }
-  if (subscribedStudentIdSet.value.has(studentId)) {
-    await unsubscribe(studentId);
+  if (subscribedStudentIdSet.value.has(normalizedStudentId)) {
+    await unsubscribe(normalizedStudentId);
     return;
   }
-  await subscribeStudent(studentId);
+  await subscribeStudent(normalizedStudentId);
 };
 
 const unsubscribe = async (studentId: string) => {
-  if (!isAuthed.value || pending.value) {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!isAuthed.value || disableMutations.value || isTargetPending(normalizedStudentId)) {
     return;
   }
-  pending.value = true;
+  setTargetPending(normalizedStudentId, true);
   try {
-    await requestBackendPost(
+    const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
       backendBaseUrl.value,
       "/api/v1/social/subscribe/remove",
-      { targetStudentId: studentId },
+      { targetStudentId: normalizedStudentId },
       authSession.value.token,
     );
+    const mutationRevision = Number(payload.stateRevision || 0);
+    applySubscriptionOptimisticPatch(normalizedStudentId, false, mutationRevision);
     await refreshDashboard();
     uni.showToast({ title: "已取消", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "取消失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
   } finally {
-    pending.value = false;
+    setTargetPending(normalizedStudentId, false);
   }
 };
 

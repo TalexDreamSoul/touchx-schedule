@@ -86,6 +86,13 @@
             <view class="setting-sub">{{ scheduleSourceLabel }} · 最近缓存：{{ scheduleCacheTimeLabel }}</view>
           </view>
         </view>
+        <view class="setting-row" @click="openScheduleImportPage">
+          <view>
+            <view class="setting-title">PDF 导入</view>
+            <view class="setting-sub">管理员单文件导入入口</view>
+          </view>
+          <view class="link">进入</view>
+        </view>
       </view>
 
       <view class="card">
@@ -422,6 +429,16 @@ const pickBackendMode = () => {
   backendMode.value = endpoint.mode;
   backendBaseUrl.value = endpoint.baseUrl;
   uni.showToast({ title: "当前版本固定线上后端", icon: "none", duration: 1600 });
+};
+
+const openScheduleImportPage = () => {
+  if (!isAdmin.value) {
+    uni.showToast({ title: "仅管理员可用", icon: "none", duration: 1600 });
+    return;
+  }
+  uni.navigateTo({
+    url: "/pages/profile/schedule-import",
+  });
 };
 
 const resolveActionErrorMessage = (error: unknown, fallback: string) => {

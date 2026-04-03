@@ -111,12 +111,17 @@ export const resolveBackendMediaUrl = (baseUrl: string, rawUrl: string) => {
   if (/^https?:\/\//i.test(value)) {
     try {
       const parsed = new URL(value);
+      const hostname = String(parsed.hostname || "").toLowerCase();
+      const isWechatAvatarHost = hostname === "thirdwx.qlogo.cn" || hostname === "wx.qlogo.cn" || hostname.endsWith(".qlogo.cn");
+      if (parsed.protocol === "http:" && isWechatAvatarHost) {
+        parsed.protocol = "https:";
+      }
       const pathname = String(parsed.pathname || "").trim();
       const search = String(parsed.search || "");
       if (pathname.startsWith("/api/media/")) {
         return `${normalizedBase}${pathname}${search}`;
       }
-      return value;
+      return parsed.toString();
     } catch (error) {
       return "";
     }
@@ -499,6 +504,90 @@ export const uploadBackendImage = <T>(
   });
 };
 
+export const uploadBackendFile = <T>(
+  baseUrl: string,
+  path: string,
+  options: {
+    filePath: string;
+    name?: string;
+    formData?: Record<string, string>;
+    token?: string;
+  },
+) => {
+  return new Promise<T>((resolve, reject) => {
+    const requestUrl = buildBackendUrl(baseUrl, path);
+    const headers: Record<string, string> = {};
+    if (options.token) {
+      headers.Authorization = `Bearer ${options.token}`;
+    }
+    uni.uploadFile({
+      url: requestUrl,
+      filePath: options.filePath,
+      name: options.name || "file",
+      timeout: 20000,
+      header: headers,
+      formData: options.formData || {},
+      success: (res) => {
+        const statusCode = Number(res.statusCode || 0);
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = JSON.parse(String(res.data || "{}")) as Record<string, unknown>;
+        } catch (error) {
+          payload = {};
+        }
+        if (statusCode >= 200 && statusCode < 300) {
+          try {
+            resolve(unwrapBackendApiPayload<T>(payload));
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "上传失败";
+            persistBackendRequestTrace({
+              method: "UPLOAD",
+              url: requestUrl,
+              statusCode,
+              ok: false,
+              errorMessage: message,
+              at: Date.now(),
+            });
+            reject(buildBackendRequestError(message, statusCode));
+            return;
+          }
+          persistBackendRequestTrace({
+            method: "UPLOAD",
+            url: requestUrl,
+            statusCode,
+            ok: true,
+            errorMessage: "",
+            at: Date.now(),
+          });
+          return;
+        }
+        const message = attachRequestUrlToMessage(parseBackendErrorMessage(statusCode, payload), requestUrl);
+        persistBackendRequestTrace({
+          method: "UPLOAD",
+          url: requestUrl,
+          statusCode,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(buildBackendRequestError(message, statusCode));
+      },
+      fail: (err) => {
+        const message = attachRequestUrlToMessage(String(err?.errMsg || "upload failed"), requestUrl);
+        persistBackendRequestTrace({
+          method: "UPLOAD",
+          url: requestUrl,
+          statusCode: 0,
+          ok: false,
+          errorMessage: message,
+          at: Date.now(),
+        });
+        reject(new Error(message));
+      },
+    });
+  });
+};
+
 const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
   if (!raw) {
     return null;
@@ -520,7 +609,7 @@ const parseStoredAuthUser = (raw: unknown): AuthUserProfile | null => {
     return null;
   }
   const openId = String(data.openId || "").trim() || `wx_${studentNo || studentId}`;
-  const studentName = String(data.studentName || "").trim() || studentNo || studentId;
+  const studentName = String(data.studentName || "").trim();
   return {
     openId,
     studentId,
@@ -664,7 +753,7 @@ export const tryGetWechatProfile = () => {
         const profile = (result.userInfo || {}) as { nickName?: string; avatarUrl?: string };
         resolve({
           nickname: profile.nickName || "",
-          avatarUrl: profile.avatarUrl || "",
+          avatarUrl: resolveBackendMediaUrl(resolveBackendBaseUrlFromStorage(), profile.avatarUrl || ""),
         });
       },
       fail: () => {

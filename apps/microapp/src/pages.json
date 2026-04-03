@@ -49,6 +49,12 @@
           "style": {
             "navigationBarTitleText": "海龟汤"
           }
+        },
+        {
+          "path": "heart-open",
+          "style": {
+            "navigationBarTitleText": "害你在心口难开"
+          }
         }
       ]
     },
@@ -95,6 +101,12 @@
           "path": "preferences",
           "style": {
             "navigationBarTitleText": "偏好设置"
+          }
+        },
+        {
+          "path": "schedule-import",
+          "style": {
+            "navigationBarTitleText": "PDF 导入"
           }
         },
         {

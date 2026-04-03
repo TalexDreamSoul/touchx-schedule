@@ -151,16 +151,25 @@ export const useProfileAccountPage = () => {
   const authUnbindPending = ref(false);
 
   const isAuthed = computed(() => Boolean(authSession.value.token && authSession.value.user));
-  const isBound = computed(() => Boolean(authSession.value.user?.studentId));
-  const boundStudentName = computed(() => {
-    const name = String(dashboard.value?.me?.name || authSession.value.user?.studentName || "").trim();
-    const classLabel = String(dashboard.value?.me?.classLabel || "").trim();
-    if (!name) {
+  const isBound = computed(() => Boolean(dashboard.value?.bound && String(dashboard.value?.me?.studentId || "").trim()));
+  const isAdmin = computed(() => Boolean(dashboard.value?.me?.isAdmin));
+  const boundStudentDisplay = computed(() => {
+    if (!isBound.value) {
       return "";
     }
-    return classLabel ? `${name}（${classLabel}）` : name;
+    const name = String(dashboard.value?.me?.name || authSession.value.user?.studentName || "").trim();
+    const studentNo = String(dashboard.value?.me?.studentNo || authSession.value.user?.studentNo || "").trim();
+    const classLabel = String(dashboard.value?.me?.classLabel || "").trim();
+    const primary = name || studentNo;
+    if (!primary) {
+      return "";
+    }
+    return classLabel ? `${primary}（${classLabel}）` : primary;
   });
   const boundStudentNo = computed(() => {
+    if (!isBound.value) {
+      return "";
+    }
     return String(dashboard.value?.me?.studentNo || "").trim();
   });
   const editStudentNoSubText = computed(() => {
@@ -212,7 +221,7 @@ export const useProfileAccountPage = () => {
         openId,
         studentId,
         studentNo,
-        studentName: String(data.user.studentName || "").trim() || studentNo || studentId,
+        studentName: String(data.user.studentName || "").trim(),
         classLabel: String(data.user.classLabel || ""),
         nickname: String(data.user.nickname || ""),
         avatarUrl: String(data.user.avatarUrl || ""),
@@ -320,7 +329,7 @@ export const useProfileAccountPage = () => {
           openId: String(data.user.openId || "").trim() || `wx_${normalizedStudentNo || studentId}`,
           studentId: String(data.user.studentId || ""),
           studentNo: String(data.user.studentNo || ""),
-          studentName: String(data.user.studentName || "").trim() || normalizedStudentNo || studentId,
+          studentName: String(data.user.studentName || "").trim(),
           classLabel: String(data.user.classLabel || ""),
           nickname: String(data.user.nickname || ""),
           avatarUrl: String(data.user.avatarUrl || ""),
@@ -491,6 +500,14 @@ export const useProfileAccountPage = () => {
     uni.navigateTo({ url: "/pages/profile/bind-guide" });
   };
 
+  const openScheduleImportPage = () => {
+    if (!isAdmin.value) {
+      uni.showToast({ title: "仅管理员可用", icon: "none", duration: 1600 });
+      return;
+    }
+    uni.navigateTo({ url: "/pages/profile/schedule-import" });
+  };
+
   const unbindNotify = async () => {
     if (!ensureNotifyActionAllowed() || notifyPending.value) {
       return;
@@ -600,7 +617,8 @@ export const useProfileAccountPage = () => {
     authUnbindPending,
     isAuthed,
     isBound,
-    boundStudentName,
+    isAdmin,
+    boundStudentDisplay,
     myRandomCode,
     notifyBound,
     editStudentNoSubText,
@@ -614,6 +632,7 @@ export const useProfileAccountPage = () => {
     uploadAvatar,
     goAvatarPage,
     goStudentNoPage,
+    openScheduleImportPage,
     bindNotify,
     unbindNotify,
     updateRandomCode,

@@ -22,7 +22,15 @@
           <view class="list-item" @click="goBindStudentPage">
             <view class="item-main">
               <view class="row-title">当前绑定课表</view>
-              <view class="row-sub">{{ boundStudentName ? `已绑定：${boundStudentName}` : "未绑定（点击查看绑定指引）" }}</view>
+              <view class="row-sub">{{ boundStudentDisplay ? `已绑定：${boundStudentDisplay}` : "未绑定（点击查看绑定指引）" }}</view>
+            </view>
+            <view class="chevron">›</view>
+          </view>
+
+          <view v-if="isAdmin" class="list-item" @click="openScheduleImportPage">
+            <view class="item-main">
+              <view class="row-title">上传课表 PDF</view>
+              <view class="row-sub">管理员单文件导入入口</view>
             </view>
             <view class="chevron">›</view>
           </view>
@@ -93,14 +101,16 @@ const {
   notifyPending,
   randomCodePending,
   authUnbindPending,
-  boundStudentName,
+  boundStudentDisplay,
   myRandomCode,
+  isAdmin,
   notifyBound,
   editStudentNoSubText,
   authButtonText,
   refreshState,
   authLogin,
   authLogout,
+  openScheduleImportPage,
   goBindStudentPage,
   goAvatarPage,
   goStudentNoPage,
