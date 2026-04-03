@@ -211,26 +211,178 @@ const persistLegacyUserMediaUpload = async (
   return mediaUrl;
 };
 
+type FoodCampaignTemplateKey = "daily" | "party";
+
+interface FoodTierRange {
+  min: number;
+  max: number;
+}
+
+const FOOD_TIER_RANGE_MAP: Record<FoodCampaignTemplateKey, Record<string, FoodTierRange>> = {
+  daily: {
+    daily_under_8: { min: 0, max: 7.9999 },
+    daily_8_12: { min: 8, max: 12 },
+    daily_12_15: { min: 12, max: 15 },
+    daily_15_18: { min: 15, max: 18 },
+    daily_18_plus: { min: 18, max: Number.POSITIVE_INFINITY },
+  },
+  party: {
+    party_25_35: { min: 25, max: 35 },
+    party_35_45: { min: 35, max: 45 },
+    party_45_65: { min: 45, max: 65 },
+    party_65_plus: { min: 65, max: Number.POSITIVE_INFINITY },
+  },
+};
+
+const normalizeFoodCampaignTemplateKey = (value: unknown): FoodCampaignTemplateKey => {
+  return asString(value).toLowerCase() === "party" ? "party" : "daily";
+};
+
+const normalizeFoodFilterKeys = (value: unknown) => {
+  const normalized: string[] = [];
+  if (!Array.isArray(value)) {
+    return normalized;
+  }
+  value.forEach((item) => {
+    const key = asString(item).toLowerCase();
+    if (!key || normalized.includes(key)) {
+      return;
+    }
+    normalized.push(key);
+  });
+  return normalized;
+};
+
+const normalizeSelectedFoodTierIds = (templateKey: FoodCampaignTemplateKey, value: unknown) => {
+  const allowSet = new Set(Object.keys(FOOD_TIER_RANGE_MAP[templateKey] || {}));
+  const normalized: string[] = [];
+  if (!Array.isArray(value)) {
+    return normalized;
+  }
+  value.forEach((item) => {
+    const tierId = asString(item);
+    if (!tierId || !allowSet.has(tierId) || normalized.includes(tierId)) {
+      return;
+    }
+    normalized.push(tierId);
+  });
+  return normalized;
+};
+
+const resolveLegacyCandidateTemplatePriceRange = (
+  candidate: LegacyFoodCandidateRecord,
+  templateKey: FoodCampaignTemplateKey,
+): FoodTierRange => {
+  const rawMin = templateKey === "party" ? Number(candidate.partyPriceMin || 0) : Number(candidate.dailyPriceMin || 0);
+  const rawMax =
+    templateKey === "party" ? Number(candidate.partyPriceMax || rawMin) : Number(candidate.dailyPriceMax || rawMin);
+  const min = Math.max(0, rawMin);
+  const max = Math.max(min, rawMax);
+  return {
+    min,
+    max,
+  };
+};
+
+const isFoodTierRangeMatched = (
+  candidate: LegacyFoodCandidateRecord,
+  templateKey: FoodCampaignTemplateKey,
+  selectedTierIds: string[],
+) => {
+  if (selectedTierIds.length === 0) {
+    return true;
+  }
+  const candidateRange = resolveLegacyCandidateTemplatePriceRange(candidate, templateKey);
+  return selectedTierIds.some((tierId) => {
+    const tierRange = FOOD_TIER_RANGE_MAP[templateKey][tierId];
+    if (!tierRange) {
+      return false;
+    }
+    return candidateRange.min <= tierRange.max && tierRange.min <= candidateRange.max;
+  });
+};
+
+const pickRandomItems = <T>(items: T[], limit: number, random = Math.random) => {
+  const rest = [...items];
+  const picked: T[] = [];
+  while (rest.length > 0 && picked.length < limit) {
+    const randomValue = Number(random());
+    const normalized = Number.isFinite(randomValue) ? Math.min(Math.max(randomValue, 0), 0.999999999999) : 0;
+    const index = Math.floor(normalized * rest.length);
+    const [item] = rest.splice(index, 1);
+    if (item !== undefined) {
+      picked.push(item);
+    }
+  }
+  return picked;
+};
+
 const resolveLegacyCampaignOptionIds = (
   store: NexusStore,
   state: LegacyCompatState,
-  rawSourceFoodIds: string[],
+  options: {
+    templateKey?: string;
+    selectedTierIds?: string[];
+    categoryKeys?: string[];
+    brandKeys?: string[];
+    random?: () => number;
+  },
 ) => {
+  const templateKey = normalizeFoodCampaignTemplateKey(options.templateKey);
+  const selectedTierIds = normalizeSelectedFoodTierIds(templateKey, options.selectedTierIds);
+  const categoryKeys = normalizeFoodFilterKeys(options.categoryKeys);
+  const brandKeys = normalizeFoodFilterKeys(options.brandKeys);
+  const random = typeof options.random === "function" ? options.random : Math.random;
   const foodIdSet = new Set(store.foodItems.map((item) => item.id));
-  const normalized: string[] = [];
-  rawSourceFoodIds.forEach((sourceFoodId) => {
-    const foodId = asString(sourceFoodId);
-    if (!foodId || !foodIdSet.has(foodId) || normalized.includes(foodId)) {
+  const approvedCandidates = state.foodCandidates.filter((item) => {
+    if (item.candidateStatus !== "approved") {
+      return false;
+    }
+    const foodId = asString(item.sourceFoodId);
+    return Boolean(foodId) && foodIdSet.has(foodId);
+  });
+  const matchesCategory = (candidate: LegacyFoodCandidateRecord) => {
+    return categoryKeys.length === 0 || categoryKeys.includes(asString(candidate.categoryKey).toLowerCase());
+  };
+  const matchesBrand = (candidate: LegacyFoodCandidateRecord) => {
+    return brandKeys.length === 0 || brandKeys.includes(asString(candidate.brandKey).toLowerCase());
+  };
+  const selectionPools = [
+    approvedCandidates.filter((candidate) => {
+      return isFoodTierRangeMatched(candidate, templateKey, selectedTierIds) && matchesCategory(candidate) && matchesBrand(candidate);
+    }),
+    approvedCandidates.filter((candidate) => {
+      return isFoodTierRangeMatched(candidate, templateKey, selectedTierIds) && matchesCategory(candidate);
+    }),
+    approvedCandidates.filter((candidate) => {
+      return isFoodTierRangeMatched(candidate, templateKey, selectedTierIds);
+    }),
+    approvedCandidates,
+  ];
+  const selectedFoodIds: string[] = [];
+  const selectedSet = new Set<string>();
+  selectionPools.forEach((pool) => {
+    if (selectedFoodIds.length >= FOOD_CAMPAIGN_OPTION_LIMIT) {
       return;
     }
-    normalized.push(foodId);
+    const uniqueIds: string[] = [];
+    pool.forEach((candidate) => {
+      const foodId = asString(candidate.sourceFoodId);
+      if (!foodId || selectedSet.has(foodId) || uniqueIds.includes(foodId)) {
+        return;
+      }
+      uniqueIds.push(foodId);
+    });
+    const picked = pickRandomItems(uniqueIds, FOOD_CAMPAIGN_OPTION_LIMIT - selectedFoodIds.length, random);
+    picked.forEach((foodId) => {
+      if (selectedSet.has(foodId)) {
+        return;
+      }
+      selectedSet.add(foodId);
+      selectedFoodIds.push(foodId);
+    });
   });
-  const limited = normalized.slice(0, FOOD_CAMPAIGN_OPTION_LIMIT);
-  if (limited.length > 0) {
-    return limited;
-  }
-  const approvedCandidates = state.foodCandidates.filter((item) => item.candidateStatus === "approved");
-  return approvedCandidates.slice(0, FOOD_CAMPAIGN_OPTION_LIMIT).map((item) => item.sourceFoodId);
+  return selectedFoodIds;
 };
 
 const toUnixSeconds = (value: string | number | Date) => {
@@ -1704,6 +1856,8 @@ export const handleSocialV1Api = async (event: H3Event) => {
       title?: string;
       templateKey?: string;
       template_key?: string;
+      selectedTierIds?: string[];
+      selected_tier_ids?: string[];
       joinMode?: LegacyJoinMode;
       join_mode?: LegacyJoinMode;
       joinPassword?: string;
@@ -1728,20 +1882,15 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const templateKey = asString(body.templateKey || body.template_key) || "daily";
     const joinMode: LegacyJoinMode = "all";
     const joinPassword = "";
-    const categoryKeys = Array.isArray(body.categoryKeys ?? body.category_keys)
-      ? (body.categoryKeys ?? body.category_keys ?? []).map((item) => asString(item).toLowerCase()).filter((item) => item !== "")
-      : [];
-    const brandKeys = Array.isArray(body.brandKeys ?? body.brand_keys)
-      ? (body.brandKeys ?? body.brand_keys ?? []).map((item) => asString(item).toLowerCase()).filter((item) => item !== "")
-      : [];
-    const approvedCandidates = state.foodCandidates.filter((item) => item.candidateStatus === "approved");
-    const matchedCandidates = approvedCandidates
-      .filter((item) => categoryKeys.length === 0 || categoryKeys.includes(item.categoryKey.toLowerCase()))
-      .filter((item) => brandKeys.length === 0 || brandKeys.includes(item.brandKey.toLowerCase()));
     const optionFoodIds = resolveLegacyCampaignOptionIds(
       store,
       state,
-      (matchedCandidates.length > 0 ? matchedCandidates : approvedCandidates).map((item) => item.sourceFoodId),
+      {
+        templateKey,
+        selectedTierIds: body.selectedTierIds ?? body.selected_tier_ids,
+        categoryKeys: body.categoryKeys ?? body.category_keys,
+        brandKeys: body.brandKeys ?? body.brand_keys,
+      },
     );
     if (optionFoodIds.length === 0) {
       const fallback = store.foodItems.slice(0, FOOD_CAMPAIGN_OPTION_LIMIT).map((item) => item.id);
