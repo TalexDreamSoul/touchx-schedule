@@ -21,9 +21,13 @@ export interface SocialDashboardResponse {
   candidates?: SocialUserItem[];
   subscribers?: SocialUserItem[];
   bound?: boolean;
+  stateRevision?: number;
 }
 
 const STORAGE_SOCIAL_DASHBOARD_SNAPSHOT_KEY = "touchx_v2_social_dashboard_snapshot";
+const sharedDashboard = ref<SocialDashboardResponse | null>(null);
+let sharedRefreshRequestSeq = 0;
+let sharedLatestAppliedRequestSeq = 0;
 
 const normalizePracticeCourseKeys = (raw: unknown) => {
   if (!Array.isArray(raw)) {
@@ -95,6 +99,7 @@ const normalizeSocialDashboardResponse = (raw: unknown, backendBaseUrl = ""): So
     candidates: normalizeSocialUserList(data.candidates, backendBaseUrl),
     subscribers: normalizeSocialUserList(data.subscribers, backendBaseUrl),
     bound: Boolean(data.bound),
+    stateRevision: Number(data.stateRevision || 0),
   };
 };
 
@@ -146,14 +151,55 @@ export const buildRegisteredUsersFromDashboard = (dashboard: SocialDashboardResp
 };
 
 export const useSocialDashboard = () => {
-  const dashboard = ref<SocialDashboardResponse | null>(null);
+  const dashboard = sharedDashboard;
   const subscriptions = computed(() => dashboard.value?.subscriptions || []);
   const candidates = computed(() => dashboard.value?.candidates || []);
   const subscribedStudentIdSet = computed(() => {
     return new Set(subscriptions.value.map((item) => item.studentId));
   });
 
+  const resolveRevision = (payload: SocialDashboardResponse | null) => {
+    return Number(payload?.stateRevision || 0);
+  };
+
+  const mergeMissingFields = (payload: SocialDashboardResponse): SocialDashboardResponse => {
+    return {
+      ok: payload.ok,
+      me: payload.me ?? null,
+      subscriptions: payload.subscriptions || [],
+      candidates: payload.candidates || [],
+      subscribers: payload.subscribers || [],
+      bound: Boolean(payload.bound),
+      stateRevision: Number(payload.stateRevision || 0),
+    };
+  };
+
+  const commitDashboard = (nextPayload: SocialDashboardResponse, requestSeq = 0) => {
+    const normalizedNext = mergeMissingFields(nextPayload);
+    const current = dashboard.value;
+    const persisted = readSocialDashboardSnapshot();
+    const currentRevision = resolveRevision(current);
+    const persistedRevision = resolveRevision(persisted);
+    const nextRevision = resolveRevision(normalizedNext);
+    if (current && nextRevision > 0 && currentRevision > nextRevision) {
+      return false;
+    }
+    if (persisted && persistedRevision > nextRevision) {
+      return false;
+    }
+    if (requestSeq > 0 && requestSeq < sharedLatestAppliedRequestSeq) {
+      return false;
+    }
+    dashboard.value = normalizedNext;
+    persistSocialDashboardSnapshot(normalizedNext);
+    if (requestSeq > 0 && requestSeq > sharedLatestAppliedRequestSeq) {
+      sharedLatestAppliedRequestSeq = requestSeq;
+    }
+    return true;
+  };
+
   const refreshDashboard = async (loader: () => Promise<SocialDashboardResponse>, backendBaseUrl = "") => {
+    const requestSeq = ++sharedRefreshRequestSeq;
     const data = await loader();
     const normalized = normalizeSocialDashboardResponse(data, backendBaseUrl) || {
       ok: Boolean(data?.ok),
@@ -162,10 +208,10 @@ export const useSocialDashboard = () => {
       candidates: [],
       subscribers: [],
       bound: false,
+      stateRevision: 0,
     };
-    dashboard.value = normalized;
-    persistSocialDashboardSnapshot(normalized);
-    return normalized;
+    commitDashboard(normalized, requestSeq);
+    return dashboard.value || normalized;
   };
 
   const hydrateDashboardFromStorage = (backendBaseUrl = "") => {
@@ -173,12 +219,26 @@ export const useSocialDashboard = () => {
     if (!snapshot) {
       return false;
     }
-    dashboard.value = snapshot;
+    commitDashboard(snapshot);
     return true;
+  };
+
+  const patchDashboard = (
+    updater: (current: SocialDashboardResponse | null) => SocialDashboardResponse | null,
+    options?: { requestSeq?: number },
+  ) => {
+    const next = updater(dashboard.value);
+    if (!next) {
+      return false;
+    }
+    const patchRequestSeq = Number(options?.requestSeq || ++sharedRefreshRequestSeq);
+    return commitDashboard(next, patchRequestSeq);
   };
 
   const clearDashboard = (purgeStorage = false) => {
     dashboard.value = null;
+    sharedRefreshRequestSeq = 0;
+    sharedLatestAppliedRequestSeq = 0;
     if (purgeStorage) {
       clearSocialDashboardSnapshot();
     }
@@ -191,6 +251,7 @@ export const useSocialDashboard = () => {
     subscribedStudentIdSet,
     refreshDashboard,
     hydrateDashboardFromStorage,
+    patchDashboard,
     clearDashboard,
   };
 };
