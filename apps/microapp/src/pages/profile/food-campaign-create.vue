@@ -83,6 +83,7 @@
               {{ tier.label }}
             </view>
           </view>
+          <view class="form-hint">系统会按已选价位、品类和品牌随机生成 3 个候选，不足时自动逐步放宽补齐。</view>
         </view>
 
         <view class="form-field">
