@@ -1,27 +1,51 @@
 <template>
   <PageContainer :title="title" :theme-key="themeKey">
     <view class="pg-page">
-      <view class="pg-card pg-hero">
-        <view class="pg-hero-head">
-          <view class="pg-title">{{ title }}</view>
-          <view class="pg-badge">{{ playerRange }}</view>
+      <template v-if="introPosition === 'top'">
+        <view class="pg-card pg-hero">
+          <view class="pg-hero-head">
+            <view class="pg-title">{{ title }}</view>
+            <view class="pg-badge">{{ playerRange }}</view>
+          </view>
+          <view class="pg-subtitle">{{ subtitle }}</view>
+          <view class="pg-meta">建议时长：{{ duration }}</view>
+          <view class="pg-tip">主持建议：{{ hostTip }}</view>
         </view>
-        <view class="pg-subtitle">{{ subtitle }}</view>
-        <view class="pg-meta">建议时长：{{ duration }}</view>
-        <view class="pg-tip">主持建议：{{ hostTip }}</view>
-      </view>
 
-      <view class="pg-card">
-        <view class="pg-section-title">玩法说明</view>
-        <view class="pg-how-list">
-          <view v-for="(item, index) in howToPlay" :key="`how-${index}`" class="pg-how-item">
-            <text class="pg-how-index">{{ index + 1 }}</text>
-            <text class="pg-how-text">{{ item }}</text>
+        <view class="pg-card">
+          <view class="pg-section-title">玩法说明</view>
+          <view class="pg-how-list">
+            <view v-for="(item, index) in howToPlay" :key="`how-${index}`" class="pg-how-item">
+              <text class="pg-how-index">{{ index + 1 }}</text>
+              <text class="pg-how-text">{{ item }}</text>
+            </view>
           </view>
         </view>
-      </view>
+      </template>
 
       <slot />
+
+      <template v-if="introPosition === 'bottom'">
+        <view class="pg-card pg-hero">
+          <view class="pg-hero-head">
+            <view class="pg-title">{{ title }}</view>
+            <view class="pg-badge">{{ playerRange }}</view>
+          </view>
+          <view class="pg-subtitle">{{ subtitle }}</view>
+          <view class="pg-meta">建议时长：{{ duration }}</view>
+          <view class="pg-tip">主持建议：{{ hostTip }}</view>
+        </view>
+
+        <view class="pg-card">
+          <view class="pg-section-title">玩法说明</view>
+          <view class="pg-how-list">
+            <view v-for="(item, index) in howToPlay" :key="`how-bottom-${index}`" class="pg-how-item">
+              <text class="pg-how-index">{{ index + 1 }}</text>
+              <text class="pg-how-text">{{ item }}</text>
+            </view>
+          </view>
+        </view>
+      </template>
     </view>
   </PageContainer>
 </template>
@@ -29,15 +53,21 @@
 <script setup lang="ts">
 import PageContainer from "@/components/PageContainer.vue";
 
-defineProps<{
-  title: string;
-  subtitle: string;
-  playerRange: string;
-  duration: string;
-  hostTip: string;
-  howToPlay: string[];
-  themeKey: "black" | "purple" | "green" | "pink" | "blue" | "yellow" | "orange";
-}>();
+withDefaults(
+  defineProps<{
+    title: string;
+    subtitle: string;
+    playerRange: string;
+    duration: string;
+    hostTip: string;
+    howToPlay: string[];
+    themeKey: "black" | "purple" | "green" | "pink" | "blue" | "yellow" | "orange";
+    introPosition?: "top" | "bottom";
+  }>(),
+  {
+    introPosition: "top",
+  },
+);
 </script>
 
 <style scoped>
