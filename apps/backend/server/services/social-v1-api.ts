@@ -2,6 +2,7 @@ import { createError, getMethod, getQuery, getRequestURL, readMultipartFormData,
 import {
   FOOD_CAMPAIGN_OPTION_LIMIT,
   getNexusStore,
+  getNexusStoreRevision,
   storeHelpers,
   type FoodCampaignRecord,
   type FoodCampaignVoteRecord,
@@ -24,6 +25,21 @@ import {
   resolveMediaBucket,
 } from "../utils/media-storage";
 import { createSignedSession } from "../utils/session-token";
+import {
+  getEffectiveScheduleEntriesForUser,
+  getSectionTimeBySection,
+  getUserReminderTimezone,
+  isScheduleEntryInWeek,
+  resolveCurrentWeekForDate,
+  SCHEDULE_DEFAULT_TIMEZONE,
+  SCHEDULE_SECTION_TIMES,
+  SCHEDULE_TERM_HOLIDAYS,
+  SCHEDULE_TERM_META,
+  SCHEDULE_WEEKDAY_LABELS,
+  toAcademicWeekDay,
+  toDateTimeParts,
+  zonedDateTimeToUtc,
+} from "./schedule-calendar";
 
 type LegacyJoinMode = "all" | "invite" | "password";
 type LegacyCandidateStatus = "approved" | "pending_eat" | "pending_review" | "rejected";
@@ -77,53 +93,54 @@ interface LegacyCompatState {
   sourceFoodIdByFoodKey: Map<string, string>;
 }
 
+export interface LegacyCompatStateSnapshot {
+  randomCodeByUserId: Record<string, string>;
+  notifyBoundUserIds: string[];
+  practiceCourseKeysByUserId: Record<string, string[]>;
+  subscriptionTargetsByUserId: Record<string, string[]>;
+  bindingTargetUserIdByUserId: Record<string, string>;
+  campaignMetaByCampaignId: Record<string, LegacyCampaignMeta>;
+  campaignParticipantsByCampaignId: Record<string, LegacyCampaignParticipant[]>;
+  foodCandidates: LegacyFoodCandidateRecord[];
+  foodKeyBySourceFoodId: Record<string, string>;
+  sourceFoodIdByFoodKey: Record<string, string>;
+}
+
 type NexusStore = ReturnType<typeof getNexusStore>;
 
 const legacyStateMap = new WeakMap<NexusStore, LegacyCompatState>();
-
-const SECTION_TIMES: Array<{
-  section: number;
-  start: string;
-  end: string;
-  part: "上午" | "下午" | "晚上";
-}> = [
-  { section: 1, start: "08:30", end: "09:15", part: "上午" },
-  { section: 2, start: "09:20", end: "10:05", part: "上午" },
-  { section: 3, start: "10:25", end: "11:10", part: "上午" },
-  { section: 4, start: "11:15", end: "12:00", part: "上午" },
-  { section: 5, start: "14:30", end: "15:15", part: "下午" },
-  { section: 6, start: "15:20", end: "16:05", part: "下午" },
-  { section: 7, start: "16:25", end: "17:10", part: "下午" },
-  { section: 8, start: "17:15", end: "18:00", part: "下午" },
-  { section: 9, start: "19:00", end: "19:45", part: "晚上" },
-  { section: 10, start: "19:50", end: "20:35", part: "晚上" },
-  { section: 11, start: "20:40", end: "21:25", part: "晚上" },
-];
-
-const LEGACY_TERM_META = {
-  name: "2025-2026-2",
-  week1Monday: "2026-03-02",
-  maxWeek: 25,
-};
-
-const LEGACY_TERM_HOLIDAYS = [
-  { date: "2026-04-04", label: "休" },
-  { date: "2026-04-05", label: "休" },
-  { date: "2026-04-06", label: "休" },
-  { date: "2026-05-01", label: "休" },
-  { date: "2026-05-02", label: "休" },
-  { date: "2026-05-03", label: "休" },
-  { date: "2026-05-04", label: "休" },
-  { date: "2026-05-05", label: "休" },
-  { date: "2026-06-19", label: "休" },
-  { date: "2026-06-20", label: "休" },
-  { date: "2026-06-21", label: "休" },
-];
 
 const LEGACY_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const LEGACY_WALLPAPER_MAX_BYTES = 5 * 1024 * 1024;
 
 const asString = (value: unknown) => String(value || "").trim();
+
+const normalizeProfileAvatarUrl = (value: unknown) => {
+  const raw = asString(value);
+  if (!raw) {
+    return "";
+  }
+  if (raw.startsWith("/")) {
+    return raw;
+  }
+  if (!/^https?:\/\//i.test(raw)) {
+    return "";
+  }
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "";
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    const isWechatAvatarHost = hostname === "thirdwx.qlogo.cn" || hostname === "wx.qlogo.cn" || hostname.endsWith(".qlogo.cn");
+    if (parsed.protocol === "http:" && isWechatAvatarHost) {
+      parsed.protocol = "https:";
+    }
+    return parsed.toString();
+  } catch (error) {
+    return "";
+  }
+};
 
 const randomSuffix = () => {
   return Math.random().toString(36).slice(2, 8);
@@ -474,6 +491,120 @@ const ensureSet = <K, V>(map: Map<K, Set<V>>, key: K) => {
   return created;
 };
 
+const mapToRecord = <T>(map: Map<string, T>) => {
+  const record: Record<string, T> = {};
+  map.forEach((value, key) => {
+    record[String(key)] = value;
+  });
+  return record;
+};
+
+const mapSetToRecord = (map: Map<string, Set<string>>) => {
+  const record: Record<string, string[]> = {};
+  map.forEach((value, key) => {
+    record[String(key)] = Array.from(value.values());
+  });
+  return record;
+};
+
+const sanitizeLegacyJoinMode = (value: unknown): LegacyJoinMode => {
+  const mode = String(value || "").trim();
+  if (mode === "invite" || mode === "password" || mode === "all") {
+    return mode;
+  }
+  return "all";
+};
+
+const sanitizeLegacyCandidateStatus = (value: unknown): LegacyCandidateStatus => {
+  const status = String(value || "").trim();
+  if (status === "approved" || status === "pending_eat" || status === "pending_review" || status === "rejected") {
+    return status;
+  }
+  return "pending_review";
+};
+
+const sanitizeLegacyCampaignParticipant = (raw: unknown): LegacyCampaignParticipant | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Partial<LegacyCampaignParticipant>;
+  const userId = asString(data.userId);
+  if (!userId) {
+    return null;
+  }
+  const source = String(data.source || "").trim();
+  const approvalStatus = String(data.approvalStatus || "").trim();
+  const normalizedSource: LegacyCampaignParticipant["source"] =
+    source === "creator" || source === "invitee" || source === "join" ? source : "join";
+  const normalizedApproval: LegacyCampaignParticipant["approvalStatus"] =
+    approvalStatus === "approved" || approvalStatus === "pending" || approvalStatus === "rejected"
+      ? approvalStatus
+      : "approved";
+  return {
+    userId,
+    source: normalizedSource,
+    approvalStatus: normalizedApproval,
+  };
+};
+
+const sanitizeLegacyCampaignMeta = (raw: unknown): LegacyCampaignMeta => {
+  if (!raw || typeof raw !== "object") {
+    return {
+      templateKey: "daily",
+      joinMode: "all",
+      joinPassword: "",
+      maxVotesPerUser: 1,
+      closedAtUnix: 0,
+      inviteeUserIds: [],
+    };
+  }
+  const data = raw as Partial<LegacyCampaignMeta>;
+  const maxVotes = Number(data.maxVotesPerUser || 1);
+  return {
+    templateKey: asString(data.templateKey) || "daily",
+    joinMode: sanitizeLegacyJoinMode(data.joinMode),
+    joinPassword: asString(data.joinPassword),
+    maxVotesPerUser: Number.isFinite(maxVotes) ? Math.max(1, Math.min(3, Math.floor(maxVotes))) : 1,
+    closedAtUnix: Number(data.closedAtUnix || 0),
+    inviteeUserIds: Array.isArray(data.inviteeUserIds)
+      ? data.inviteeUserIds.map((item) => asString(item)).filter((item) => item)
+      : [],
+  };
+};
+
+const sanitizeLegacyFoodCandidate = (raw: unknown): LegacyFoodCandidateRecord | null => {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const data = raw as Partial<LegacyFoodCandidateRecord>;
+  const foodKey = asString(data.foodKey);
+  const sourceFoodId = asString(data.sourceFoodId);
+  const name = asString(data.name);
+  if (!foodKey || !sourceFoodId || !name) {
+    return null;
+  }
+  return {
+    foodKey,
+    sourceFoodId,
+    name,
+    categoryKey: asString(data.categoryKey),
+    categoryName: asString(data.categoryName),
+    brandKey: asString(data.brandKey),
+    brandName: asString(data.brandName),
+    brandCombo: asString(data.brandCombo),
+    candidateStatus: sanitizeLegacyCandidateStatus(data.candidateStatus),
+    note: asString(data.note),
+    createdByUserId: asString(data.createdByUserId),
+    createdByStudentId: asString(data.createdByStudentId),
+    distanceKm: Number(data.distanceKm || 0),
+    dailyPriceMin: Number(data.dailyPriceMin || 0),
+    dailyPriceMax: Number(data.dailyPriceMax || 0),
+    partyPriceMin: Number(data.partyPriceMin || 0),
+    partyPriceMax: Number(data.partyPriceMax || 0),
+    caloriesKcal: Number(data.caloriesKcal || 0),
+  };
+};
+
 const randomCodeByStudentNo = (studentNo: string) => {
   const digits = studentNo.replace(/\D+/g, "");
   if (digits.length > 0) {
@@ -643,6 +774,142 @@ const getLegacyState = (store: NexusStore) => {
   return state;
 };
 
+export const isLegacyNotifyBoundUser = (store: NexusStore, userId: string) => {
+  return getLegacyState(store).notifyBoundUserIds.has(asString(userId));
+};
+
+export const serializeLegacyCompatState = (store: NexusStore): LegacyCompatStateSnapshot => {
+  const state = getLegacyState(store);
+  const campaignParticipantsByCampaignId: Record<string, LegacyCampaignParticipant[]> = {};
+  state.campaignParticipantsByCampaignId.forEach((participants, campaignId) => {
+    campaignParticipantsByCampaignId[campaignId] = Array.from(participants.values()).map((item) => ({
+      userId: item.userId,
+      source: item.source,
+      approvalStatus: item.approvalStatus,
+    }));
+  });
+  return {
+    randomCodeByUserId: mapToRecord(state.randomCodeByUserId),
+    notifyBoundUserIds: Array.from(state.notifyBoundUserIds.values()),
+    practiceCourseKeysByUserId: mapSetToRecord(state.practiceCourseKeysByUserId),
+    subscriptionTargetsByUserId: mapSetToRecord(state.subscriptionTargetsByUserId),
+    bindingTargetUserIdByUserId: mapToRecord(state.bindingTargetUserIdByUserId),
+    campaignMetaByCampaignId: mapToRecord(state.campaignMetaByCampaignId),
+    campaignParticipantsByCampaignId,
+    foodCandidates: state.foodCandidates.map((item) => ({ ...item })),
+    foodKeyBySourceFoodId: mapToRecord(state.foodKeyBySourceFoodId),
+    sourceFoodIdByFoodKey: mapToRecord(state.sourceFoodIdByFoodKey),
+  };
+};
+
+export const hydrateLegacyCompatState = (store: NexusStore, snapshot: LegacyCompatStateSnapshot | null | undefined) => {
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+  const randomCodeByUserId = new Map<string, string>();
+  Object.entries(snapshot.randomCodeByUserId || {}).forEach(([userId, code]) => {
+    const normalizedUserId = asString(userId);
+    const normalizedCode = asString(code);
+    if (!normalizedUserId || !normalizedCode) {
+      return;
+    }
+    randomCodeByUserId.set(normalizedUserId, normalizedCode);
+  });
+  const notifyBoundUserIds = new Set(
+    Array.isArray(snapshot.notifyBoundUserIds)
+      ? snapshot.notifyBoundUserIds.map((item) => asString(item)).filter((item) => item)
+      : [],
+  );
+  const practiceCourseKeysByUserId = new Map<string, Set<string>>();
+  Object.entries(snapshot.practiceCourseKeysByUserId || {}).forEach(([userId, keys]) => {
+    const normalizedUserId = asString(userId);
+    if (!normalizedUserId) {
+      return;
+    }
+    const values = Array.isArray(keys) ? keys.map((item) => asString(item)).filter((item) => item) : [];
+    practiceCourseKeysByUserId.set(normalizedUserId, new Set(values));
+  });
+  const subscriptionTargetsByUserId = new Map<string, Set<string>>();
+  Object.entries(snapshot.subscriptionTargetsByUserId || {}).forEach(([userId, targets]) => {
+    const normalizedUserId = asString(userId);
+    if (!normalizedUserId) {
+      return;
+    }
+    const values = Array.isArray(targets) ? targets.map((item) => asString(item)).filter((item) => item) : [];
+    subscriptionTargetsByUserId.set(normalizedUserId, new Set(values));
+  });
+  const bindingTargetUserIdByUserId = new Map<string, string>();
+  Object.entries(snapshot.bindingTargetUserIdByUserId || {}).forEach(([userId, targetUserId]) => {
+    const normalizedUserId = asString(userId);
+    const normalizedTargetUserId = asString(targetUserId);
+    if (!normalizedUserId || !normalizedTargetUserId) {
+      return;
+    }
+    bindingTargetUserIdByUserId.set(normalizedUserId, normalizedTargetUserId);
+  });
+  const campaignMetaByCampaignId = new Map<string, LegacyCampaignMeta>();
+  Object.entries(snapshot.campaignMetaByCampaignId || {}).forEach(([campaignId, meta]) => {
+    const normalizedCampaignId = asString(campaignId);
+    if (!normalizedCampaignId) {
+      return;
+    }
+    campaignMetaByCampaignId.set(normalizedCampaignId, sanitizeLegacyCampaignMeta(meta));
+  });
+  const campaignParticipantsByCampaignId = new Map<string, Map<string, LegacyCampaignParticipant>>();
+  Object.entries(snapshot.campaignParticipantsByCampaignId || {}).forEach(([campaignId, participants]) => {
+    const normalizedCampaignId = asString(campaignId);
+    if (!normalizedCampaignId) {
+      return;
+    }
+    const participantMap = new Map<string, LegacyCampaignParticipant>();
+    const rows = Array.isArray(participants) ? participants : [];
+    rows.forEach((raw) => {
+      const participant = sanitizeLegacyCampaignParticipant(raw);
+      if (!participant) {
+        return;
+      }
+      participantMap.set(participant.userId, participant);
+    });
+    campaignParticipantsByCampaignId.set(normalizedCampaignId, participantMap);
+  });
+  const foodCandidates = Array.isArray(snapshot.foodCandidates)
+    ? snapshot.foodCandidates
+      .map((item) => sanitizeLegacyFoodCandidate(item))
+      .filter((item): item is LegacyFoodCandidateRecord => Boolean(item))
+    : [];
+  const foodKeyBySourceFoodId = new Map<string, string>();
+  Object.entries(snapshot.foodKeyBySourceFoodId || {}).forEach(([sourceFoodId, foodKey]) => {
+    const normalizedSourceFoodId = asString(sourceFoodId);
+    const normalizedFoodKey = asString(foodKey);
+    if (!normalizedSourceFoodId || !normalizedFoodKey) {
+      return;
+    }
+    foodKeyBySourceFoodId.set(normalizedSourceFoodId, normalizedFoodKey);
+  });
+  const sourceFoodIdByFoodKey = new Map<string, string>();
+  Object.entries(snapshot.sourceFoodIdByFoodKey || {}).forEach(([foodKey, sourceFoodId]) => {
+    const normalizedFoodKey = asString(foodKey);
+    const normalizedSourceFoodId = asString(sourceFoodId);
+    if (!normalizedFoodKey || !normalizedSourceFoodId) {
+      return;
+    }
+    sourceFoodIdByFoodKey.set(normalizedFoodKey, normalizedSourceFoodId);
+  });
+  const nextState: LegacyCompatState = {
+    randomCodeByUserId,
+    notifyBoundUserIds,
+    practiceCourseKeysByUserId,
+    subscriptionTargetsByUserId,
+    bindingTargetUserIdByUserId,
+    campaignMetaByCampaignId,
+    campaignParticipantsByCampaignId,
+    foodCandidates,
+    foodKeyBySourceFoodId,
+    sourceFoodIdByFoodKey,
+  };
+  legacyStateMap.set(store, nextState);
+};
+
 const resolveBoundTargetUser = (
   store: NexusStore,
   state: LegacyCompatState,
@@ -671,6 +938,33 @@ const findUserByStudentNo = (store: NexusStore, studentNo: string) => {
   return store.users.find((item) => item.studentNo === normalized) || null;
 };
 
+const isPlaceholderIdentityText = (user: Pick<UserRecord, "studentNo" | "studentId">, value: unknown) => {
+  const normalized = asString(value);
+  if (!normalized) {
+    return false;
+  }
+  if (normalized === asString(user.studentNo) || normalized === asString(user.studentId)) {
+    return true;
+  }
+  return /^\d{6,32}$/.test(normalized);
+};
+
+const resolveMeaningfulUserName = (user: Pick<UserRecord, "name" | "nickname" | "studentNo" | "studentId">) => {
+  const name = asString(user.name);
+  if (name && !isPlaceholderIdentityText(user, name)) {
+    return name;
+  }
+  const nickname = asString(user.nickname);
+  if (nickname && !isPlaceholderIdentityText(user, nickname)) {
+    return nickname;
+  }
+  return "";
+};
+
+const resolveUserDisplayLabel = (user: Pick<UserRecord, "name" | "nickname" | "studentNo" | "studentId">) => {
+  return resolveMeaningfulUserName(user) || asString(user.studentNo) || asString(user.studentId) || "未命名用户";
+};
+
 const toLegacyAuthUser = (
   accountUser: UserRecord,
   boundTarget: UserRecord | null,
@@ -681,9 +975,9 @@ const toLegacyAuthUser = (
     openId: `wx_${accountUser.userId}`,
     studentId: source.studentId || "",
     studentNo: source.studentNo || "",
-    studentName: source.name || source.nickname || source.studentNo,
+    studentName: resolveMeaningfulUserName(source),
     classLabel: source.classLabel || "",
-    nickname: accountUser.nickname || accountUser.name || source.name || source.studentNo,
+    nickname: resolveMeaningfulUserName(accountUser) || resolveUserDisplayLabel(accountUser),
     avatarUrl: accountUser.avatarUrl || source.avatarUrl || "",
     randomCode: state.randomCodeByUserId.get(source.userId) || "",
   };
@@ -700,7 +994,7 @@ const toLegacySocialUser = (
   return {
     studentId: user.studentId || "",
     studentNo: user.studentNo || "",
-    name: user.name || user.nickname || user.studentNo,
+    name: resolveUserDisplayLabel(user),
     classLabel: user.classLabel || "",
     avatarUrl: accountUser.avatarUrl || user.avatarUrl || "",
     wallpaperUrl: accountUser.wallpaperUrl || user.wallpaperUrl || "",
@@ -776,14 +1070,77 @@ const resolveCampaignVotes = (store: ReturnType<typeof getNexusStore>, campaignI
   return store.foodCampaignVotes.filter((item) => item.campaignId === campaignId);
 };
 
+const resolveCampaignRuntimeStatus = (campaign: FoodCampaignRecord): FoodCampaignRecord["status"] => {
+  if (campaign.status !== "open") {
+    return campaign.status;
+  }
+  const deadlineMs = Date.parse(campaign.deadlineAtIso || "");
+  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+    return campaign.status;
+  }
+  if (deadlineMs <= Date.now()) {
+    return "closed";
+  }
+  return campaign.status;
+};
+
+const getCampaignMetaReadonly = (state: LegacyCompatState, campaign: FoodCampaignRecord): LegacyCampaignMeta => {
+  const existing = state.campaignMetaByCampaignId.get(campaign.id);
+  if (existing) {
+    return {
+      ...existing,
+      inviteeUserIds: Array.isArray(existing.inviteeUserIds) ? [...existing.inviteeUserIds] : [],
+    };
+  }
+  return {
+    templateKey: "daily",
+    joinMode: "all",
+    joinPassword: "",
+    maxVotesPerUser: 1,
+    closedAtUnix: campaign.status === "closed" ? toUnixSeconds(campaign.updatedAt || campaign.deadlineAtIso) : 0,
+    inviteeUserIds: [],
+  };
+};
+
+const getCampaignParticipantsReadonly = (state: LegacyCompatState, campaign: FoodCampaignRecord) => {
+  const existing = state.campaignParticipantsByCampaignId.get(campaign.id);
+  if (existing) {
+    return new Map(
+      Array.from(existing.entries()).map(([userId, participant]) => [userId, { ...participant } as LegacyCampaignParticipant]),
+    );
+  }
+  const created = new Map<string, LegacyCampaignParticipant>();
+  created.set(campaign.createdByUserId, {
+    userId: campaign.createdByUserId,
+    source: "creator",
+    approvalStatus: "approved",
+  });
+  return created;
+};
+
+const resolveCampaignClosedAtUnix = (
+  campaign: FoodCampaignRecord,
+  meta: LegacyCampaignMeta,
+  runtimeStatus: FoodCampaignRecord["status"],
+) => {
+  if (Number(meta.closedAtUnix || 0) > 0) {
+    return Number(meta.closedAtUnix || 0);
+  }
+  if (runtimeStatus !== "closed") {
+    return 0;
+  }
+  return toUnixSeconds(campaign.updatedAt || campaign.deadlineAtIso);
+};
+
 const toLegacyCampaignSummary = (
   store: NexusStore,
   state: LegacyCompatState,
   campaign: FoodCampaignRecord,
 ) => {
-  const meta = ensureCampaignMeta(state, campaign);
-  const participants = ensureCampaignParticipants(state, campaign);
-  const approvedHeadcount = participants.size;
+  const meta = getCampaignMetaReadonly(state, campaign);
+  const participants = getCampaignParticipantsReadonly(state, campaign);
+  const runtimeStatus = resolveCampaignRuntimeStatus(campaign);
+  const approvedHeadcount = Array.from(participants.values()).filter((item) => item.approvalStatus === "approved").length;
   const creator = store.users.find((item) => item.userId === campaign.createdByUserId) || null;
   const categoryCounter = new Map<string, { categoryName: string; count: number }>();
   campaign.optionFoodIds.forEach((foodId) => {
@@ -814,14 +1171,14 @@ const toLegacyCampaignSummary = (
     title: campaign.title,
     initiatorStudentId: creator?.studentId || creator?.studentNo || creator?.userId || "",
     templateKey: meta.templateKey,
-    status: campaign.status,
+    status: runtimeStatus,
     joinMode: meta.joinMode,
     shareToken: campaign.shareToken,
     candidateCount: campaign.optionFoodIds.length,
     headcount: approvedHeadcount,
     deadlineAt: toUnixSeconds(campaign.deadlineAtIso),
     createdAt: toUnixSeconds(campaign.createdAt),
-    closedAt: meta.closedAtUnix,
+    closedAt: resolveCampaignClosedAtUnix(campaign, meta, runtimeStatus),
     isAnonymous: campaign.isAnonymous,
     categoryHighlights,
   };
@@ -834,8 +1191,9 @@ const toLegacyCampaignDetail = (
   viewerUser: UserRecord,
   shareToken: string,
 ) => {
-  const meta = ensureCampaignMeta(state, campaign);
-  const participants = ensureCampaignParticipants(state, campaign);
+  const meta = getCampaignMetaReadonly(state, campaign);
+  const participants = getCampaignParticipantsReadonly(state, campaign);
+  const runtimeStatus = resolveCampaignRuntimeStatus(campaign);
   const canApprove = campaign.createdByUserId === viewerUser.userId || isAdminRole(viewerUser);
   const candidateRows = campaign.optionFoodIds
     .map((foodId, index) => {
@@ -880,7 +1238,7 @@ const toLegacyCampaignDetail = (
   let voteDetailsVisibility = "none";
   if (!campaign.isAnonymous) {
     voteDetailsVisibility = "all";
-  } else if (campaign.status === "open") {
+  } else if (runtimeStatus === "open") {
     voteDetailsVisibility = "self";
   } else if (shareToken && shareToken === campaign.shareToken) {
     voteDetailsVisibility = "all";
@@ -905,7 +1263,7 @@ const toLegacyCampaignDetail = (
     const voter = store.users.find((item) => item.userId === voterUserId) || null;
     return {
       voterStudentId: voter?.studentId || voter?.studentNo || voterUserId,
-      voterName: voter?.name || voter?.nickname || voter?.studentNo || voterUserId,
+      voterName: voter ? resolveUserDisplayLabel(voter) : voterUserId,
       selectedFoodNames: Array.from(selected.values()),
     };
   });
@@ -914,18 +1272,18 @@ const toLegacyCampaignDetail = (
     const user = store.users.find((item) => item.userId === participant.userId) || null;
     return {
       studentId: user?.studentId || user?.studentNo || participant.userId,
-      name: user?.name || user?.nickname || user?.studentNo || participant.userId,
+      name: user ? resolveUserDisplayLabel(user) : participant.userId,
       source: participant.source,
       approvalStatus: participant.approvalStatus,
     };
   });
 
-  const canVote = campaign.status === "open";
+  const canVote = runtimeStatus === "open";
   return {
     ...toLegacyCampaignSummary(store, state, campaign),
     canVote,
     canApprove,
-    canSupplement: canApprove && campaign.status === "open" && candidateRows.length < FOOD_CAMPAIGN_OPTION_LIMIT,
+    canSupplement: canApprove && runtimeStatus === "open" && candidateRows.length < FOOD_CAMPAIGN_OPTION_LIMIT,
     maxVotesPerUser: Math.max(1, Math.min(3, Number(meta.maxVotesPerUser || 1))),
     viewerVoteFoodIds: viewerSelectedFoodIds,
     voteDetailsVisibility,
@@ -958,17 +1316,7 @@ const appendCampaignVotes = (
 };
 
 const resolvePublishedEntriesByUser = (store: NexusStore, user: UserRecord) => {
-  const classIdSet = new Set(user.classIds);
-  if (classIdSet.size === 0) {
-    const matchedClass = store.classes.find((item) => item.name === user.classLabel) || null;
-    if (matchedClass) {
-      classIdSet.add(matchedClass.id);
-    }
-  }
-  const scheduleIds = store.schedules.filter((item) => classIdSet.has(item.classId)).map((item) => item.id);
-  const versionEntries = store.scheduleVersions
-    .filter((item) => scheduleIds.includes(item.scheduleId) && item.status === "published")
-    .flatMap((item) => item.entries.map((entry) => ({ ...entry, scheduleId: item.scheduleId })));
+  const versionEntries = getEffectiveScheduleEntriesForUser(store, user);
   const dedup = new Map<string, ScheduleEntryRecord>();
   versionEntries.forEach((entry) => {
     const key = `${entry.day}_${entry.startSection}_${entry.endSection}_${entry.courseName}_${entry.weekExpr}_${entry.parity}`;
@@ -996,7 +1344,7 @@ const toLegacyScheduleStudentPayload = (
   const entries = resolvePublishedEntriesByUser(store, targetUser);
   return {
     id: targetUser.studentId || targetUser.userId,
-    name: targetUser.name || targetUser.nickname || targetUser.studentNo,
+    name: resolveUserDisplayLabel(targetUser),
     studentNo: targetUser.studentNo,
     classLabel: targetUser.classLabel,
     courses: entries.map((entry) => ({
@@ -1070,8 +1418,8 @@ const ensureScheduleSubscriptionsByTarget = (
   });
 };
 
-const toGreeting = () => {
-  const hour = new Date().getHours();
+const toGreeting = (now = new Date(), timeZone = SCHEDULE_DEFAULT_TIMEZONE) => {
+  const hour = toDateTimeParts(now, timeZone).hour;
   if (hour < 6) {
     return "夜深了，注意休息";
   }
@@ -1090,43 +1438,44 @@ const toLegacyPath = (event: H3Event) => {
 
 const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
   const user = findUserByStudentId(store, studentId) || store.users[0] || null;
+  const serverNow = new Date();
+  const serverTimezone = user ? getUserReminderTimezone(store, user) : SCHEDULE_DEFAULT_TIMEZONE;
+  const currentWeek = resolveCurrentWeekForDate(serverNow, serverTimezone);
   if (!user) {
     return {
       studentId: "",
       studentName: "",
-      weekNo: 1,
+      weekNo: currentWeek,
       dayNo: 1,
       dayLabel: "周一",
-      greeting: toGreeting(),
+      greeting: toGreeting(serverNow, serverTimezone),
       tips: ["暂无可用课表数据"],
+      serverNowIso: serverNow.toISOString(),
+      serverTimezone,
+      termMeta: SCHEDULE_TERM_META,
+      currentWeek,
       generatedAt: storeHelpers.nowIso(),
     };
   }
-  const now = new Date();
-  const dayNo = now.getDay() === 0 ? 7 : now.getDay();
-  const dayLabel = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][dayNo - 1] || "周一";
-  const entries = resolvePublishedEntriesByUser(store, user).filter((item) => item.day === dayNo);
+  const now = serverNow;
+  const nowParts = toDateTimeParts(now, serverTimezone);
+  const dayNo = toAcademicWeekDay(now, serverTimezone);
+  const dayLabel = `周${SCHEDULE_WEEKDAY_LABELS[dayNo - 1] || "一"}`;
+  const entries = getEffectiveScheduleEntriesForUser(store, user).filter((item) => {
+    return item.day === dayNo && isScheduleEntryInWeek(item, currentWeek);
+  });
   const sorted = [...entries].sort((left, right) => left.startSection - right.startSection);
-  const sectionMap = new Map(SECTION_TIMES.map((item) => [item.section, item] as const));
-  const toTodayTimestamp = (timeText: string) => {
-    const [hour, minute] = String(timeText || "").split(":").map((item) => Number(item));
-    if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-      return NaN;
-    }
-    const clone = new Date(now);
-    clone.setHours(hour, minute, 0, 0);
-    return clone.getTime();
-  };
   const nowTs = now.getTime();
   const nextCandidate = sorted
     .map((entry) => {
-      const startSlot = sectionMap.get(entry.startSection) || null;
-      const endSlot = sectionMap.get(entry.endSection) || null;
+      const entryTimezone = entry.timezone || serverTimezone;
+      const startSlot = getSectionTimeBySection(entry.startSection) || null;
+      const endSlot = getSectionTimeBySection(entry.endSection) || null;
       if (!startSlot || !endSlot) {
         return null;
       }
-      const startTs = toTodayTimestamp(startSlot.start);
-      const endTs = toTodayTimestamp(endSlot.end);
+      const startTs = zonedDateTimeToUtc(nowParts.dateKey, startSlot.start, entryTimezone).getTime();
+      const endTs = zonedDateTimeToUtc(nowParts.dateKey, endSlot.end, entryTimezone).getTime();
       if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) {
         return null;
       }
@@ -1151,11 +1500,11 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
   }
   const payload = {
     studentId: user.studentId || user.userId,
-    studentName: user.name || user.nickname || user.studentNo,
-    weekNo: 1,
+    studentName: resolveMeaningfulUserName(user) || resolveUserDisplayLabel(user),
+    weekNo: currentWeek,
     dayNo,
     dayLabel,
-    greeting: toGreeting(),
+    greeting: toGreeting(now, serverTimezone),
     weather: {
       status: "cloudy",
       summary: "天气平稳，适合出行",
@@ -1184,6 +1533,10 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
         }
       : null,
     tips,
+    serverNowIso: now.toISOString(),
+    serverTimezone,
+    termMeta: SCHEDULE_TERM_META,
+    currentWeek,
     generatedAt: storeHelpers.nowIso(),
   };
   return payload;
@@ -1244,7 +1597,7 @@ const buildCampaignStats = (store: NexusStore, state: LegacyCompatState, recentD
   return {
     recentDays,
     campaignCount: scopedCampaigns.length,
-    activeCampaignCount: scopedCampaigns.filter((item) => item.status === "open").length,
+    activeCampaignCount: scopedCampaigns.filter((item) => resolveCampaignRuntimeStatus(item) === "open").length,
     voterCount: voterSet.size,
     selectionCount,
     mostSelectedFood: topFoods[0] || null,
@@ -1260,7 +1613,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const method = getMethod(event).toUpperCase();
   const query = getQuery(event) as Record<string, unknown>;
   const path = toLegacyPath(event);
-  if (path.startsWith("social/food-campaigns")) {
+  if (method !== "GET" && path.startsWith("social/food-campaigns")) {
     syncCampaignStatusByDeadline(store, state);
   }
   const pickFoodTemplate = () => {
@@ -1304,7 +1657,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const studentId = asString(body.studentId || body.student_id);
     const studentNo = asString(body.studentNo || body.student_no);
     const nickname = asString(body.nickname);
-    const avatarUrl = asString(body.avatarUrl || body.avatar_url);
+    const avatarUrl = normalizeProfileAvatarUrl(body.avatarUrl || body.avatar_url);
     if (!code) {
       createLegacyError(400, "WECHAT_CODE_REQUIRED", "请先完成微信授权");
     }
@@ -1323,10 +1676,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
       accountUser = {
         userId: storeHelpers.createId("user"),
         studentNo: studentNo || `${Date.now()}`.slice(-8),
-        studentId: studentId || "",
-        name: studentNo || studentId || "新用户",
+        studentId: "",
+        name: "",
         classLabel: "",
-        nickname: nickname || studentNo || studentId || "新用户",
+        nickname: nickname || "",
         avatarUrl: avatarUrl || "",
         wallpaperUrl: "",
         classIds: [],
@@ -1353,6 +1706,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
     accountUser.updatedAt = storeHelpers.nowIso();
 
     const bindTarget = findUserByStudentId(store, studentId) || findUserByStudentNo(store, studentNo) || accountUser;
+    if (avatarUrl && bindTarget.userId !== accountUser.userId) {
+      bindTarget.avatarUrl = avatarUrl;
+      bindTarget.updatedAt = storeHelpers.nowIso();
+    }
     state.bindingTargetUserIdByUserId.set(accountUser.userId, bindTarget.userId);
     if (bindTarget.studentId) {
       state.notifyBoundUserIds.add(accountUser.userId);
@@ -1425,6 +1782,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       subscribers,
       candidates,
       bound: Boolean(bindTarget.studentId),
+      stateRevision: getNexusStoreRevision(),
     };
   }
 
@@ -1475,7 +1833,13 @@ export const handleSocialV1Api = async (event: H3Event) => {
       user.wallpaperUrl = asString(body.wallpaperUrl ?? body.wallpaper_url);
     }
     if (Object.prototype.hasOwnProperty.call(body, "avatarUrl") || Object.prototype.hasOwnProperty.call(body, "avatar_url")) {
-      user.avatarUrl = asString(body.avatarUrl ?? body.avatar_url);
+      const nextAvatarUrl = normalizeProfileAvatarUrl(body.avatarUrl ?? body.avatar_url);
+      user.avatarUrl = nextAvatarUrl;
+      const boundTarget = resolveBoundTargetUser(store, state, user) || user;
+      if (nextAvatarUrl && boundTarget.userId !== user.userId) {
+        boundTarget.avatarUrl = nextAvatarUrl;
+        boundTarget.updatedAt = storeHelpers.nowIso();
+      }
     }
     user.updatedAt = storeHelpers.nowIso();
     const bindTarget = resolveBoundTargetUser(store, state, user) || user;
@@ -1536,7 +1900,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     ensureSet(state.subscriptionTargetsByUserId, user.userId).add(targetUser.userId);
     ensureScheduleSubscriptionsByTarget(store, user.userId, targetUser);
-    return { ok: true, subscribed: true };
+    return { ok: true, subscribed: true, stateRevision: getNexusStoreRevision() };
   }
 
   if (method === "POST" && path === "social/subscribe/remove") {
@@ -1548,11 +1912,11 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     const targetUser = findUserByStudentId(store, targetStudentId);
     if (!targetUser) {
-      return { ok: true, removed: false };
+      return { ok: true, removed: false, stateRevision: getNexusStoreRevision() };
     }
     ensureSet(state.subscriptionTargetsByUserId, user.userId).delete(targetUser.userId);
     removeScheduleSubscriptionsByTarget(store, user.userId, targetUser);
-    return { ok: true, removed: true };
+    return { ok: true, removed: true, stateRevision: getNexusStoreRevision() };
   }
 
   if (method === "POST" && path === "social/random-code") {
@@ -1813,7 +2177,12 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const status = asString(query.status).toLowerCase();
     const bindTarget = resolveBoundTargetUser(store, state, user) || user;
     const items = store.foodCampaigns
-      .filter((campaign) => !status || status === "all" || campaign.status === status)
+      .filter((campaign) => {
+        if (!status || status === "all") {
+          return true;
+        }
+        return resolveCampaignRuntimeStatus(campaign) === status;
+      })
       .map((campaign) => toLegacyCampaignSummary(store, state, campaign))
       .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
     const normalized = items.map((item) => ({
@@ -1957,7 +2326,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "FOOD_CAMPAIGN_NOT_FOUND",
       "拼单不存在或分享码失效",
     );
-    if (campaign.status !== "open") {
+    if (resolveCampaignRuntimeStatus(campaign) !== "open") {
       createLegacyError(400, "FOOD_CAMPAIGN_CLOSED", "拼单已结束，无法加入");
     }
     ensureCampaignMeta(state, campaign);
@@ -2016,7 +2385,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     } else if (meParticipant.approvalStatus !== "approved") {
       meParticipant.approvalStatus = "approved";
     }
-    if (campaign.status !== "open") {
+    if (resolveCampaignRuntimeStatus(campaign) !== "open") {
       createLegacyError(400, "FOOD_CAMPAIGN_CLOSED", "竞选已截止");
     }
     const body = await readJsonBody<{ selectedFoodIds?: number[]; selected_food_ids?: number[] }>(event);
@@ -2056,7 +2425,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (campaign.createdByUserId !== user.userId && !isAdminRole(user)) {
       createLegacyError(403, "CAMPAIGN_SUPPLEMENT_FORBIDDEN", "仅创建者或管理员可追加候选");
     }
-    if (campaign.status !== "open") {
+    if (resolveCampaignRuntimeStatus(campaign) !== "open") {
       createLegacyError(400, "FOOD_CAMPAIGN_CLOSED", "竞选已截止");
     }
     if (campaign.optionFoodIds.length >= FOOD_CAMPAIGN_OPTION_LIMIT) {
@@ -2176,19 +2545,33 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "schedules/student") {
     const { user } = resolveLegacyAuthContext(event);
+    const hasRequestedStudentId =
+      Object.prototype.hasOwnProperty.call(query, "studentId") ||
+      Object.prototype.hasOwnProperty.call(query, "student_id");
     const requestedStudentId = asString(query.studentId || query.student_id);
     const bindTarget = resolveBoundTargetUser(store, state, user) || user;
-    const targetUser = findUserByStudentId(store, requestedStudentId) || bindTarget;
-    if (!targetUser || !(targetUser.studentId || targetUser.userId)) {
+    if (hasRequestedStudentId && !requestedStudentId) {
+      createLegacyError(400, "SCHEDULE_TARGET_REQUIRED", "studentId 不能为空");
+    }
+    const resolvedTargetUser = hasRequestedStudentId
+      ? findUserByStudentId(store, requestedStudentId)
+      : bindTarget;
+    const targetUser = ensureValue(resolvedTargetUser, 404, "SCHEDULE_TARGET_NOT_FOUND", "目标课表不存在");
+    if (!(targetUser.studentId || targetUser.userId)) {
       createLegacyError(404, "SCHEDULE_TARGET_NOT_FOUND", "目标课表不存在");
     }
+    const serverNow = new Date();
+    const serverTimezone = getUserReminderTimezone(store, targetUser);
     return {
       ok: true,
-      term: LEGACY_TERM_META,
-      sectionTimes: SECTION_TIMES,
-      weekdayLabels: ["一", "二", "三", "四", "五", "六", "日"],
-      holidays: LEGACY_TERM_HOLIDAYS,
+      term: SCHEDULE_TERM_META,
+      termMeta: SCHEDULE_TERM_META,
+      sectionTimes: SCHEDULE_SECTION_TIMES,
+      weekdayLabels: SCHEDULE_WEEKDAY_LABELS,
+      holidays: SCHEDULE_TERM_HOLIDAYS,
       student: toLegacyScheduleStudentPayload(store, targetUser, user),
+      serverNowIso: serverNow.toISOString(),
+      serverTimezone,
       generatedAt: Date.now(),
     };
   }

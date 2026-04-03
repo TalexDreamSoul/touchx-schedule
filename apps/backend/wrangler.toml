@@ -7,5 +7,24 @@ workers_dev = true
 binding = "MEDIA_BUCKET"
 bucket_name = "forge-lab-nexus-imagable"
 
+[[r2_buckets]]
+binding = "SCHEDULE_IMPORT_BUCKET"
+bucket_name = "touchx-schedule-import-bucket"
+
+[[d1_databases]]
+binding = "NEXUS_DB"
+database_name = "touchx-nexus-prod"
+database_id = "5ceddf38-fbb8-4750-bea7-7314d2bcedfa"
+
+[[queues.producers]]
+binding = "SCHEDULE_IMPORT_QUEUE"
+queue = "touchx-schedule-import-queue"
+
+[[queues.consumers]]
+queue = "touchx-schedule-import-queue"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 3
+
 [triggers]
 crons = ["*/15 0-15 * * *"]

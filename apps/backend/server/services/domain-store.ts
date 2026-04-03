@@ -9,6 +9,7 @@ import type {
   SmartSuggestionItem,
   StudentIdentity,
 } from "@touchx/shared";
+import { AsyncLocalStorage } from "node:async_hooks";
 import legacyUsersData from "../data/legacy/users.normalized.json";
 import legacyCoursesData from "../data/legacy/courses.normalized.json";
 import legacyFoodsSeedData from "../data/legacy/foods.seed.json";
@@ -243,6 +244,19 @@ export interface PartyGameEventRecord {
   createdAt: string;
 }
 
+export type HeartOpenDifficulty = "easy" | "medium" | "hard";
+
+export interface PartyGameHeartOpenWordRecord {
+  id: string;
+  word: string;
+  punishment: string;
+  category: string;
+  difficulty: HeartOpenDifficulty;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const FOOD_CAMPAIGN_OPTION_LIMIT = 3;
 export const DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO = "2305100613";
 
@@ -271,6 +285,7 @@ export interface NexusStore {
   partyGameMembers: PartyGameMemberRecord[];
   partyGameStates: PartyGameStateRecord[];
   partyGameEvents: PartyGameEventRecord[];
+  partyGameHeartOpenWords: PartyGameHeartOpenWordRecord[];
 }
 
 interface LegacyUserRow {
@@ -314,6 +329,14 @@ interface LegacyFoodSeedRow {
 }
 
 const GLOBAL_KEY = "__touchx_schedule_nexus_store__";
+const GLOBAL_REVISION_KEY = "__touchx_schedule_nexus_store_revision__";
+
+interface NexusStoreScope {
+  store: NexusStore;
+  revision: number;
+}
+
+const nexusStoreScopeStorage = new AsyncLocalStorage<NexusStoreScope>();
 
 const nowIso = () => new Date().toISOString();
 
@@ -487,6 +510,267 @@ const mergeWithLegacyFoodSeeds = (foodItems: FoodItemRecord[]) => {
     merged.push(item);
   });
   return merged;
+};
+
+const createHeartOpenWordSeeds = (createdAt: string): PartyGameHeartOpenWordRecord[] => {
+  const seeds: Array<{
+    word: string;
+    punishment: string;
+    category: string;
+    difficulty: HeartOpenDifficulty;
+  }> = [
+    {
+      word: "举杯",
+      punishment: "即兴说 15 秒祝酒词，最后要押韵收尾。",
+      category: "新年饭局",
+      difficulty: "easy",
+    },
+    {
+      word: "主菜名",
+      punishment: "说出 3 道年夜饭主菜，不能重复别人提过的。",
+      category: "新年饭局",
+      difficulty: "easy",
+    },
+    {
+      word: "老师好",
+      punishment: "用播音腔介绍右手边玩家 20 秒。",
+      category: "课堂演讲",
+      difficulty: "easy",
+    },
+    {
+      word: "举手",
+      punishment: "像课堂抢答一样举手 5 秒并说“我会我会”。",
+      category: "课堂演讲",
+      difficulty: "easy",
+    },
+    {
+      word: "回答问题",
+      punishment: "被提问“今天最尴尬的事”，30 秒内必须答完。",
+      category: "课堂演讲",
+      difficulty: "medium",
+    },
+    {
+      word: "报幕",
+      punishment: "模仿主持人报幕，隆重介绍下一位玩家。",
+      category: "晚会舞台",
+      difficulty: "easy",
+    },
+    {
+      word: "递话筒",
+      punishment: "给任意一位玩家递上虚拟话筒并夸 TA 10 秒。",
+      category: "晚会舞台",
+      difficulty: "medium",
+    },
+    {
+      word: "鞠躬",
+      punishment: "给全场来一段 10 秒颁奖感言。",
+      category: "晚会舞台",
+      difficulty: "medium",
+    },
+    {
+      word: "结账",
+      punishment: "模仿收银员报菜名 20 秒，越快越好。",
+      category: "超市购物",
+      difficulty: "easy",
+    },
+    {
+      word: "讨价还价",
+      punishment: "现场和空气砍价 15 秒，要出现“再便宜点”。",
+      category: "超市购物",
+      difficulty: "medium",
+    },
+    {
+      word: "插队",
+      punishment: "给全场演一段“礼貌制止插队”小剧场 20 秒。",
+      category: "超市购物",
+      difficulty: "hard",
+    },
+    {
+      word: "作者名",
+      punishment: "说出 3 本你读过的书名，限时 15 秒。",
+      category: "书店闲聊",
+      difficulty: "medium",
+    },
+    {
+      word: "看书吧",
+      punishment: "安利一本你最想推荐的书，30 秒内说完理由。",
+      category: "书店闲聊",
+      difficulty: "easy",
+    },
+    {
+      word: "点歌",
+      punishment: "清唱任意副歌两句，不能只哼旋律。",
+      category: "KTV局",
+      difficulty: "easy",
+    },
+    {
+      word: "说歌手名",
+      punishment: "连续说出 3 位歌手并模仿其中一位语气一句话。",
+      category: "KTV局",
+      difficulty: "medium",
+    },
+    {
+      word: "情歌对唱",
+      punishment: "随机点一位玩家，合唱“我爱你”三种语气版本。",
+      category: "KTV局",
+      difficulty: "hard",
+    },
+    {
+      word: "立正",
+      punishment: "站军姿 10 秒并大声报数到 5。",
+      category: "军训回忆",
+      difficulty: "medium",
+    },
+    {
+      word: "稍息",
+      punishment: "做标准稍息动作并喊一次“收到”。",
+      category: "军训回忆",
+      difficulty: "easy",
+    },
+    {
+      word: "向右看齐",
+      punishment: "原地转头并给大家做一次“齐步走”口令。",
+      category: "军训回忆",
+      difficulty: "hard",
+    },
+    {
+      word: "压腿",
+      punishment: "摆出压腿姿势 8 秒，同时保持微笑。",
+      category: "舞蹈课",
+      difficulty: "medium",
+    },
+    {
+      word: "天鹅湖",
+      punishment: "模仿天鹅动作 8 秒，动作越优雅越好。",
+      category: "舞蹈课",
+      difficulty: "hard",
+    },
+    {
+      word: "骑马舞",
+      punishment: "跳 8 秒骑马舞，动作不能停。",
+      category: "舞蹈课",
+      difficulty: "hard",
+    },
+    {
+      word: "微信朋友圈",
+      punishment: "现场口播一条“今日心情”朋友圈文案，必须带表情词。",
+      category: "社交媒体",
+      difficulty: "easy",
+    },
+    {
+      word: "八卦新闻",
+      punishment: "用“据不可靠消息”开头讲一段 20 秒假新闻。",
+      category: "社交媒体",
+      difficulty: "medium",
+    },
+    {
+      word: "模仿某部戏",
+      punishment: "任选一种影视角色语气说“今天这局我赢定了”。",
+      category: "社交媒体",
+      difficulty: "hard",
+    },
+  ];
+  return seeds.map((item) => ({
+    id: createId("heart_open_word"),
+    word: item.word,
+    punishment: item.punishment,
+    category: item.category,
+    difficulty: item.difficulty,
+    enabled: true,
+    createdAt,
+    updatedAt: createdAt,
+  }));
+};
+
+const LEGACY_HEART_OPEN_WORD_SET = new Set(
+  ["前任名字", "老板", "银行卡余额", "深夜外卖", "暗恋对象", "大学挂科", "相亲", "洗澡唱歌", "童年黑历史"].map((item) =>
+    item.replace(/\s+/g, "").trim(),
+  ),
+);
+
+const normalizeHeartOpenWordKey = (value: string) => value.replace(/\s+/g, "").trim();
+
+const buildDefaultBotTemplates = (createdAt: string): BotTemplateRecord[] => {
+  return [
+    {
+      id: createId("bot_tpl"),
+      key: "next_day_brief",
+      title: "次日课表播报",
+      body: "{{name}}，你明天共有 {{courseCount}} 门课，第一节在 {{firstCourseTime}}。{{courseSummary}}",
+      enabled: true,
+      updatedAt: createdAt,
+    },
+    {
+      id: createId("bot_tpl"),
+      key: "pre_class_reminder",
+      title: "课前提醒",
+      body: "{{name}}，{{windowMinutes}} 分钟后上 {{courseName}}（{{startTime}}-{{endTime}}），地点 {{classroom}}。",
+      enabled: true,
+      updatedAt: createdAt,
+    },
+    {
+      id: createId("bot_tpl"),
+      key: "schedule_conflict",
+      title: "课表冲突提醒",
+      body: "你订阅的课表有更新，但你已修改部分课程，需确认是否继续跟随。",
+      enabled: true,
+      updatedAt: createdAt,
+    },
+    {
+      id: createId("bot_tpl"),
+      key: "next_day_no_class",
+      title: "无课日建议",
+      body: "{{name}}，明日无课，可安排复习/运动/社团活动。",
+      enabled: true,
+      updatedAt: createdAt,
+    },
+  ];
+};
+
+const upgradeBotTemplates = (store: NexusStore) => {
+  const defaults = buildDefaultBotTemplates(nowIso());
+  if (!Array.isArray(store.botTemplates) || store.botTemplates.length <= 0) {
+    store.botTemplates = defaults;
+    return;
+  }
+  const existingByKey = new Map(store.botTemplates.map((item) => [item.key, item]));
+  defaults.forEach((item) => {
+    if (existingByKey.has(item.key)) {
+      return;
+    }
+    store.botTemplates.push(item);
+  });
+};
+
+const upgradeHeartOpenWordBank = (store: NexusStore) => {
+  if (!Array.isArray(store.partyGameHeartOpenWords) || store.partyGameHeartOpenWords.length === 0) {
+    store.partyGameHeartOpenWords = createHeartOpenWordSeeds(nowIso());
+    return;
+  }
+  let changed = false;
+  const cleaned = store.partyGameHeartOpenWords.filter((item) => {
+    const normalizedWord = normalizeHeartOpenWordKey(String(item.word || ""));
+    if (!normalizedWord) {
+      changed = true;
+      return false;
+    }
+    if (LEGACY_HEART_OPEN_WORD_SET.has(normalizedWord)) {
+      changed = true;
+      return false;
+    }
+    return true;
+  });
+  const existingWordSet = new Set(cleaned.map((item) => normalizeHeartOpenWordKey(String(item.word || ""))));
+  const additions = createHeartOpenWordSeeds(nowIso()).filter(
+    (item) => !existingWordSet.has(normalizeHeartOpenWordKey(item.word)),
+  );
+  if (additions.length > 0) {
+    changed = true;
+  }
+  if (!changed) {
+    return;
+  }
+  store.partyGameHeartOpenWords = [...additions, ...cleaned];
 };
 
 const resolveLimitedCampaignOptionIds = (foodItems: FoodItemRecord[], rawOptionFoodIds: string[]) => {
@@ -904,17 +1188,14 @@ const buildStoreFromLegacyNormalized = (): NexusStore | null => {
         updatedAt: createdAt,
       },
     ],
-    botTemplates: [
-      { id: createId("bot_tpl"), key: "next_day_brief", title: "次日课表播报", body: "{{name}}，你明天共有 {{courseCount}} 节课，第一节在 {{firstCourseTime}}。", enabled: true, updatedAt: createdAt },
-      { id: createId("bot_tpl"), key: "schedule_conflict", title: "课表冲突提醒", body: "你订阅的课表有更新，但你已修改部分课程，需确认是否继续跟随。", enabled: true, updatedAt: createdAt },
-      { id: createId("bot_tpl"), key: "next_day_no_class", title: "无课日建议", body: "明日无课，可安排复习/运动/社团活动。", enabled: true, updatedAt: createdAt },
-    ],
+    botTemplates: buildDefaultBotTemplates(createdAt),
     botJobs: [],
     auditLogs: [],
     partyGameRooms: [],
     partyGameMembers: [],
     partyGameStates: [],
     partyGameEvents: [],
+    partyGameHeartOpenWords: createHeartOpenWordSeeds(createdAt),
   };
 };
 
@@ -1256,58 +1537,79 @@ const bootstrapStore = (): NexusStore => {
         updatedAt: createdAt,
       },
     ],
-    botTemplates: [
-      {
-        id: createId("bot_tpl"),
-        key: "next_day_brief",
-        title: "次日课表播报",
-        body: "{{name}}，你明天共有 {{courseCount}} 节课，第一节在 {{firstCourseTime}}。",
-        enabled: true,
-        updatedAt: createdAt,
-      },
-      {
-        id: createId("bot_tpl"),
-        key: "schedule_conflict",
-        title: "课表冲突提醒",
-        body: "你订阅的课表有更新，但你已修改部分课程，需确认是否继续跟随。",
-        enabled: true,
-        updatedAt: createdAt,
-      },
-      {
-        id: createId("bot_tpl"),
-        key: "next_day_no_class",
-        title: "无课日建议",
-        body: "明日无课，可安排复习/运动/社团活动。",
-        enabled: true,
-        updatedAt: createdAt,
-      },
-    ],
+    botTemplates: buildDefaultBotTemplates(createdAt),
     botJobs: [],
     auditLogs: [],
     partyGameRooms: [],
     partyGameMembers: [],
     partyGameStates: [],
     partyGameEvents: [],
+    partyGameHeartOpenWords: createHeartOpenWordSeeds(createdAt),
   };
 };
 
 const getGlobalContext = () => globalThis as typeof globalThis & Record<string, unknown>;
 
+export const runWithNexusStoreScope = async <T>(scope: NexusStoreScope, executor: () => Promise<T> | T) => {
+  return await nexusStoreScopeStorage.run(scope, executor);
+};
+
+export const getNexusStoreRevision = () => {
+  const scoped = nexusStoreScopeStorage.getStore();
+  if (scoped) {
+    return Number(scoped.revision || 0);
+  }
+  const context = getGlobalContext();
+  return Number(context[GLOBAL_REVISION_KEY] || 0);
+};
+
+export const createBootstrapStore = () => {
+  return bootstrapStore();
+};
+
+export const setGlobalNexusStore = (store: NexusStore, revision = 0) => {
+  const context = getGlobalContext();
+  context[GLOBAL_KEY] = store;
+  context[GLOBAL_REVISION_KEY] = Number(revision || 0);
+};
+
 export const getNexusStore = () => {
+  const scoped = nexusStoreScopeStorage.getStore();
+  if (scoped?.store) {
+    normalizeCampaignOptions(scoped.store);
+    upgradeHeartOpenWordBank(scoped.store);
+    upgradeBotTemplates(scoped.store);
+    return scoped.store;
+  }
   const context = getGlobalContext();
   if (!context[GLOBAL_KEY]) {
     context[GLOBAL_KEY] = bootstrapStore();
+    context[GLOBAL_REVISION_KEY] = 0;
   }
   const store = context[GLOBAL_KEY] as NexusStore;
   normalizeCampaignOptions(store);
+  upgradeHeartOpenWordBank(store);
+  upgradeBotTemplates(store);
   return store;
 };
 
 export const resetNexusStore = () => {
+  const scoped = nexusStoreScopeStorage.getStore();
+  if (scoped) {
+    const nextStore = bootstrapStore();
+    normalizeCampaignOptions(nextStore);
+    upgradeHeartOpenWordBank(nextStore);
+    upgradeBotTemplates(nextStore);
+    scoped.store = nextStore;
+    return scoped.store;
+  }
   const context = getGlobalContext();
   context[GLOBAL_KEY] = bootstrapStore();
+  context[GLOBAL_REVISION_KEY] = Number(context[GLOBAL_REVISION_KEY] || 0) + 1;
   const store = context[GLOBAL_KEY] as NexusStore;
   normalizeCampaignOptions(store);
+  upgradeHeartOpenWordBank(store);
+  upgradeBotTemplates(store);
   return store;
 };
 

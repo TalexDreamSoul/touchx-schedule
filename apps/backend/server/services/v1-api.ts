@@ -24,7 +24,9 @@ import {
   type FoodPricingRuleVersionRecord,
   type LocationGridRecord,
   type MediaAssetRecord,
+  type HeartOpenDifficulty,
   type PartyGameEventRecord,
+  type PartyGameHeartOpenWordRecord,
   type PartyGameMemberRecord,
   type PartyGameRoomRecord,
   type PartyGameStateRecord,
@@ -42,14 +44,31 @@ import {
   readJsonBody,
   requireAdmin,
   requireUser,
+  resolveSessionWithUser,
   toApiError,
 } from "../utils/api-envelope";
 import { createSignedSession } from "../utils/session-token";
 import { handleSocialV1Api } from "./social-v1-api";
+import { createScheduleImportJob, getScheduleImportJobStatus, listRecentScheduleImportJobIds } from "./schedule-import-service";
+import {
+  ackReminderDelivery,
+  getBotDeliveryTokenHeader,
+  pullPendingReminderDeliveries,
+  requireBotDeliveryToken,
+  resolveReminderDbFromEvent,
+  runReminderHeartbeat,
+} from "./reminder-delivery-service";
 
 const asString = (value: unknown) => String(value || "").trim();
 
 interface AdminAuthState {
+  bootstrapStudentNo: string;
+  password: string;
+  initialized: boolean;
+  updatedAt: string;
+}
+
+export interface AdminAuthStateSnapshot {
   bootstrapStudentNo: string;
   password: string;
   initialized: boolean;
@@ -374,6 +393,18 @@ const isAdminRole = (user: UserRecord) => {
   return user.adminRole === "super_admin" || user.adminRole === "operator";
 };
 
+const requireScheduleImportAccess = (event: H3Event) => {
+  try {
+    return requireAdmin(event);
+  } catch (error) {
+    const resolved = resolveSessionWithUser(event);
+    if (resolved && isAdminRole(resolved.user)) {
+      return resolved;
+    }
+    throw error;
+  }
+};
+
 const resolveBootstrapStudentNo = (store: ReturnType<typeof getNexusStore>, config: ReturnType<typeof useRuntimeConfig>) => {
   const configured = asString(config.adminBootstrapStudentNo || DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO);
   const admins = store.users.filter((item) => isAdminRole(item));
@@ -409,6 +440,34 @@ const getAdminAuthState = (store: ReturnType<typeof getNexusStore>, config: Retu
   return created;
 };
 
+export const serializeAdminAuthState = (store: ReturnType<typeof getNexusStore>): AdminAuthStateSnapshot | null => {
+  const state = adminAuthStateMap.get(store);
+  if (!state) {
+    return null;
+  }
+  return {
+    bootstrapStudentNo: asString(state.bootstrapStudentNo),
+    password: asString(state.password),
+    initialized: Boolean(state.initialized),
+    updatedAt: asString(state.updatedAt),
+  };
+};
+
+export const hydrateAdminAuthState = (
+  store: ReturnType<typeof getNexusStore>,
+  snapshot: AdminAuthStateSnapshot | null | undefined,
+) => {
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+  adminAuthStateMap.set(store, {
+    bootstrapStudentNo: asString(snapshot.bootstrapStudentNo),
+    password: asString(snapshot.password),
+    initialized: Boolean(snapshot.initialized),
+    updatedAt: asString(snapshot.updatedAt) || storeHelpers.nowIso(),
+  });
+};
+
 const createSession = (event: H3Event, user: UserRecord, role: AuthSessionRecord["role"], ttlHours = 24 * 7) => {
   const session = createSignedSession(event, user, role, ttlHours);
   return session;
@@ -434,11 +493,32 @@ const appendAudit = (action: string, actorUserId: string, payload: Record<string
 };
 
 const toUserPayload = (user: UserRecord) => {
+  const isPlaceholderIdentityText = (value: unknown) => {
+    const normalized = asString(value);
+    if (!normalized) {
+      return false;
+    }
+    if (normalized === asString(user.studentNo) || normalized === asString(user.studentId)) {
+      return true;
+    }
+    return /^\d{6,32}$/.test(normalized);
+  };
+  const resolveMeaningfulUserName = () => {
+    const name = asString(user.name);
+    if (name && !isPlaceholderIdentityText(name)) {
+      return name;
+    }
+    const nickname = asString(user.nickname);
+    if (nickname && !isPlaceholderIdentityText(nickname)) {
+      return nickname;
+    }
+    return "";
+  };
   return {
     userId: user.userId,
     studentNo: user.studentNo,
     studentId: user.studentId || "",
-    name: user.name || "",
+    name: resolveMeaningfulUserName(),
     nickname: user.nickname,
     classLabel: user.classLabel || "",
     classIds: user.classIds,
@@ -456,8 +536,29 @@ const toAuthUserPayload = (user: UserRecord) => {
   return {
     ...basePayload,
     openId: `wx_${user.userId}`,
-    studentName: user.name || user.nickname || user.studentNo,
+    studentName: basePayload.name,
   };
+};
+
+const isGhostUserRecord = (user: UserRecord, scheduleSubscriptions: ScheduleSubscription[]) => {
+  if (user.adminRole !== "none") {
+    return false;
+  }
+  if (Array.isArray(user.classIds) && user.classIds.length > 0) {
+    return false;
+  }
+  if (scheduleSubscriptions.some((item) => item.subscriberUserId === user.userId)) {
+    return false;
+  }
+  if (asString(user.classLabel)) {
+    return false;
+  }
+  const studentNo = asString(user.studentNo);
+  const name = asString(user.name);
+  const nickname = asString(user.nickname);
+  const isNamePlaceholder = !name || name === studentNo;
+  const isNicknamePlaceholder = !nickname || nickname === studentNo || nickname === name;
+  return isNamePlaceholder && isNicknamePlaceholder;
 };
 
 const ensureClassAccess = (user: UserRecord, classId: string, roles: ClassRole[]) => {
@@ -605,57 +706,6 @@ const toAcademicWeekDay = (date: Date) => {
 };
 
 const HEARTBEAT_TOKEN_HEADER = "x-heartbeat-token";
-const HEARTBEAT_DEFAULT_TIMEZONE = "Asia/Shanghai";
-const HEARTBEAT_WINDOW_START_HOUR = 8;
-const HEARTBEAT_WINDOW_END_HOUR = 23;
-const HEARTBEAT_BUCKET_MINUTES = 15;
-
-const toDateTimeParts = (date: Date, timeZone: string) => {
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    hour12: false,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const parts = formatter.formatToParts(date);
-  const pick = (type: Intl.DateTimeFormatPartTypes) => {
-    return parts.find((item) => item.type === type)?.value || "";
-  };
-  const year = Number(pick("year"));
-  const month = Number(pick("month"));
-  const day = Number(pick("day"));
-  const hour = Number(pick("hour"));
-  const minute = Number(pick("minute"));
-  return {
-    year,
-    month,
-    day,
-    hour,
-    minute,
-    dateKey: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
-  };
-};
-
-const normalizeHeartbeatBucket = (hour: number, minute: number) => {
-  const bucketMinute = Math.floor(Math.max(0, minute) / HEARTBEAT_BUCKET_MINUTES) * HEARTBEAT_BUCKET_MINUTES;
-  return `${String(hour).padStart(2, "0")}:${String(bucketMinute).padStart(2, "0")}`;
-};
-
-const resolveHeartbeatActor = (store: ReturnType<typeof getNexusStore>) => {
-  const admin =
-    store.users.find((item) => item.adminRole === "super_admin") ||
-    store.users.find((item) => item.adminRole === "operator") ||
-    store.users[0] ||
-    null;
-  return admin?.userId || "system_cron";
-};
-
-const hasHeartbeatJobInBucket = (store: ReturnType<typeof getNexusStore>, triggerKey: string) => {
-  return store.botJobs.some((job) => job.type === "heartbeat_tick" && job.summary.includes(`triggerKey=${triggerKey}`));
-};
 
 const collectNextDaySuggestions = (
   store: ReturnType<typeof getNexusStore>,
@@ -948,6 +998,14 @@ const parsePagination = (query: Record<string, unknown>) => {
 const PARTY_GAME_KEYS = new Set(["werewolf", "undercover", "avalon", "telephone", "drawguess", "turtle"]);
 const PARTY_GAME_OFFLINE_TTL_MS = 45 * 1000;
 const PARTY_GAME_MAX_EVENTS_PER_ROOM = 800;
+const HEART_OPEN_DIFFICULTY_SET = new Set<HeartOpenDifficulty>(["easy", "medium", "hard"]);
+const HEART_OPEN_DIFFICULTIES: HeartOpenDifficulty[] = ["easy", "medium", "hard"];
+
+const HEART_OPEN_DIFFICULTY_LABEL_MAP: Record<HeartOpenDifficulty, string> = {
+  easy: "简单",
+  medium: "中等",
+  hard: "困难",
+};
 
 const sanitizePartyGameKey = (value: unknown) => {
   const key = asString(value).toLowerCase();
@@ -955,6 +1013,78 @@ const sanitizePartyGameKey = (value: unknown) => {
     return "";
   }
   return key;
+};
+
+const sanitizeHeartOpenDifficulty = (value: unknown, fallback: HeartOpenDifficulty = "medium"): HeartOpenDifficulty => {
+  const difficulty = asString(value).toLowerCase() as HeartOpenDifficulty;
+  if (!HEART_OPEN_DIFFICULTY_SET.has(difficulty)) {
+    return fallback;
+  }
+  return difficulty;
+};
+
+const normalizeHeartOpenCategory = (value: unknown) => {
+  return asString(value).replace(/\s+/g, " ").trim();
+};
+
+const toHeartOpenWordPayload = (item: PartyGameHeartOpenWordRecord) => {
+  return {
+    wordId: item.id,
+    word: item.word,
+    punishment: item.punishment,
+    category: item.category,
+    difficulty: item.difficulty,
+    difficultyLabel: HEART_OPEN_DIFFICULTY_LABEL_MAP[item.difficulty],
+    enabled: item.enabled,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+};
+
+const filterHeartOpenWords = (
+  words: PartyGameHeartOpenWordRecord[],
+  options: {
+    category?: string;
+    difficulty?: string;
+    keyword?: string;
+    enabled?: boolean;
+  },
+) => {
+  const category = normalizeHeartOpenCategory(options.category).toLowerCase();
+  const difficulty = asString(options.difficulty).toLowerCase();
+  const keyword = asString(options.keyword).toLowerCase();
+  return words
+    .filter((item) => (typeof options.enabled === "boolean" ? item.enabled === options.enabled : true))
+    .filter((item) => (!category ? true : item.category.toLowerCase() === category))
+    .filter((item) => {
+      if (!difficulty) {
+        return true;
+      }
+      return item.difficulty === difficulty;
+    })
+    .filter((item) => {
+      if (!keyword) {
+        return true;
+      }
+      const bag = `${item.word} ${item.punishment} ${item.category}`.toLowerCase();
+      return bag.includes(keyword);
+    });
+};
+
+const buildHeartOpenOptions = (items: PartyGameHeartOpenWordRecord[]) => {
+  const categorySet = new Set<string>();
+  items.forEach((item) => {
+    if (item.category) {
+      categorySet.add(item.category);
+    }
+  });
+  return {
+    categories: Array.from(categorySet.values()).sort((left, right) => left.localeCompare(right, "zh-CN")),
+    difficulties: HEART_OPEN_DIFFICULTIES.map((difficulty) => ({
+      value: difficulty,
+      label: HEART_OPEN_DIFFICULTY_LABEL_MAP[difficulty],
+    })),
+  };
 };
 
 const PARTY_GAME_DEFAULT_TITLE_MAP: Record<string, string> = {
@@ -1268,13 +1398,15 @@ export const handleV1Api = async (event: H3Event) => {
     }
     let user = store.users.find((item) => item.studentNo === studentNo) || null;
     if (!user) {
+      const inputName = asString(body.name);
+      const inputNickname = asString(body.nickname) || inputName;
       user = {
         userId: storeHelpers.createId("user"),
         studentNo,
         studentId: "",
-        name: asString(body.name) || studentNo,
+        name: inputName,
         classLabel: asString(body.classLabel),
-        nickname: asString(body.nickname) || asString(body.name) || studentNo,
+        nickname: inputNickname,
         avatarUrl: "",
         wallpaperUrl: "",
         classIds: [],
@@ -1323,6 +1455,28 @@ export const handleV1Api = async (event: H3Event) => {
       user: toAuthUserPayload(user),
       role: session.role,
       expiresAt: session.expiresAt,
+    });
+  }
+
+  if (method === "GET" && path === "party-games/heart-open/word-bank") {
+    requireUser(event);
+    const category = normalizeHeartOpenCategory(query.category || query.categoryName || query.category_name);
+    const difficultyRaw = asString(query.difficulty || query.level).toLowerCase();
+    if (difficultyRaw && !HEART_OPEN_DIFFICULTY_SET.has(difficultyRaw as HeartOpenDifficulty)) {
+      return toApiError(400, "HEART_OPEN_DIFFICULTY_INVALID", "difficulty 仅支持 easy/medium/hard");
+    }
+    const keyword = asString(query.keyword);
+    const filtered = filterHeartOpenWords(store.partyGameHeartOpenWords, {
+      category,
+      difficulty: difficultyRaw,
+      keyword,
+      enabled: true,
+    }).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return ok({
+      items: filtered.map((item) => toHeartOpenWordPayload(item)),
+      total: filtered.length,
+      options: buildHeartOpenOptions(store.partyGameHeartOpenWords.filter((item) => item.enabled)),
+      fetchedAt: storeHelpers.nowIso(),
     });
   }
 
@@ -1773,17 +1927,165 @@ export const handleV1Api = async (event: H3Event) => {
     });
   }
 
+  if (method === "GET" && path === "admin/party-games/heart-open/word-bank") {
+    requireAdmin(event);
+    const category = normalizeHeartOpenCategory(query.category || query.categoryName || query.category_name);
+    const difficultyRaw = asString(query.difficulty || query.level).toLowerCase();
+    if (difficultyRaw && !HEART_OPEN_DIFFICULTY_SET.has(difficultyRaw as HeartOpenDifficulty)) {
+      return toApiError(400, "HEART_OPEN_DIFFICULTY_INVALID", "difficulty 仅支持 easy/medium/hard");
+    }
+    const enabledRaw = asString(query.enabled).toLowerCase();
+    const enabledFilter =
+      enabledRaw === "1" || enabledRaw === "true"
+        ? true
+        : enabledRaw === "0" || enabledRaw === "false"
+          ? false
+          : undefined;
+    const keyword = asString(query.keyword);
+    const filtered = filterHeartOpenWords(store.partyGameHeartOpenWords, {
+      category,
+      difficulty: difficultyRaw,
+      keyword,
+      enabled: enabledFilter,
+    }).sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return ok({
+      items: filtered.map((item) => toHeartOpenWordPayload(item)),
+      total: filtered.length,
+      options: buildHeartOpenOptions(store.partyGameHeartOpenWords),
+    });
+  }
+
+  if (method === "POST" && path === "admin/party-games/heart-open/word-bank") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{
+      word?: string;
+      punishment?: string;
+      category?: string;
+      difficulty?: HeartOpenDifficulty;
+      enabled?: boolean;
+    }>(event);
+    const word = asString(body.word);
+    const punishment = asString(body.punishment);
+    if (!word) {
+      return toApiError(400, "HEART_OPEN_WORD_REQUIRED", "word 不能为空");
+    }
+    if (!punishment) {
+      return toApiError(400, "HEART_OPEN_PUNISHMENT_REQUIRED", "punishment 不能为空");
+    }
+    const difficultyRaw = asString(body.difficulty).toLowerCase();
+    if (difficultyRaw && !HEART_OPEN_DIFFICULTY_SET.has(difficultyRaw as HeartOpenDifficulty)) {
+      return toApiError(400, "HEART_OPEN_DIFFICULTY_INVALID", "difficulty 仅支持 easy/medium/hard");
+    }
+    const item: PartyGameHeartOpenWordRecord = {
+      id: storeHelpers.createId("heart_open_word"),
+      word,
+      punishment,
+      category: normalizeHeartOpenCategory(body.category) || "默认",
+      difficulty: sanitizeHeartOpenDifficulty(body.difficulty, "medium"),
+      enabled: typeof body.enabled === "boolean" ? body.enabled : true,
+      createdAt: storeHelpers.nowIso(),
+      updatedAt: storeHelpers.nowIso(),
+    };
+    store.partyGameHeartOpenWords.unshift(item);
+    appendAudit("heart_open_word_create", user.userId, {
+      wordId: item.id,
+      word: item.word,
+      difficulty: item.difficulty,
+      enabled: item.enabled,
+    });
+    return ok({
+      item: toHeartOpenWordPayload(item),
+    });
+  }
+
+  const adminHeartOpenWordUpdateMatch = path.match(/^admin\/party-games\/heart-open\/word-bank\/([^/]+)\/update$/);
+  if (method === "POST" && adminHeartOpenWordUpdateMatch) {
+    const { user } = requireAdmin(event);
+    const wordId = decodeURIComponent(adminHeartOpenWordUpdateMatch[1]);
+    const target = store.partyGameHeartOpenWords.find((item) => item.id === wordId) || null;
+    if (!target) {
+      return toApiError(404, "HEART_OPEN_WORD_NOT_FOUND", "词条不存在");
+    }
+    const body = await readJsonBody<{
+      word?: string;
+      punishment?: string;
+      category?: string;
+      difficulty?: HeartOpenDifficulty;
+      enabled?: boolean;
+    }>(event);
+    if (Object.prototype.hasOwnProperty.call(body, "word")) {
+      const word = asString(body.word);
+      if (!word) {
+        return toApiError(400, "HEART_OPEN_WORD_REQUIRED", "word 不能为空");
+      }
+      target.word = word;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "punishment")) {
+      const punishment = asString(body.punishment);
+      if (!punishment) {
+        return toApiError(400, "HEART_OPEN_PUNISHMENT_REQUIRED", "punishment 不能为空");
+      }
+      target.punishment = punishment;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "category")) {
+      target.category = normalizeHeartOpenCategory(body.category) || "默认";
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "difficulty")) {
+      const difficultyRaw = asString(body.difficulty).toLowerCase();
+      if (difficultyRaw && !HEART_OPEN_DIFFICULTY_SET.has(difficultyRaw as HeartOpenDifficulty)) {
+        return toApiError(400, "HEART_OPEN_DIFFICULTY_INVALID", "difficulty 仅支持 easy/medium/hard");
+      }
+      target.difficulty = sanitizeHeartOpenDifficulty(body.difficulty, target.difficulty);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "enabled")) {
+      target.enabled = Boolean(body.enabled);
+    }
+    target.updatedAt = storeHelpers.nowIso();
+    appendAudit("heart_open_word_update", user.userId, {
+      wordId: target.id,
+      word: target.word,
+      difficulty: target.difficulty,
+      enabled: target.enabled,
+    });
+    return ok({
+      item: toHeartOpenWordPayload(target),
+    });
+  }
+
+  const adminHeartOpenWordDeleteMatch = path.match(/^admin\/party-games\/heart-open\/word-bank\/([^/]+)\/delete$/);
+  if (method === "POST" && adminHeartOpenWordDeleteMatch) {
+    const { user } = requireAdmin(event);
+    const wordId = decodeURIComponent(adminHeartOpenWordDeleteMatch[1]);
+    const target = store.partyGameHeartOpenWords.find((item) => item.id === wordId) || null;
+    if (!target) {
+      return toApiError(404, "HEART_OPEN_WORD_NOT_FOUND", "词条不存在");
+    }
+    store.partyGameHeartOpenWords = store.partyGameHeartOpenWords.filter((item) => item.id !== wordId);
+    appendAudit("heart_open_word_delete", user.userId, {
+      wordId,
+      word: target.word,
+    });
+    return ok({
+      deleted: true,
+      wordId,
+    });
+  }
+
   if (method === "GET" && path === "admin/users") {
     requireAdmin(event);
     const { limit, offset } = parsePagination(query as Record<string, unknown>);
-    const items = store.users.slice(offset, offset + limit).map((item) => ({
+    const includeGhost = String(query.includeGhost || "").toLowerCase() === "true";
+    const visibleUsers = includeGhost
+      ? [...store.users]
+      : store.users.filter((item) => !isGhostUserRecord(item, store.scheduleSubscriptions));
+    const items = visibleUsers.slice(offset, offset + limit).map((item) => ({
       ...toUserPayload(item),
       classCount: item.classIds.length,
       subscriptionCount: store.scheduleSubscriptions.filter((sub) => sub.subscriberUserId === item.userId).length,
     }));
     return ok({
       items,
-      total: store.users.length,
+      total: visibleUsers.length,
       limit,
       offset,
     });
@@ -1856,6 +2158,39 @@ export const handleV1Api = async (event: H3Event) => {
         subscriptionCount: store.scheduleSubscriptions.filter((sub) => sub.subscriberUserId === target.userId).length,
       },
     });
+  }
+
+  if (method === "POST" && path === "admin/schedule-import/jobs") {
+    const { user } = requireScheduleImportAccess(event);
+    const result = await createScheduleImportJob(event, user.userId);
+    appendAudit("admin_schedule_import_job_create", user.userId, {
+      jobId: result.jobId,
+      totalFiles: result.totalFiles,
+    });
+    return ok(result);
+  }
+
+  if (method === "GET" && path === "admin/schedule-import/jobs") {
+    requireScheduleImportAccess(event);
+    const parsedLimit = Number(query.limit);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(100, Math.trunc(parsedLimit))) : 20;
+    const ids = await listRecentScheduleImportJobIds(event, limit);
+    return ok({
+      items: ids.map((id) => ({ jobId: id })),
+      total: ids.length,
+      limit,
+    });
+  }
+
+  const adminScheduleImportJobMatch = path.match(/^admin\/schedule-import\/jobs\/([^/]+)$/);
+  if (method === "GET" && adminScheduleImportJobMatch) {
+    requireScheduleImportAccess(event);
+    const jobId = decodeURIComponent(adminScheduleImportJobMatch[1]);
+    const status = await getScheduleImportJobStatus(event, jobId);
+    if (!status) {
+      return toApiError(404, "SCHEDULE_IMPORT_JOB_NOT_FOUND", "导入任务不存在");
+    }
+    return ok(status);
   }
 
   if (method === "GET" && path === "classes") {
@@ -3511,9 +3846,13 @@ export const handleV1Api = async (event: H3Event) => {
     const heartbeatToken = asString(getHeader(event, HEARTBEAT_TOKEN_HEADER));
     const configuredHeartbeatToken = asString(config.heartbeatToken);
     const hasBearerAuth = Boolean(getBearerToken(event));
+    const db = resolveReminderDbFromEvent(event);
+    if (!db) {
+      return toApiError(500, "REMINDER_DB_NOT_CONFIGURED", "提醒数据库未配置");
+    }
 
     let caller: "cron" | "admin" = "cron";
-    let actorUserId = resolveHeartbeatActor(store);
+    let actorUserId = store.users.find((item) => item.adminRole === "super_admin")?.userId || store.users[0]?.userId || "system_cron";
     if (configuredHeartbeatToken) {
       if (heartbeatToken === configuredHeartbeatToken) {
         caller = "cron";
@@ -3529,96 +3868,89 @@ export const handleV1Api = async (event: H3Event) => {
       caller = "admin";
       actorUserId = adminContext.user.userId;
     }
-
-    const timezone = asString(body.timezone || config.heartbeatTimezone || HEARTBEAT_DEFAULT_TIMEZONE);
-    const force = body.force === true;
-    const dryRun = body.dryRun === true;
-    const now = body.nowIso ? new Date(body.nowIso) : new Date();
-    if (!Number.isFinite(now.getTime())) {
-      return toApiError(400, "HEARTBEAT_NOW_INVALID", "nowIso 无效");
-    }
-
-    let nowParts: ReturnType<typeof toDateTimeParts>;
+    const timezone = asString(body.timezone || config.heartbeatTimezone || "Asia/Shanghai");
+    let result;
     try {
-      nowParts = toDateTimeParts(now, timezone);
-    } catch (error) {
-      return toApiError(400, "HEARTBEAT_TIMEZONE_INVALID", "timezone 无效");
-    }
-
-    const inWindow = nowParts.hour >= HEARTBEAT_WINDOW_START_HOUR && nowParts.hour <= HEARTBEAT_WINDOW_END_HOUR;
-    const triggerKey = `${nowParts.dateKey}_${normalizeHeartbeatBucket(nowParts.hour, nowParts.minute)}`;
-    if (!force && !inWindow) {
-      return ok({
-        skipped: true,
-        reason: "OUTSIDE_WINDOW",
-        triggerKey,
-        window: `${HEARTBEAT_WINDOW_START_HOUR}:00-${HEARTBEAT_WINDOW_END_HOUR}:59`,
+      result = await runReminderHeartbeat(db, {
+        nowIso: body.nowIso,
         timezone,
-      });
-    }
-    if (!force && hasHeartbeatJobInBucket(store, triggerKey)) {
-      return ok({
-        skipped: true,
-        reason: "DUPLICATE_BUCKET",
-        triggerKey,
-        timezone,
-      });
-    }
-
-    const shouldRunNextDay = body.runNextDay === true || (nowParts.hour === 21 && nowParts.minute < HEARTBEAT_BUCKET_MINUTES);
-    const nextDay = shouldRunNextDay
-      ? collectNextDaySuggestions(store, {
-          targetDate: new Date(now.getTime() + 24 * 60 * 60 * 1000),
-          rainy: body.rainy,
-        })
-      : {
-          userCount: 0,
-          suggestions: [] as BotJobRecord["suggestions"],
-        };
-    const summary = [
-      `triggerKey=${triggerKey}`,
-      `caller=${caller}`,
-      `window=${inWindow ? "in" : "out"}`,
-      `nextDay=${shouldRunNextDay ? "triggered" : "skipped"}`,
-      `users=${nextDay.userCount}`,
-      `dryRun=${dryRun ? "true" : "false"}`,
-    ].join(";");
-    const job: BotJobRecord = {
-      id: storeHelpers.createId("bot_job"),
-      type: "heartbeat_tick",
-      status: "done",
-      createdBy: actorUserId,
-      createdAt: storeHelpers.nowIso(),
-      finishedAt: storeHelpers.nowIso(),
-      summary,
-      suggestions: nextDay.suggestions,
-    };
-
-    if (!dryRun) {
-      store.botJobs.unshift(job);
-      if (store.botJobs.length > 2000) {
-        store.botJobs.length = 2000;
-      }
-      appendAudit("bot_job_heartbeat", actorUserId, {
-        triggerKey,
+        rainy: body.rainy,
+        force: body.force === true,
+        dryRun: body.dryRun === true,
+        runNextDay: body.runNextDay === true,
+        actorUserId,
         caller,
-        timezone,
-        inWindow,
-        shouldRunNextDay,
-        dryRun,
-        userCount: nextDay.userCount,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === "HEARTBEAT_NOW_INVALID") {
+        return toApiError(400, "HEARTBEAT_NOW_INVALID", "nowIso 无效");
+      }
+      throw error;
+    }
+
+    if (!result.dryRun && !result.skipped) {
+      appendAudit("bot_job_heartbeat", actorUserId, {
+        triggerKey: result.triggerKey,
+        caller,
+        timezone: result.timezone,
+        inWindow: result.inWindow,
+        shouldRunNextDay: result.shouldRunNextDay,
+        dryRun: result.dryRun,
+        queuedCounts: result.queuedCounts,
       });
     }
 
     return ok({
-      skipped: false,
-      triggerKey,
-      timezone,
-      inWindow,
-      shouldRunNextDay,
-      dryRun,
-      job,
+      ...result,
+      window: "08:00-23:59",
     });
+  }
+
+  if (method === "GET" && path === "bot/deliveries/pending") {
+    const config = useRuntimeConfig(event) as Record<string, unknown>;
+    const configuredToken = asString(config.botDeliveryToken);
+    if (!configuredToken) {
+      return toApiError(503, "BOT_DELIVERY_TOKEN_NOT_CONFIGURED", "机器人投递 token 未配置");
+    }
+    if (!requireBotDeliveryToken(event, configuredToken)) {
+      return toApiError(401, "BOT_DELIVERY_TOKEN_INVALID", `${getBotDeliveryTokenHeader()} 无效`);
+    }
+    const db = resolveReminderDbFromEvent(event);
+    if (!db) {
+      return toApiError(500, "REMINDER_DB_NOT_CONFIGURED", "提醒数据库未配置");
+    }
+    const parsedLimit = Number(query.limit);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(100, Math.trunc(parsedLimit))) : 20;
+    const items = await pullPendingReminderDeliveries(db, { limit });
+    return ok({ items, total: items.length, limit });
+  }
+
+  const botDeliveryAckMatch = path.match(/^bot\/deliveries\/([^/]+)\/ack$/);
+  if (method === "POST" && botDeliveryAckMatch) {
+    const config = useRuntimeConfig(event) as Record<string, unknown>;
+    const configuredToken = asString(config.botDeliveryToken);
+    if (!configuredToken) {
+      return toApiError(503, "BOT_DELIVERY_TOKEN_NOT_CONFIGURED", "机器人投递 token 未配置");
+    }
+    if (!requireBotDeliveryToken(event, configuredToken)) {
+      return toApiError(401, "BOT_DELIVERY_TOKEN_INVALID", `${getBotDeliveryTokenHeader()} 无效`);
+    }
+    const db = resolveReminderDbFromEvent(event);
+    if (!db) {
+      return toApiError(500, "REMINDER_DB_NOT_CONFIGURED", "提醒数据库未配置");
+    }
+    const body = await readJsonBody<{
+      success?: boolean;
+      status?: "sent" | "failed";
+      externalMessageId?: string;
+      errorMessage?: string;
+    }>(event);
+    const deliveryId = decodeURIComponent(botDeliveryAckMatch[1]);
+    const updated = await ackReminderDelivery(db, deliveryId, body);
+    if (!updated) {
+      return toApiError(404, "BOT_DELIVERY_NOT_FOUND", "待发送消息不存在");
+    }
+    return ok({ deliveryId, status: body.status || (body.success === false ? "failed" : "sent") });
   }
 
   if (method === "GET" && path === "bot/jobs/history") {
@@ -3650,7 +3982,7 @@ export const handleV1Api = async (event: H3Event) => {
     return ok({
       studentNo: user.studentNo,
       studentId: user.studentId || "",
-      name: user.name || user.nickname,
+      name: toUserPayload(user).name,
       avatarUrl: user.avatarUrl,
       wallpaperUrl: user.wallpaperUrl,
       classLabel: user.classLabel || "",

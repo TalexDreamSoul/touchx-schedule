@@ -11,7 +11,7 @@
     "build": "nuxt build",
     "preview": "nuxt preview --host=0.0.0.0 --port=9986",
     "deploy": "nuxt build && wrangler --cwd .output deploy --domains schedule-backend.tagzxia.com --keep-vars",
-    "type-check": "nuxt typecheck",
+    "type-check": "nuxt prepare && tsc -p .nuxt/tsconfig.json --noEmit",
     "smoke:local": "bash ./scripts/smoke-local.sh",
     "sync:legacy": "node ./scripts/sync-legacy-normalized.mjs"
   },
