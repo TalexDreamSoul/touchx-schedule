@@ -493,6 +493,8 @@
               <h2>食物与价格规则编辑</h2>
               <div class="panel-tags">
                 <span class="panel-tag">食物 {{ foodItemsData.length }}</span>
+                <span class="panel-tag">候选 {{ foodCandidateAllItems.length }}</span>
+                <span class="panel-tag">待审核 {{ pendingFoodCandidateCount }}</span>
                 <span class="panel-tag">分类 {{ foodCategoryStats.length }}</span>
                 <span class="panel-tag">零热量 {{ foodCategoryStatsOverview.zeroCaloriesCount }}</span>
                 <span class="panel-tag">规则 {{ foodRules.length }}</span>
@@ -542,6 +544,167 @@
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            <div class="layout-2col candidate-review-layout">
+              <div class="table-wrap">
+                <h3 class="sub-title">候选审核列表</h3>
+                <div class="candidate-toolbar">
+                  <label>
+                    状态
+                    <select v-model="foodCandidateQueryForm.status">
+                      <option v-for="item in foodCandidateStatusOptions" :key="`candidate-status-${item.value}`" :value="item.value">
+                        {{ item.label }}
+                      </option>
+                    </select>
+                  </label>
+                  <label class="candidate-toolbar-keyword">
+                    关键词
+                    <input v-model.trim="foodCandidateQueryForm.keyword" placeholder="店名 / 原始文案 / 备注" />
+                  </label>
+                  <div class="candidate-toolbar-actions">
+                    <button class="btn" type="button" @click="resetFoodCandidateFilter">重置</button>
+                    <button class="btn primary" type="button" @click="applyFoodCandidateFilter">筛选候选</button>
+                  </div>
+                </div>
+                <div class="candidate-inline-hint">
+                  当前筛选：{{ foodCandidateFilterApplied ? "已自定义" : "默认只看待审核" }}，命中 {{ filteredFoodCandidateItems.length }} 条
+                </div>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>店铺</th>
+                      <th>分类</th>
+                      <th>来源</th>
+                      <th>状态</th>
+                      <th>提交人</th>
+                      <th>凭证</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="filteredFoodCandidateItems.length <= 0">
+                      <td colspan="7">暂无候选记录</td>
+                    </tr>
+                    <template v-else>
+                      <tr
+                        v-for="item in filteredFoodCandidateItems"
+                        :key="item.foodKey"
+                        :class="{ 'table-row-active': item.foodKey === foodCandidateReviewForm.foodKey }"
+                      >
+                        <td>
+                          <div class="candidate-primary">{{ item.name || item.foodKey }}</div>
+                          <div class="candidate-secondary" v-if="item.rawTextPreview">{{ item.rawTextPreview }}</div>
+                        </td>
+                        <td>{{ item.categoryName || item.categoryKey }}</td>
+                        <td>{{ formatFoodCandidateSourceLabel(item.submissionMode) }}</td>
+                        <td>
+                          <span :class="foodCandidateStatusClass(item.candidateStatus)">
+                            {{ formatFoodCandidateStatusLabel(item.candidateStatus) }}
+                          </span>
+                        </td>
+                        <td>{{ item.createdByStudentId || "-" }}</td>
+                        <td>{{ item.evidenceUrls.length }}</td>
+                        <td><button class="btn" type="button" @click="selectFoodCandidate(item)">审核</button></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="table-wrap">
+                <h3 class="sub-title">候选审核详情</h3>
+                <div v-if="foodCandidateReviewForm.foodKey" class="candidate-detail-card">
+                  <div class="candidate-detail-head">
+                    <div>
+                      <div class="candidate-detail-title">{{ foodCandidateReviewForm.name || foodCandidateReviewForm.foodKey }}</div>
+                      <div class="candidate-secondary">候选ID：{{ foodCandidateReviewForm.foodKey }}</div>
+                    </div>
+                    <span :class="foodCandidateStatusClass(foodCandidateReviewForm.candidateStatus)">
+                      {{ formatFoodCandidateStatusLabel(foodCandidateReviewForm.candidateStatus) }}
+                    </span>
+                  </div>
+
+                  <div class="candidate-meta-grid">
+                    <div class="candidate-meta-item">
+                      <span>提交来源</span>
+                      <strong>{{ formatFoodCandidateSourceLabel(foodCandidateReviewForm.submissionMode) }}</strong>
+                    </div>
+                    <div class="candidate-meta-item">
+                      <span>提交人</span>
+                      <strong>{{ foodCandidateReviewForm.createdByStudentId || "-" }}</strong>
+                    </div>
+                    <div class="candidate-meta-item">
+                      <span>主库关联</span>
+                      <strong>{{ foodCandidateReviewForm.sourceFoodId || "未关联" }}</strong>
+                    </div>
+                    <div class="candidate-meta-item">
+                      <span>热量标记</span>
+                      <strong>{{ foodCandidateReviewForm.isCaloriesEstimated ? "估算值" : "明确值" }}</strong>
+                    </div>
+                  </div>
+
+                  <div v-if="foodCandidateReviewForm.rawTextPreview || foodCandidateReviewForm.rawText" class="candidate-note-block">
+                    <div class="candidate-note-title">原始文案</div>
+                    <pre class="candidate-note-text">{{ foodCandidateReviewForm.rawText || foodCandidateReviewForm.rawTextPreview }}</pre>
+                  </div>
+
+                  <div v-if="foodCandidateReviewForm.evidenceUrls.length > 0" class="candidate-note-block">
+                    <div class="candidate-note-title">凭证截图</div>
+                    <div class="candidate-link-list">
+                      <a
+                        v-for="(url, index) in foodCandidateReviewForm.evidenceUrls"
+                        :key="`candidate-evidence-${index}`"
+                        :href="url"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="candidate-link-chip"
+                      >
+                        查看截图 {{ index + 1 }}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div v-if="foodCandidateReviewForm.extractionWarnings.length > 0" class="candidate-note-block warning">
+                    <div class="candidate-note-title">抽取提示</div>
+                    <ul class="candidate-warning-list">
+                      <li v-for="warning in foodCandidateReviewForm.extractionWarnings" :key="warning">{{ warning }}</li>
+                    </ul>
+                  </div>
+
+                  <form class="form-grid compact candidate-form" @submit.prevent="reviewFoodCandidate('approve')">
+                    <label>店铺名称 <input v-model.trim="foodCandidateReviewForm.name" /></label>
+                    <label>分类键 <input v-model.trim="foodCandidateReviewForm.categoryKey" /></label>
+                    <label>分类名 <input v-model.trim="foodCandidateReviewForm.categoryName" /></label>
+                    <label>品牌键 <input v-model.trim="foodCandidateReviewForm.brandKey" /></label>
+                    <label>品牌名 <input v-model.trim="foodCandidateReviewForm.brandName" /></label>
+                    <label>热销搭配 <input v-model.trim="foodCandidateReviewForm.brandCombo" /></label>
+                    <label>日常最低价 <input v-model.number="foodCandidateReviewForm.dailyPriceMin" type="number" min="0" step="0.1" /></label>
+                    <label>日常最高价 <input v-model.number="foodCandidateReviewForm.dailyPriceMax" type="number" min="0" step="0.1" /></label>
+                    <label>聚会最低价 <input v-model.number="foodCandidateReviewForm.partyPriceMin" type="number" min="0" step="0.1" /></label>
+                    <label>聚会最高价 <input v-model.number="foodCandidateReviewForm.partyPriceMax" type="number" min="0" step="0.1" /></label>
+                    <label>距离 km <input v-model.number="foodCandidateReviewForm.distanceKm" type="number" min="0" step="0.1" /></label>
+                    <label>热量 kcal <input v-model.number="foodCandidateReviewForm.caloriesKcal" type="number" min="0" step="1" /></label>
+                    <label>原始文案 <textarea v-model.trim="foodCandidateReviewForm.rawText" rows="5" /></label>
+                    <label>备注 <textarea v-model.trim="foodCandidateReviewForm.note" rows="3" /></label>
+                    <label>审核备注 <textarea v-model.trim="foodCandidateReviewForm.reviewNote" rows="3" placeholder="通过/拒绝原因会回写给候选记录" /></label>
+                    <div class="modal-form-actions">
+                      <button
+                        class="btn danger"
+                        type="button"
+                        :disabled="foodCandidateReviewForm.candidateStatus === 'approved'"
+                        @click="reviewFoodCandidate('reject')"
+                      >
+                        拒绝候选
+                      </button>
+                      <button class="btn primary" type="submit">
+                        {{ selectedFoodCandidateActionLabel }}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+                <div v-else class="candidate-empty-state">请选择一条候选记录开始审核。</div>
+              </div>
             </div>
 
             <div class="table-wrap">
@@ -1933,6 +2096,129 @@ const crudModalCardClass = computed(() => {
   return "";
 });
 
+const foodCandidateStatusOptions = [
+  { value: "pending_review", label: "待审核" },
+  { value: "approved", label: "已通过" },
+  { value: "rejected", label: "已拒绝" },
+  { value: "pending_eat", label: "待体验" },
+  { value: "all", label: "全部" },
+] as const;
+
+const normalizeStringList = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((item) => String(item || "").trim()).filter((item) => item);
+};
+
+const normalizeFoodCandidateItem = (item: any) => {
+  return {
+    ...item,
+    foodKey: String(item?.foodKey || "").trim(),
+    sourceFoodId: String(item?.sourceFoodId || "").trim(),
+    name: String(item?.name || "").trim(),
+    categoryKey: String(item?.categoryKey || "").trim(),
+    categoryName: String(item?.categoryName || "").trim(),
+    brandKey: String(item?.brandKey || "").trim(),
+    brandName: String(item?.brandName || "").trim(),
+    brandCombo: String(item?.brandCombo || "").trim(),
+    candidateStatus: String(item?.candidateStatus || "").trim(),
+    submissionMode: String(item?.submissionMode || "").trim().toLowerCase() === "raw_text" ? "raw_text" : "structured",
+    createdByStudentId: String(item?.createdByStudentId || "").trim(),
+    note: String(item?.note || "").trim(),
+    reviewNote: String(item?.reviewNote || "").trim(),
+    rawText: String(item?.rawText || "").trim(),
+    rawTextPreview: String(item?.rawTextPreview || "").trim(),
+    dailyPriceMin: Number(item?.dailyPriceMin || 0),
+    dailyPriceMax: Number(item?.dailyPriceMax || 0),
+    partyPriceMin: Number(item?.partyPriceMin || 0),
+    partyPriceMax: Number(item?.partyPriceMax || 0),
+    distanceKm: Number(item?.distanceKm || 0),
+    caloriesKcal: Number(item?.caloriesKcal || 0),
+    evidenceUrls: normalizeStringList(item?.evidenceUrls),
+    extractionWarnings: normalizeStringList(item?.extractionWarnings),
+    isCaloriesEstimated: Boolean(item?.isCaloriesEstimated),
+  };
+};
+
+const formatFoodCandidateStatusLabel = (status: unknown) => {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "approved") {
+    return "已通过";
+  }
+  if (value === "pending_eat") {
+    return "待体验";
+  }
+  if (value === "pending_review") {
+    return "待审核";
+  }
+  if (value === "rejected") {
+    return "已拒绝";
+  }
+  return value || "未标记";
+};
+
+const formatFoodCandidateSourceLabel = (mode: unknown) => {
+  return String(mode || "").trim().toLowerCase() === "raw_text" ? "文案抽取" : "手动填写";
+};
+
+const foodCandidateStatusClass = (status: unknown) => {
+  const value = String(status || "").trim().toLowerCase();
+  if (value === "approved") {
+    return "status-pill approved";
+  }
+  if (value === "pending_eat") {
+    return "status-pill pending";
+  }
+  if (value === "pending_review") {
+    return "status-pill review";
+  }
+  if (value === "rejected") {
+    return "status-pill rejected";
+  }
+  return "status-pill";
+};
+
+const foodCandidateFilterApplied = computed(() => {
+  return foodCandidateAppliedQuery.status !== "pending_review" || Boolean(foodCandidateAppliedQuery.keyword.trim());
+});
+
+const filteredFoodCandidateItems = computed(() => {
+  const status = foodCandidateAppliedQuery.status.trim().toLowerCase();
+  const keyword = foodCandidateAppliedQuery.keyword.trim().toLowerCase();
+  return foodCandidateAllItems.value.filter((item) => {
+    const matchesStatus = !status || status === "all" || String(item?.candidateStatus || "").trim().toLowerCase() === status;
+    if (!matchesStatus) {
+      return false;
+    }
+    if (!keyword) {
+      return true;
+    }
+    const bag = [
+      item?.name,
+      item?.categoryName,
+      item?.categoryKey,
+      item?.brandName,
+      item?.brandKey,
+      item?.note,
+      item?.rawText,
+      item?.rawTextPreview,
+      item?.reviewNote,
+    ]
+      .map((entry) => String(entry || "").toLowerCase())
+      .join(" ");
+    return bag.includes(keyword);
+  });
+});
+
+const pendingFoodCandidateCount = computed(() => {
+  return foodCandidateAllItems.value.filter((item) => String(item?.candidateStatus || "").trim() === "pending_review").length;
+});
+
+const selectedFoodCandidateActionLabel = computed(() => {
+  return foodCandidateReviewForm.candidateStatus === "approved" ? "更新并同步主食物库" : "审核通过";
+});
+
 const activeModuleStats = computed(() => {
   switch (activeModuleKey.value) {
     case "overview":
@@ -1965,6 +2251,8 @@ const activeModuleStats = computed(() => {
     case "foods":
       return [
         `食物 ${foodItemsData.value.length}`,
+        `候选 ${foodCandidateAllItems.value.length}`,
+        `待审 ${pendingFoodCandidateCount.value}`,
         `分类 ${foodCategoryStats.value.length}`,
         `零热量 ${foodCategoryStatsOverview.value.zeroCaloriesCount}`,
         `规则 ${foodRules.value.length}`,
@@ -2107,6 +2395,7 @@ const scheduleImportJobList = ref<any[]>([]);
 const scheduleImportCurrentJob = ref<any | null>(null);
 const scheduleImportCurrentJobId = ref("");
 const foodItemsData = ref<any[]>([]);
+const foodCandidateAllItems = ref<any[]>([]);
 const foodCategoryStats = ref<any[]>([]);
 const foodRules = ref<any[]>([]);
 const foodRuleHistory = ref<any[]>([]);
@@ -2251,6 +2540,43 @@ const foodItemEditForm = reactive({
 const foodQueryForm = reactive({
   categoryKey: "",
   keyword: "",
+});
+
+const foodCandidateQueryForm = reactive({
+  status: "pending_review",
+  keyword: "",
+});
+
+const foodCandidateAppliedQuery = reactive({
+  status: "pending_review",
+  keyword: "",
+});
+
+const foodCandidateReviewForm = reactive({
+  foodKey: "",
+  sourceFoodId: "",
+  candidateStatus: "",
+  submissionMode: "structured",
+  createdByStudentId: "",
+  name: "",
+  categoryKey: "",
+  categoryName: "",
+  brandKey: "",
+  brandName: "",
+  brandCombo: "",
+  dailyPriceMin: 0,
+  dailyPriceMax: 0,
+  partyPriceMin: 0,
+  partyPriceMax: 0,
+  distanceKm: 0,
+  caloriesKcal: 0,
+  note: "",
+  reviewNote: "",
+  rawText: "",
+  rawTextPreview: "",
+  evidenceUrls: [] as string[],
+  extractionWarnings: [] as string[],
+  isCaloriesEstimated: false,
 });
 
 const heartOpenWordQueryForm = reactive({
@@ -3407,6 +3733,75 @@ const normalizeFoodEditPriceRange = () => {
   foodItemEditForm.basePriceMax = maxValue;
 };
 
+const resetFoodCandidateReviewForm = () => {
+  foodCandidateReviewForm.foodKey = "";
+  foodCandidateReviewForm.sourceFoodId = "";
+  foodCandidateReviewForm.candidateStatus = "";
+  foodCandidateReviewForm.submissionMode = "structured";
+  foodCandidateReviewForm.createdByStudentId = "";
+  foodCandidateReviewForm.name = "";
+  foodCandidateReviewForm.categoryKey = "";
+  foodCandidateReviewForm.categoryName = "";
+  foodCandidateReviewForm.brandKey = "";
+  foodCandidateReviewForm.brandName = "";
+  foodCandidateReviewForm.brandCombo = "";
+  foodCandidateReviewForm.dailyPriceMin = 0;
+  foodCandidateReviewForm.dailyPriceMax = 0;
+  foodCandidateReviewForm.partyPriceMin = 0;
+  foodCandidateReviewForm.partyPriceMax = 0;
+  foodCandidateReviewForm.distanceKm = 0;
+  foodCandidateReviewForm.caloriesKcal = 0;
+  foodCandidateReviewForm.note = "";
+  foodCandidateReviewForm.reviewNote = "";
+  foodCandidateReviewForm.rawText = "";
+  foodCandidateReviewForm.rawTextPreview = "";
+  foodCandidateReviewForm.evidenceUrls = [];
+  foodCandidateReviewForm.extractionWarnings = [];
+  foodCandidateReviewForm.isCaloriesEstimated = false;
+};
+
+const selectFoodCandidate = (item: any) => {
+  const normalized = normalizeFoodCandidateItem(item);
+  foodCandidateReviewForm.foodKey = normalized.foodKey;
+  foodCandidateReviewForm.sourceFoodId = normalized.sourceFoodId;
+  foodCandidateReviewForm.candidateStatus = normalized.candidateStatus;
+  foodCandidateReviewForm.submissionMode = normalized.submissionMode;
+  foodCandidateReviewForm.createdByStudentId = normalized.createdByStudentId;
+  foodCandidateReviewForm.name = normalized.name;
+  foodCandidateReviewForm.categoryKey = normalized.categoryKey;
+  foodCandidateReviewForm.categoryName = normalized.categoryName;
+  foodCandidateReviewForm.brandKey = normalized.brandKey;
+  foodCandidateReviewForm.brandName = normalized.brandName;
+  foodCandidateReviewForm.brandCombo = normalized.brandCombo;
+  foodCandidateReviewForm.dailyPriceMin = normalized.dailyPriceMin;
+  foodCandidateReviewForm.dailyPriceMax = normalized.dailyPriceMax;
+  foodCandidateReviewForm.partyPriceMin = normalized.partyPriceMin;
+  foodCandidateReviewForm.partyPriceMax = normalized.partyPriceMax;
+  foodCandidateReviewForm.distanceKm = normalized.distanceKm;
+  foodCandidateReviewForm.caloriesKcal = normalized.caloriesKcal;
+  foodCandidateReviewForm.note = normalized.note;
+  foodCandidateReviewForm.reviewNote = normalized.reviewNote;
+  foodCandidateReviewForm.rawText = normalized.rawText;
+  foodCandidateReviewForm.rawTextPreview = normalized.rawTextPreview;
+  foodCandidateReviewForm.evidenceUrls = [...normalized.evidenceUrls];
+  foodCandidateReviewForm.extractionWarnings = [...normalized.extractionWarnings];
+  foodCandidateReviewForm.isCaloriesEstimated = normalized.isCaloriesEstimated;
+};
+
+const syncFoodCandidateSelection = () => {
+  if (filteredFoodCandidateItems.value.length <= 0) {
+    resetFoodCandidateReviewForm();
+    return;
+  }
+  const current = filteredFoodCandidateItems.value.find((item) => String(item?.foodKey || "") === foodCandidateReviewForm.foodKey) || null;
+  if (current) {
+    selectFoodCandidate(current);
+    return;
+  }
+  const firstPending = filteredFoodCandidateItems.value.find((item) => String(item?.candidateStatus || "") === "pending_review") || null;
+  selectFoodCandidate(firstPending || filteredFoodCandidateItems.value[0]);
+};
+
 const loadFoods = async () => {
   const foodParams = new URLSearchParams();
   if (foodQueryForm.categoryKey.trim()) {
@@ -3416,18 +3811,24 @@ const loadFoods = async () => {
     foodParams.set("keyword", foodQueryForm.keyword.trim());
   }
   const foodQuery = foodParams.toString();
-  const [foods, stats, rules, history, campaigns] = await Promise.all([
+  const candidateParams = new URLSearchParams();
+  candidateParams.set("status", "all");
+  const candidateQuery = candidateParams.toString();
+  const [foods, candidates, stats, rules, history, campaigns] = await Promise.all([
     apiRequest<any>(`/api/v1/admin/foods${foodQuery ? `?${foodQuery}` : ""}`),
+    apiRequest<any>(`/api/v1/admin/food-candidates${candidateQuery ? `?${candidateQuery}` : ""}`),
     apiRequest<any>(`/api/v1/admin/foods/category-stats${foodQuery ? `?${foodQuery}` : ""}`),
     apiRequest<any>("/api/v1/admin/food-pricing-rules"),
     apiRequest<any>("/api/v1/admin/food-pricing-rules/history"),
     apiRequest<any>("/api/v1/admin/food-campaigns"),
   ]);
   foodItemsData.value = foods.items || [];
+  foodCandidateAllItems.value = Array.isArray(candidates.items) ? candidates.items.map((item: any) => normalizeFoodCandidateItem(item)) : [];
   foodCategoryStats.value = stats.items || [];
   foodRules.value = rules.items || [];
   foodRuleHistory.value = history.items || [];
   campaignList.value = campaigns.items || [];
+  syncFoodCandidateSelection();
   if (foodItemsData.value.length > 0) {
     const current = foodItemsData.value.find((item) => String(item.foodId || "") === foodItemEditForm.foodId) || null;
     if (current) {
@@ -3448,6 +3849,81 @@ const loadFoods = async () => {
   if (!foodCaloriesBatchForm.categoryKey && foodCategoryOptions.value.length > 0) {
     foodCaloriesBatchForm.categoryKey = String(foodCategoryOptions.value[0].value || "");
   }
+};
+
+const applyFoodCandidateFilter = async () => {
+  foodCandidateAppliedQuery.status = foodCandidateQueryForm.status.trim() || "pending_review";
+  foodCandidateAppliedQuery.keyword = foodCandidateQueryForm.keyword.trim();
+  await runWithLoading(async () => {
+    await loadFoods();
+    syncFoodCandidateSelection();
+    setSuccess("候选筛选已生效");
+  });
+};
+
+const resetFoodCandidateFilter = async () => {
+  foodCandidateQueryForm.status = "pending_review";
+  foodCandidateQueryForm.keyword = "";
+  foodCandidateAppliedQuery.status = "pending_review";
+  foodCandidateAppliedQuery.keyword = "";
+  await runWithLoading(async () => {
+    await loadFoods();
+    syncFoodCandidateSelection();
+    setSuccess("已重置候选筛选");
+  });
+};
+
+const reviewFoodCandidate = async (action: "approve" | "reject") => {
+  await runWithLoading(async () => {
+    if (!foodCandidateReviewForm.foodKey) {
+      throw new Error("请先选择候选食物");
+    }
+    if (action === "approve") {
+      foodCandidateReviewForm.name = foodCandidateReviewForm.name.trim();
+      foodCandidateReviewForm.categoryKey = foodCandidateReviewForm.categoryKey.trim().toLowerCase();
+      foodCandidateReviewForm.categoryName = foodCandidateReviewForm.categoryName.trim();
+      foodCandidateReviewForm.brandKey = foodCandidateReviewForm.brandKey.trim();
+      foodCandidateReviewForm.brandName = foodCandidateReviewForm.brandName.trim();
+      foodCandidateReviewForm.brandCombo = foodCandidateReviewForm.brandCombo.trim();
+      foodCandidateReviewForm.note = foodCandidateReviewForm.note.trim();
+      foodCandidateReviewForm.reviewNote = foodCandidateReviewForm.reviewNote.trim();
+      foodCandidateReviewForm.rawText = foodCandidateReviewForm.rawText.trim();
+      if (!foodCandidateReviewForm.name) {
+        throw new Error("审核通过前必须填写店铺名称");
+      }
+      if (!foodCandidateReviewForm.categoryKey) {
+        throw new Error("审核通过前必须填写分类键");
+      }
+      foodCandidateReviewForm.dailyPriceMin = Math.max(0, Number(foodCandidateReviewForm.dailyPriceMin || 0));
+      foodCandidateReviewForm.dailyPriceMax = Math.max(foodCandidateReviewForm.dailyPriceMin, Number(foodCandidateReviewForm.dailyPriceMax || 0));
+      foodCandidateReviewForm.partyPriceMin = Math.max(0, Number(foodCandidateReviewForm.partyPriceMin || 0));
+      foodCandidateReviewForm.partyPriceMax = Math.max(foodCandidateReviewForm.partyPriceMin, Number(foodCandidateReviewForm.partyPriceMax || 0));
+      foodCandidateReviewForm.distanceKm = Math.max(0, Number(foodCandidateReviewForm.distanceKm || 0));
+      foodCandidateReviewForm.caloriesKcal = Math.max(0, Number(foodCandidateReviewForm.caloriesKcal || 0));
+    } else {
+      foodCandidateReviewForm.reviewNote = foodCandidateReviewForm.reviewNote.trim();
+    }
+    await apiRequest(`/api/v1/admin/food-candidates/${encodeURIComponent(foodCandidateReviewForm.foodKey)}/review`, "POST", {
+      action,
+      name: action === "approve" ? foodCandidateReviewForm.name : undefined,
+      categoryKey: action === "approve" ? foodCandidateReviewForm.categoryKey : undefined,
+      categoryName: action === "approve" ? foodCandidateReviewForm.categoryName || undefined : undefined,
+      brandKey: action === "approve" ? foodCandidateReviewForm.brandKey || undefined : undefined,
+      brandName: action === "approve" ? foodCandidateReviewForm.brandName || undefined : undefined,
+      brandCombo: action === "approve" ? foodCandidateReviewForm.brandCombo || undefined : undefined,
+      dailyPriceMin: action === "approve" ? Number(foodCandidateReviewForm.dailyPriceMin || 0) : undefined,
+      dailyPriceMax: action === "approve" ? Number(foodCandidateReviewForm.dailyPriceMax || 0) : undefined,
+      partyPriceMin: action === "approve" ? Number(foodCandidateReviewForm.partyPriceMin || 0) : undefined,
+      partyPriceMax: action === "approve" ? Number(foodCandidateReviewForm.partyPriceMax || 0) : undefined,
+      distanceKm: action === "approve" ? Number(foodCandidateReviewForm.distanceKm || 0) : undefined,
+      caloriesKcal: action === "approve" ? Number(foodCandidateReviewForm.caloriesKcal || 0) : undefined,
+      note: action === "approve" ? foodCandidateReviewForm.note || undefined : undefined,
+      rawText: action === "approve" ? foodCandidateReviewForm.rawText || undefined : undefined,
+      reviewNote: foodCandidateReviewForm.reviewNote || undefined,
+    });
+    await loadFoods();
+    setSuccess(action === "approve" ? "候选已审核通过" : "候选已拒绝");
+  });
 };
 
 const applyFoodFilter = async () => {
@@ -4484,6 +4960,197 @@ onBeforeUnmount(() => {
   background: var(--surface);
 }
 
+.table-row-active td {
+  background: color-mix(in srgb, var(--active-bg) 10%, var(--surface));
+}
+
+.candidate-review-layout {
+  align-items: start;
+}
+
+.candidate-toolbar {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.candidate-toolbar label {
+  display: grid;
+  gap: 0.125rem;
+  font-size: 0.6875rem;
+  color: var(--text-muted-strong);
+}
+
+.candidate-toolbar-keyword {
+  min-width: 0;
+}
+
+.candidate-toolbar-actions {
+  display: flex;
+  align-items: end;
+  gap: 0.375rem;
+}
+
+.candidate-inline-hint {
+  margin-bottom: 0.5rem;
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
+
+.candidate-primary {
+  font-weight: 600;
+}
+
+.candidate-secondary {
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999rem;
+  padding: 0.125rem 0.4375rem;
+  font-size: 0.625rem;
+  line-height: 1.1;
+  border: 0.0625rem solid var(--line);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+
+.status-pill.review {
+  border-color: color-mix(in srgb, var(--active-bg) 30%, var(--line));
+  color: color-mix(in srgb, var(--active-bg) 78%, var(--text));
+  background: color-mix(in srgb, var(--active-bg) 12%, transparent);
+}
+
+.status-pill.approved {
+  border-color: color-mix(in srgb, #22c55e 34%, var(--line));
+  color: #16a34a;
+  background: color-mix(in srgb, #22c55e 12%, transparent);
+}
+
+.status-pill.pending {
+  border-color: color-mix(in srgb, #f59e0b 34%, var(--line));
+  color: #d97706;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
+.status-pill.rejected {
+  border-color: color-mix(in srgb, #ef4444 34%, var(--line));
+  color: #dc2626;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+}
+
+.candidate-detail-card {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.candidate-detail-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.candidate-detail-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.candidate-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.candidate-meta-item {
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  background: color-mix(in srgb, var(--panel) 72%, var(--surface));
+  display: grid;
+  gap: 0.125rem;
+}
+
+.candidate-meta-item span {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
+
+.candidate-meta-item strong {
+  font-size: 0.6875rem;
+  word-break: break-all;
+}
+
+.candidate-note-block {
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  background: color-mix(in srgb, var(--panel) 68%, var(--surface));
+}
+
+.candidate-note-block.warning {
+  border-color: color-mix(in srgb, var(--warn) 30%, var(--line));
+  background: color-mix(in srgb, var(--warn) 10%, var(--surface));
+}
+
+.candidate-note-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  margin-bottom: 0.375rem;
+}
+
+.candidate-note-text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-size: 0.6875rem;
+}
+
+.candidate-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.candidate-link-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999rem;
+  padding: 0.25rem 0.5rem;
+  border: 0.0625rem solid color-mix(in srgb, var(--active-bg) 35%, var(--line));
+  color: color-mix(in srgb, var(--active-bg) 78%, var(--text));
+  text-decoration: none;
+  background: color-mix(in srgb, var(--active-bg) 10%, transparent);
+  font-size: 0.625rem;
+}
+
+.candidate-warning-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.6875rem;
+}
+
+.candidate-form {
+  margin: 0;
+}
+
+.candidate-empty-state {
+  border: 0.0625rem dashed var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
 .stats-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4792,6 +5459,18 @@ textarea {
 
   .panel-tags {
     justify-content: flex-start;
+  }
+
+  .candidate-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-toolbar-actions {
+    align-items: stretch;
+  }
+
+  .candidate-meta-grid {
+    grid-template-columns: 1fr;
   }
 }
 
