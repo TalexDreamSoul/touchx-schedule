@@ -13,6 +13,11 @@
       :is-current-user-admin="isCurrentUserAdmin"
       :open-profile-account-page="openProfileAccountPage"
       :open-profile-subscribe-page="openProfileSubscribePage"
+      :open-profile-activities-page="openProfileActivitiesPage"
+      :open-profile-ai-assistant-page="openProfileAiAssistantPage"
+      :open-profile-exam-companion-page="openProfileExamCompanionPage"
+      :open-profile-free-heatmap-page="openProfileFreeHeatmapPage"
+      :open-profile-schedule-import-page="openProfileScheduleImportPage"
       :open-profile-preferences-page="openProfilePreferencesPage"
     />
   </view>
@@ -33,6 +38,11 @@ defineProps<{
   openAuthModal: () => void;
   openProfileAccountPage: () => void;
   openProfileSubscribePage: () => void;
+  openProfileActivitiesPage: () => void;
+  openProfileAiAssistantPage: () => void;
+  openProfileExamCompanionPage: () => void;
+  openProfileFreeHeatmapPage: () => void;
+  openProfileScheduleImportPage: () => void;
   openProfilePreferencesPage: () => void;
 }>();
 </script>

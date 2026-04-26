@@ -2,7 +2,7 @@
   <PageViewContainer title="通知与订阅">
       <template v-if="!isBound">
         <view class="card">
-          <view class="sub">除管理员外，订阅他人课表需输入对方个人页中的 4 位验证码。</view>
+          <view class="sub">订阅他人课表会先发送请求，对方可选择仅忙闲或详细日程。</view>
         </view>
         <view class="card">
           <view class="empty">请先在“账号与授权”页面绑定一个课表账号。</view>
@@ -12,7 +12,7 @@
 
       <template v-else>
         <view class="card">
-          <view class="sub">除管理员外，订阅他人课表需输入对方个人页中的 4 位验证码。</view>
+          <view class="sub">订阅他人课表会先发送请求，对方同意后才会出现在共同空闲里。</view>
         </view>
 
         <view class="card">
@@ -21,10 +21,18 @@
               <view class="mini-key">我的订阅</view>
               <view class="mini-value">{{ subscriptions.length }} 人</view>
             </view>
-          <view class="mini-item">
-            <view class="mini-key">我的验证码</view>
-            <view class="mini-value code">{{ dashboard?.me?.randomCode || "----" }}</view>
-          </view>
+            <view class="mini-item">
+              <view class="mini-key">我的验证码</view>
+              <view class="mini-value code">{{ dashboard?.me?.randomCode || "----" }}</view>
+            </view>
+            <view class="mini-item">
+              <view class="mini-key">未读通知</view>
+              <view class="mini-value">{{ dashboard?.unreadNotificationCount || 0 }} 条</view>
+            </view>
+            <view class="mini-item">
+              <view class="mini-key">我的圈子</view>
+              <view class="mini-value">{{ dashboard?.circles?.length || 0 }} 个</view>
+            </view>
         </view>
         <view class="my-line">
             <image
@@ -40,6 +48,64 @@
               <view class="sub-meta">{{ dashboard?.me?.classLabel ? `班级：${dashboard?.me?.classLabel}` : "班级未设置" }}</view>
               <view class="sub-meta">{{ dashboard?.me?.studentNo ? `学号：${dashboard?.me?.studentNo}` : "学号未同步" }}</view>
             </view>
+          </view>
+        </view>
+
+        <view class="card">
+          <view class="section-head">
+            <view>
+              <view class="title small">通知（{{ notifications.length }}）</view>
+              <view class="sub">订阅、圈子和组局事件会进入离线通知队列。</view>
+            </view>
+          </view>
+          <view v-if="notifications.length === 0" class="empty">暂无通知</view>
+          <view v-for="item in notifications" :key="item.notificationId" class="sub-item">
+            <view>
+              <view class="sub-name">{{ item.title }}</view>
+              <view class="sub-meta">{{ item.body }}</view>
+            </view>
+            <view v-if="item.status === 'unread'" class="sub-action" @click="markNotificationRead(item.notificationId)">已读</view>
+          </view>
+        </view>
+
+        <view class="card">
+          <view class="section-head">
+            <view>
+              <view class="title small">待处理请求（{{ inboundPendingRequests.length }}）</view>
+              <view class="sub">同意后，对方才能把你加入共同空闲对比。</view>
+            </view>
+          </view>
+          <view v-if="inboundPendingRequests.length === 0" class="empty">暂无待处理订阅请求</view>
+          <view v-for="item in inboundPendingRequests" :key="item.requestId" class="sub-item">
+            <view class="user-line">
+              <view class="avatar placeholder">{{ item.requester?.name?.slice(0, 1) || "同" }}</view>
+              <view>
+                <view class="sub-name">{{ item.requester?.name || "同学" }}</view>
+                <view class="sub-meta">申请查看：{{ formatVisibility(item.requestedVisibility) }}</view>
+              </view>
+            </view>
+            <view class="action-row">
+              <view class="sub-action" :class="{ pending: disableMutations }" @click="acceptRequest(item.requestId)">同意</view>
+              <view class="sub-action remove" :class="{ pending: disableMutations }" @click="rejectRequest(item.requestId)">拒绝</view>
+            </view>
+          </view>
+        </view>
+
+        <view class="card">
+          <view class="section-head">
+            <view>
+              <view class="title small">圈子（{{ dashboard?.circles?.length || 0 }}）</view>
+              <view class="sub">退出圈子后，你的日程会立即对圈内成员不可见。</view>
+            </view>
+            <view class="sub-action" @click="createCircle">新建</view>
+          </view>
+          <view v-if="!dashboard?.circles?.length" class="empty">暂无圈子</view>
+          <view v-for="item in dashboard?.circles || []" :key="item.circleId" class="sub-item">
+            <view>
+              <view class="sub-name">{{ item.name }}</view>
+              <view class="sub-meta">成员 {{ item.memberCount || 1 }} 人 · 邀请码 {{ item.inviteToken || "--" }}</view>
+            </view>
+            <view class="sub-action remove" @click="leaveCircle(item.circleId)">退出</view>
           </view>
         </view>
 
@@ -70,7 +136,7 @@
               {{
                 disableMutations
                   ? "处理中..."
-                  : (subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : "订阅")
+                  : (subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : "请求订阅")
               }}
             </view>
           </view>
@@ -95,12 +161,21 @@
                 <view class="sub-meta">{{ item.studentNo ? `学号：${item.studentNo}` : "学号未同步" }}</view>
               </view>
             </view>
-            <view
-              class="sub-action remove"
-              :class="{ pending: disableMutations }"
-              @click="unsubscribe(item.studentId)"
-            >
-              {{ disableMutations ? "处理中..." : "取消" }}
+            <view class="action-row compact">
+              <view
+                class="sub-action remove"
+                :class="{ pending: disableMutations }"
+                @click="unsubscribe(item.studentId)"
+              >
+                {{ disableMutations ? "处理中..." : "取消" }}
+              </view>
+              <view
+                class="sub-action danger"
+                :class="{ pending: disableMutations }"
+                @click="blockStudent(item.studentId)"
+              >
+                屏蔽
+              </view>
             </view>
           </view>
         </view>
@@ -113,7 +188,11 @@
 import { computed, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import PageViewContainer from "@/components/PageViewContainer.vue";
-import { useSocialDashboard, type SocialDashboardResponse, type SocialUserItem } from "@/composables/useSocialDashboard";
+import {
+  useSocialDashboard,
+  type SocialDashboardResponse,
+  type SocialUserItem,
+} from "@/composables/useSocialDashboard";
 import {
   guardProfilePageAccess,
   readAuthSessionFromStorage,
@@ -138,18 +217,37 @@ const {
 const bootstrapping = ref(true);
 const pendingByStudentId = ref<Record<string, boolean>>({});
 const brokenAvatarKeys = ref<Record<string, boolean>>({});
+const notifications = ref<SocialNotificationItem[]>([]);
 
 interface SocialSubscribeMutationResponse {
   ok?: boolean;
   subscribed?: boolean;
+  pending?: boolean;
   removed?: boolean;
   stateRevision?: number;
+}
+
+interface SocialNotificationItem {
+  notificationId: string;
+  title: string;
+  body: string;
+  status: "unread" | "read";
+}
+
+interface SocialNotificationsResponse {
+  items: SocialNotificationItem[];
 }
 
 const isAuthed = computed(() => Boolean(authSession.value.token && authSession.value.user));
 const isBound = computed(() => Boolean(dashboard.value?.me?.studentId));
 const hasPendingMutation = computed(() => Object.values(pendingByStudentId.value).some((value) => Boolean(value)));
 const disableMutations = computed(() => bootstrapping.value || hasPendingMutation.value);
+const inboundPendingRequests = computed(() => {
+  const meStudentId = normalizeStudentId(dashboard.value?.me?.studentId);
+  return (dashboard.value?.subscriptionRequests || []).filter((item) => {
+    return item.status === "pending" && normalizeStudentId(item.target?.studentId) === meStudentId;
+  });
+});
 
 const normalizeStudentId = (value: unknown) => String(value || "").trim();
 
@@ -239,12 +337,27 @@ const applySubscriptionOptimisticPatch = (studentId: string, subscribed: boolean
 const refreshDashboard = async () => {
   if (!isAuthed.value) {
     clearDashboard(true);
+    notifications.value = [];
     return;
   }
   await refreshSocialDashboardData(() =>
     requestBackendGet<SocialDashboardResponse>(backendBaseUrl.value, "/api/v1/social/me", {}, authSession.value.token),
     backendBaseUrl.value,
   );
+};
+
+const refreshNotifications = async () => {
+  if (!isAuthed.value) {
+    notifications.value = [];
+    return;
+  }
+  const payload = await requestBackendGet<SocialNotificationsResponse>(
+    backendBaseUrl.value,
+    "/api/v1/notifications",
+    { limit: "20" },
+    authSession.value.token,
+  );
+  notifications.value = payload.items || [];
 };
 
 const refreshState = async () => {
@@ -255,6 +368,7 @@ const refreshState = async () => {
   pendingByStudentId.value = {};
   try {
     await refreshDashboard();
+    await refreshNotifications();
   } catch (error) {
     if (!hydrateDashboardFromStorage(backendBaseUrl.value)) {
       clearDashboard();
@@ -288,41 +402,14 @@ const onAvatarLoadError = (key: string) => {
   };
 };
 
-const normalizeRandomCode = (value: unknown) => {
-  return String(value || "")
-    .replace(/\D+/g, "")
-    .slice(0, 4);
-};
-
-const promptTargetRandomCode = () => {
-  return new Promise<string | null>((resolve) => {
-    uni.showModal({
-      title: "输入验证码（4位）",
-      content: "",
-      editable: true,
-      placeholderText: "4 位数字验证码",
-      success: (result) => {
-        if (!result.confirm) {
-          resolve(null);
-          return;
-        }
-        const code = normalizeRandomCode((result as { content?: string }).content);
-        if (code.length !== 4) {
-          uni.showToast({ title: "请输入 4 位数字验证码", icon: "none", duration: 1800 });
-          resolve("");
-          return;
-        }
-        resolve(code);
-      },
-      fail: () => {
-        resolve(null);
-      },
-    });
-  });
-};
-
-const shouldPromptRandomCodeByMessage = (message: string) => {
-  return /验证码/.test(String(message || ""));
+const formatVisibility = (value: unknown) => {
+  if (value === "detail") {
+    return "详细日程";
+  }
+  if (value === "hidden" || value === "blocked") {
+    return "不可见";
+  }
+  return "仅忙闲";
 };
 
 const subscribeStudent = async (studentId: string) => {
@@ -332,43 +419,126 @@ const subscribeStudent = async (studentId: string) => {
   }
   setTargetPending(normalizedStudentId, true);
   try {
-    let mutationRevision = 0;
-    try {
-      const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
-        backendBaseUrl.value,
-        "/api/v1/social/subscribe",
-        { targetStudentId: normalizedStudentId },
-        authSession.value.token,
-      );
-      mutationRevision = Number(payload.stateRevision || 0);
-    } catch (error) {
-      const firstMessage = error instanceof Error ? error.message : "订阅失败";
-      if (!shouldPromptRandomCodeByMessage(firstMessage)) {
-        throw error;
-      }
-      const code = await promptTargetRandomCode();
-      if (code === null || !code) {
-        return;
-      }
-      const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
-        backendBaseUrl.value,
-        "/api/v1/social/subscribe",
-        {
-          targetStudentId: normalizedStudentId,
-          targetRandomCode: code,
-        },
-        authSession.value.token,
-      );
-      mutationRevision = Number(payload.stateRevision || 0);
+    const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
+      backendBaseUrl.value,
+      "/api/v1/social/subscribe",
+      { targetStudentId: normalizedStudentId, visibilityScope: "busy_free" },
+      authSession.value.token,
+    );
+    const mutationRevision = Number(payload.stateRevision || 0);
+    if (payload.subscribed) {
+      applySubscriptionOptimisticPatch(normalizedStudentId, true, mutationRevision);
     }
-    applySubscriptionOptimisticPatch(normalizedStudentId, true, mutationRevision);
     await refreshDashboard();
-    uni.showToast({ title: "订阅成功", icon: "none", duration: 1200 });
+    uni.showToast({ title: payload.pending ? "请求已发送" : "订阅成功", icon: "none", duration: 1200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "订阅失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });
   } finally {
     setTargetPending(normalizedStudentId, false);
+  }
+};
+
+const decideRequest = async (requestId: string, decision: "accept" | "reject", visibilityScope = "busy_free") => {
+  if (!requestId || disableMutations.value) {
+    return;
+  }
+  pendingByStudentId.value = {
+    ...pendingByStudentId.value,
+    [`request-${requestId}`]: true,
+  };
+  try {
+    await requestBackendPost(
+      backendBaseUrl.value,
+      `/api/v1/social/subscription-requests/${encodeURIComponent(requestId)}/decision`,
+      { decision, visibilityScope },
+      authSession.value.token,
+    );
+    await refreshDashboard();
+    uni.showToast({ title: decision === "accept" ? "已同意" : "已拒绝", icon: "none", duration: 1200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "处理失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  } finally {
+    const next = { ...pendingByStudentId.value };
+    delete next[`request-${requestId}`];
+    pendingByStudentId.value = next;
+  }
+};
+
+const acceptRequest = (requestId: string) => {
+  uni.showActionSheet({
+    itemList: ["仅忙闲", "详细日程"],
+    success: (result) => {
+      const visibilityScope = result.tapIndex === 1 ? "detail" : "busy_free";
+      void decideRequest(requestId, "accept", visibilityScope);
+    },
+  });
+};
+
+const rejectRequest = (requestId: string) => {
+  void decideRequest(requestId, "reject", "hidden");
+};
+
+const createCircle = () => {
+  if (!isAuthed.value || disableMutations.value) {
+    return;
+  }
+  uni.showModal({
+    title: "新建圈子",
+    editable: true,
+    placeholderText: "班级/社团名称",
+    success: async (result) => {
+      if (!result.confirm) {
+        return;
+      }
+      const name = String((result as { content?: string }).content || "").trim();
+      if (!name) {
+        uni.showToast({ title: "请输入圈子名称", icon: "none", duration: 1600 });
+        return;
+      }
+      try {
+        await requestBackendPost(backendBaseUrl.value, "/api/v1/social/circles", { name, circleType: "custom" }, authSession.value.token);
+        await refreshDashboard();
+        uni.showToast({ title: "圈子已创建", icon: "none", duration: 1200 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "创建失败";
+        uni.showToast({ title: message, icon: "none", duration: 1800 });
+      }
+    },
+  });
+};
+
+const leaveCircle = async (circleId: string) => {
+  if (!circleId || disableMutations.value) {
+    return;
+  }
+  try {
+    await requestBackendPost(backendBaseUrl.value, `/api/v1/social/circles/${encodeURIComponent(circleId)}/leave`, {}, authSession.value.token);
+    await refreshDashboard();
+    uni.showToast({ title: "已退出圈子", icon: "none", duration: 1200 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "退出失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
+  }
+};
+
+const markNotificationRead = async (notificationId: string) => {
+  if (!notificationId || disableMutations.value) {
+    return;
+  }
+  try {
+    await requestBackendPost(
+      backendBaseUrl.value,
+      `/api/v1/notifications/${encodeURIComponent(notificationId)}/read`,
+      {},
+      authSession.value.token,
+    );
+    await refreshNotifications();
+    await refreshDashboard();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "更新失败";
+    uni.showToast({ title: message, icon: "none", duration: 1800 });
   }
 };
 
@@ -409,6 +579,39 @@ const unsubscribe = async (studentId: string) => {
   }
 };
 
+const blockStudent = async (studentId: string) => {
+  const normalizedStudentId = normalizeStudentId(studentId);
+  if (!isAuthed.value || disableMutations.value || isTargetPending(normalizedStudentId)) {
+    return;
+  }
+  uni.showModal({
+    title: "屏蔽订阅",
+    content: "屏蔽后双方课表互不可见，可重新发起订阅请求恢复。",
+    success: async (result) => {
+      if (!result.confirm) {
+        return;
+      }
+      setTargetPending(normalizedStudentId, true);
+      try {
+        await requestBackendPost(
+          backendBaseUrl.value,
+          "/api/v1/social/subscriptions/block",
+          { targetStudentId: normalizedStudentId },
+          authSession.value.token,
+        );
+        applySubscriptionOptimisticPatch(normalizedStudentId, false);
+        await refreshDashboard();
+        uni.showToast({ title: "已屏蔽", icon: "none", duration: 1200 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "屏蔽失败";
+        uni.showToast({ title: message, icon: "none", duration: 1800 });
+      } finally {
+        setTargetPending(normalizedStudentId, false);
+      }
+    },
+  });
+};
+
 onShow(() => {
   if (!guardProfilePageAccess()) {
     return;
@@ -440,6 +643,13 @@ onShow(() => {
   margin-top: 6rpx;
   font-size: 20rpx;
   color: var(--text-sub);
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12rpx;
 }
 
 .mini-grid {
@@ -563,7 +773,25 @@ onShow(() => {
   color: var(--danger);
 }
 
+.sub-action.danger {
+  color: #ffffff;
+  border-radius: 8rpx;
+  padding: 8rpx 10rpx;
+  background: var(--danger);
+}
+
 .sub-action.pending {
   opacity: 0.64;
+}
+
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.action-row.compact {
+  flex-shrink: 0;
+  gap: 10rpx;
 }
 </style>

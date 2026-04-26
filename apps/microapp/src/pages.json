@@ -98,6 +98,30 @@
           }
         },
         {
+          "path": "social-activities",
+          "style": {
+            "navigationBarTitleText": "组局与活动"
+          }
+        },
+        {
+          "path": "ai-assistant",
+          "style": {
+            "navigationBarTitleText": "AI 时间助手"
+          }
+        },
+        {
+          "path": "exam-companion",
+          "style": {
+            "navigationBarTitleText": "考试周伴侣"
+          }
+        },
+        {
+          "path": "free-heatmap",
+          "style": {
+            "navigationBarTitleText": "共同空闲热力图"
+          }
+        },
+        {
           "path": "preferences",
           "style": {
             "navigationBarTitleText": "偏好设置"
@@ -118,11 +142,7 @@
         {
           "path": "food-campaign-detail",
           "style": {
-            "navigationBarTitleText": "竞选详情",
-            "mp-weixin": {
-              "enableShareAppMessage": true,
-              "enableShareTimeline": true
-            }
+            "navigationBarTitleText": "竞选详情"
           }
         },
         {

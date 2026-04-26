@@ -14,12 +14,34 @@ export interface SocialUserItem {
   practiceCourseKeys?: string[];
 }
 
+export interface SocialSubscriptionRequestItem {
+  requestId: string;
+  status: "pending" | "accepted" | "rejected" | "cancelled";
+  requestedVisibility: "busy_free" | "detail" | "hidden" | "blocked";
+  decidedVisibility?: "busy_free" | "detail" | "hidden" | "blocked";
+  requester?: SocialUserItem | null;
+  target?: SocialUserItem | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SocialCircleItem {
+  circleId: string;
+  name: string;
+  circleType?: "class" | "club" | "custom";
+  inviteToken?: string;
+  memberCount?: number;
+}
+
 export interface SocialDashboardResponse {
   ok?: boolean;
   me?: SocialUserItem | null;
   subscriptions?: SocialUserItem[];
   candidates?: SocialUserItem[];
   subscribers?: SocialUserItem[];
+  subscriptionRequests?: SocialSubscriptionRequestItem[];
+  circles?: SocialCircleItem[];
+  unreadNotificationCount?: number;
   bound?: boolean;
   stateRevision?: number;
 }
@@ -86,6 +108,53 @@ const normalizeSocialUserList = (raw: unknown, backendBaseUrl = "") => {
   return items;
 };
 
+const normalizeSubscriptionRequests = (raw: unknown, backendBaseUrl = "") => {
+  if (!Array.isArray(raw)) {
+    return [] as SocialSubscriptionRequestItem[];
+  }
+  const items: SocialSubscriptionRequestItem[] = [];
+  raw.forEach((item) => {
+    const data = (item || {}) as SocialSubscriptionRequestItem;
+    const requestId = String(data.requestId || "").trim();
+    if (!requestId) {
+      return;
+    }
+    items.push({
+      requestId,
+      status: data.status || "pending",
+      requestedVisibility: data.requestedVisibility || "busy_free",
+      decidedVisibility: data.decidedVisibility || "hidden",
+      requester: data.requester ? normalizeSocialUserItem(data.requester, backendBaseUrl) : null,
+      target: data.target ? normalizeSocialUserItem(data.target, backendBaseUrl) : null,
+      createdAt: String(data.createdAt || ""),
+      updatedAt: String(data.updatedAt || ""),
+    });
+  });
+  return items;
+};
+
+const normalizeSocialCircles = (raw: unknown) => {
+  if (!Array.isArray(raw)) {
+    return [] as SocialCircleItem[];
+  }
+  const items: SocialCircleItem[] = [];
+  raw.forEach((item) => {
+    const data = (item || {}) as SocialCircleItem;
+    const circleId = String(data.circleId || "").trim();
+    if (!circleId) {
+      return;
+    }
+    items.push({
+      circleId,
+      name: String(data.name || "未命名圈子").trim(),
+      circleType: data.circleType || "custom",
+      inviteToken: String(data.inviteToken || "").trim(),
+      memberCount: Number(data.memberCount || 0),
+    });
+  });
+  return items;
+};
+
 const normalizeSocialDashboardResponse = (raw: unknown, backendBaseUrl = ""): SocialDashboardResponse | null => {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -98,6 +167,9 @@ const normalizeSocialDashboardResponse = (raw: unknown, backendBaseUrl = ""): So
     subscriptions: normalizeSocialUserList(data.subscriptions, backendBaseUrl),
     candidates: normalizeSocialUserList(data.candidates, backendBaseUrl),
     subscribers: normalizeSocialUserList(data.subscribers, backendBaseUrl),
+    subscriptionRequests: normalizeSubscriptionRequests(data.subscriptionRequests, backendBaseUrl),
+    circles: normalizeSocialCircles(data.circles),
+    unreadNotificationCount: Number(data.unreadNotificationCount || 0),
     bound: Boolean(data.bound),
     stateRevision: Number(data.stateRevision || 0),
   };
@@ -169,6 +241,9 @@ export const useSocialDashboard = () => {
       subscriptions: payload.subscriptions || [],
       candidates: payload.candidates || [],
       subscribers: payload.subscribers || [],
+      subscriptionRequests: payload.subscriptionRequests || [],
+      circles: payload.circles || [],
+      unreadNotificationCount: Number(payload.unreadNotificationCount || 0),
       bound: Boolean(payload.bound),
       stateRevision: Number(payload.stateRevision || 0),
     };

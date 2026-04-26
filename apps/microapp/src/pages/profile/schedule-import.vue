@@ -61,6 +61,28 @@
           </view>
         </view>
       </view>
+
+      <view class="card">
+        <view class="title small">识别修正回流</view>
+        <view class="sub">把 AI/OCR 原始识别和你修正后的结果一起提交，后续用于本校模型优化。</view>
+        <view class="form-field">
+          <view class="label">任务 ID（可选）</view>
+          <input v-model.trim="correctionJobId" class="input" placeholder="可填导入任务 ID" />
+        </view>
+        <view class="form-field">
+          <view class="label">原始识别结果</view>
+          <textarea v-model="originalPayloadText" class="textarea" maxlength="1200" placeholder="可粘贴 JSON 或纯文本" />
+        </view>
+        <view class="form-field">
+          <view class="label">修正后结果</view>
+          <textarea v-model="correctedPayloadText" class="textarea" maxlength="1200" placeholder="可粘贴 JSON 或纯文本" />
+        </view>
+        <view class="actions">
+          <view class="btn" :class="{ disabled: correctionPending }" @click="submitCorrection">
+            {{ correctionPending ? "提交中..." : "提交修正样本" }}
+          </view>
+        </view>
+      </view>
     </view>
   </PageContainer>
 </template>
@@ -75,6 +97,7 @@ import {
   guardProfilePageAccess,
   readAuthSessionFromStorage,
   requestBackendGet,
+  requestBackendPost,
   uploadBackendFile,
 } from "@/utils/profile-service";
 
@@ -126,6 +149,10 @@ const pollingPending = ref(false);
 const statusText = ref("");
 const pageError = ref("");
 const jobDetail = ref<ScheduleImportJobDetail | null>(null);
+const correctionJobId = ref("");
+const originalPayloadText = ref("");
+const correctedPayloadText = ref("");
+const correctionPending = ref(false);
 const { dashboard, refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -172,7 +199,7 @@ const loadPageContext = async () => {
     }
   }
   if (!isAdmin.value) {
-    pageError.value = "当前账号不是管理员，无法使用 PDF 导入。";
+    pageError.value = "当前账号不是管理员，无法使用 PDF 导入，但可以提交修正样本。";
   } else {
     pageError.value = "";
   }
@@ -330,6 +357,56 @@ const submitImport = async () => {
   }
 };
 
+const parseCorrectionPayload = (text: string) => {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch (error) {
+    // 纯文本样本也需要保留，便于后续人工/模型复盘。
+  }
+  return { rawText: trimmed };
+};
+
+const submitCorrection = async () => {
+  if (!authToken.value) {
+    uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
+    return;
+  }
+  if (!originalPayloadText.value.trim() && !correctedPayloadText.value.trim()) {
+    uni.showToast({ title: "请填写修正内容", icon: "none", duration: 1600 });
+    return;
+  }
+  if (correctionPending.value) {
+    return;
+  }
+  correctionPending.value = true;
+  try {
+    await requestBackendPost(
+      backendBaseUrl.value,
+      "/api/v1/schedule-import/corrections",
+      {
+        jobId: correctionJobId.value.trim(),
+        originalPayload: parseCorrectionPayload(originalPayloadText.value),
+        correctedPayload: parseCorrectionPayload(correctedPayloadText.value),
+      },
+      authToken.value,
+    );
+    originalPayloadText.value = "";
+    correctedPayloadText.value = "";
+    uni.showToast({ title: "修正样本已提交", icon: "none", duration: 1200 });
+  } catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : "提交失败", icon: "none", duration: 1800 });
+  } finally {
+    correctionPending.value = false;
+  }
+};
+
 onShow(() => {
   if (!guardProfilePageAccess()) {
     return;
@@ -386,6 +463,19 @@ onUnmounted(() => {
   margin-top: 8rpx;
   min-height: 72rpx;
   padding: 0 20rpx;
+  border-radius: 10rpx;
+  border: 1rpx solid var(--line);
+  background: var(--muted-bg);
+  color: var(--text-main);
+  font-size: 24rpx;
+}
+
+.textarea {
+  margin-top: 8rpx;
+  width: 100%;
+  min-height: 150rpx;
+  padding: 16rpx;
+  box-sizing: border-box;
   border-radius: 10rpx;
   border: 1rpx solid var(--line);
   background: var(--muted-bg);

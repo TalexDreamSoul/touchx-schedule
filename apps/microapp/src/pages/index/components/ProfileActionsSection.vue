@@ -19,6 +19,51 @@
         <view class="profile-nav-arrow">›</view>
       </view>
 
+      <view class="profile-nav-item" @click="openProfileActivitiesPage">
+        <view class="profile-nav-icon profile-nav-icon-activities">局</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">组局与活动</view>
+          <view class="profile-nav-sub">邀请处理、日历导出、AA 分摊与分享</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
+      <view class="profile-nav-item" @click="openProfileAiAssistantPage">
+        <view class="profile-nav-icon profile-nav-icon-ai">时</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">AI 时间助手</view>
+          <view class="profile-nav-sub">自然语言创建日程、优先级与自动标签</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
+      <view class="profile-nav-item" @click="openProfileExamCompanionPage">
+        <view class="profile-nav-icon profile-nav-icon-exam">考</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">考试周伴侣</view>
+          <view class="profile-nav-sub">倒计时、自习室推荐与考后预创建</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
+      <view class="profile-nav-item" @click="openProfileFreeHeatmapPage">
+        <view class="profile-nav-icon profile-nav-icon-heatmap">热</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">共同空闲热力图</view>
+          <view class="profile-nav-sub">按周查看订阅对象的空闲密度</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
+      <view class="profile-nav-item" @click="openProfileScheduleImportPage">
+        <view class="profile-nav-icon profile-nav-icon-import">导</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">课表导入与修正</view>
+          <view class="profile-nav-sub">PDF 导入、AI 识别修正样本回流</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
       <view class="profile-nav-item" @click="openProfilePreferencesPage">
         <view class="profile-nav-icon profile-nav-icon-preferences">设</view>
         <view class="profile-nav-main">
@@ -42,6 +87,11 @@ defineProps<{
   isCurrentUserAdmin: boolean;
   openProfileAccountPage: () => void;
   openProfileSubscribePage: () => void;
+  openProfileActivitiesPage: () => void;
+  openProfileAiAssistantPage: () => void;
+  openProfileExamCompanionPage: () => void;
+  openProfileFreeHeatmapPage: () => void;
+  openProfileScheduleImportPage: () => void;
   openProfilePreferencesPage: () => void;
 }>();
 </script>
@@ -97,6 +147,26 @@ defineProps<{
 
 .profile-nav-icon-subscribe {
   background: #ff4d4f;
+}
+
+.profile-nav-icon-activities {
+  background: #13a8a8;
+}
+
+.profile-nav-icon-ai {
+  background: #7c3aed;
+}
+
+.profile-nav-icon-exam {
+  background: #fa8c16;
+}
+
+.profile-nav-icon-heatmap {
+  background: #2f55c8;
+}
+
+.profile-nav-icon-import {
+  background: #22c55e;
 }
 
 .profile-nav-icon-preferences {

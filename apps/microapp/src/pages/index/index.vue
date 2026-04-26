@@ -2345,6 +2345,46 @@ const openProfileSubscribePage = () => {
   uni.navigateTo({ url: "/pages/profile/subscribe" });
 };
 
+const openProfileActivitiesPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/social-activities" });
+};
+
+const openProfileAiAssistantPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/ai-assistant" });
+};
+
+const openProfileExamCompanionPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/exam-companion" });
+};
+
+const openProfileFreeHeatmapPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/free-heatmap" });
+};
+
+const openProfileScheduleImportPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/schedule-import" });
+};
+
 const openTodayFoodCampaign = (payload: unknown = "") => {
   if (!isAuthed.value) {
     openQuickAuthDialog();
@@ -2739,6 +2779,50 @@ const getCoursesByCell = (week: number, day: number, section: number) => {
   return resolveWeekCellCourses(week, weekCellMap, day, section).courses;
 };
 
+const createActivityFromFreeCell = (week: number, day: number, section: number) => {
+  if (!isAuthed.value) {
+    uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
+    return;
+  }
+  const participantStudentIds = includedStudentIds.value.filter((item) => item !== activeStudentId.value);
+  if (participantStudentIds.length <= 0) {
+    uni.showToast({ title: "请先选择组局对象", icon: "none", duration: 1600 });
+    return;
+  }
+  const typeOptions = [
+    { label: "学习", value: "study" },
+    { label: "训练", value: "training" },
+    { label: "聚餐", value: "meal" },
+  ];
+  uni.showActionSheet({
+    itemList: typeOptions.map((item) => item.label),
+    success: async (result) => {
+      const selected = typeOptions[result.tapIndex] || typeOptions[0];
+      try {
+        await requestBackendPost(
+          "/api/v1/social/activities",
+          {
+            title: `${selected.label}组局`,
+            activityType: selected.value,
+            week,
+            day,
+            startSection: section,
+            endSection: section,
+            participantStudentIds,
+            sendNow: true,
+          },
+          true,
+        );
+        uni.showToast({ title: "邀请已发送", icon: "none", duration: 1200 });
+        void refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "发起失败";
+        uni.showToast({ title: message, icon: "none", duration: 1800 });
+      }
+    },
+  });
+};
+
 const openCourseDialog = (week: number, day: number, section: number) => {
   if (Date.now() < ignoreTapUntil.value) {
     return;
@@ -2746,6 +2830,7 @@ const openCourseDialog = (week: number, day: number, section: number) => {
 
   const courses = getCoursesByCell(week, day, section);
   if (courses.length === 0) {
+    createActivityFromFreeCell(week, day, section);
     return;
   }
   dialogWeek.value = week;
@@ -2948,6 +3033,11 @@ const profileActionsProps = computed(() => ({
   isCurrentUserAdmin: isCurrentUserAdmin.value,
   openProfileAccountPage,
   openProfileSubscribePage,
+  openProfileActivitiesPage,
+  openProfileAiAssistantPage,
+  openProfileExamCompanionPage,
+  openProfileFreeHeatmapPage,
+  openProfileScheduleImportPage,
   openProfilePreferencesPage,
 }));
 
