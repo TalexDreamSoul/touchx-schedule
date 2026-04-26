@@ -1,16 +1,6 @@
 name: Deploy Backend to Cloudflare
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "apps/backend/**"
-      - "packages/shared/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/deploy-backend-cloudflare.yml"
   workflow_dispatch:
 
 concurrency:
