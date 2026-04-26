@@ -638,6 +638,57 @@ const onSchedulePublished = (schedule: ScheduleRecord, newVersionNo: number) => 
   });
 };
 
+const summarizeClassSubscriptionsForUser = (store: ReturnType<typeof getNexusStore>, user: UserRecord) => {
+  const memberships = store.classMembers
+    .filter((item) => item.userId === user.userId)
+    .map((item) => {
+      const classItem = store.classes.find((classRow) => classRow.id === item.classId) || null;
+      return {
+        classId: item.classId,
+        classLabel: classItem?.name || "",
+        role: item.classRole,
+      };
+    });
+  const subscriptions = store.scheduleSubscriptions
+    .filter((item) => item.subscriberUserId === user.userId)
+    .map((item) => {
+      const schedule = store.schedules.find((scheduleItem) => scheduleItem.id === item.sourceScheduleId) || null;
+      const classItem = schedule ? store.classes.find((classRow) => classRow.id === schedule.classId) || null : null;
+      return {
+        subscriptionId: item.id,
+        followMode: item.followMode,
+        baseVersionNo: item.baseVersionNo,
+        scheduleId: item.sourceScheduleId,
+        scheduleTitle: schedule?.title || "",
+        classId: classItem?.id || "",
+        classLabel: classItem?.name || "",
+        createdByUserId: schedule?.createdByUserId || "",
+        patchCount: store.schedulePatches.filter((patch) => patch.subscriptionId === item.id).length,
+        pendingConflictCount: store.scheduleConflicts.filter(
+          (conflict) => conflict.subscriptionId === item.id && conflict.resolutionStatus === "pending",
+        ).length,
+      };
+    });
+  return { memberships, subscriptions };
+};
+
+const findStaleOwnScheduleSubscriptionIds = (store: ReturnType<typeof getNexusStore>, user: UserRecord) => {
+  const activeClassIds = new Set(user.classIds);
+  return store.scheduleSubscriptions
+    .filter((item) => item.subscriberUserId === user.userId)
+    .filter((item) => {
+      const schedule = store.schedules.find((scheduleItem) => scheduleItem.id === item.sourceScheduleId) || null;
+      if (!schedule) {
+        return true;
+      }
+      if (activeClassIds.has(schedule.classId)) {
+        return false;
+      }
+      return schedule.createdByUserId === user.userId || schedule.classId.startsWith("class_touchx_");
+    })
+    .map((item) => item.id);
+};
+
 const toAcademicWeekDay = (date: Date) => {
   const day = date.getDay();
   return day === 0 ? 7 : day;
@@ -3940,39 +3991,45 @@ export const handleV1Api = async (event: H3Event) => {
     if (!user) {
       return toApiError(404, "PREVIEW_USER_NOT_FOUND", "未找到对应学号用户");
     }
-    const memberships = store.classMembers
-      .filter((item) => item.userId === user.userId)
-      .map((item) => {
-        const classItem = store.classes.find((classRow) => classRow.id === item.classId) || null;
-        return {
-          classId: item.classId,
-          classLabel: classItem?.name || "",
-          role: item.classRole,
-        };
-      });
-    const subscriptions = store.scheduleSubscriptions
-      .filter((item) => item.subscriberUserId === user.userId)
-      .map((item) => {
-        const schedule = store.schedules.find((scheduleItem) => scheduleItem.id === item.sourceScheduleId) || null;
-        const classItem = schedule ? store.classes.find((classRow) => classRow.id === schedule.classId) || null : null;
-        return {
-          subscriptionId: item.id,
-          followMode: item.followMode,
-          baseVersionNo: item.baseVersionNo,
-          scheduleId: item.sourceScheduleId,
-          scheduleTitle: schedule?.title || "",
-          classId: classItem?.id || "",
-          classLabel: classItem?.name || "",
-          patchCount: store.schedulePatches.filter((patch) => patch.subscriptionId === item.id).length,
-          pendingConflictCount: store.scheduleConflicts.filter(
-            (conflict) => conflict.subscriptionId === item.id && conflict.resolutionStatus === "pending",
-          ).length,
-        };
-      });
+    const { memberships, subscriptions } = summarizeClassSubscriptionsForUser(store, user);
+    const repairableSubscriptionIds = findStaleOwnScheduleSubscriptionIds(store, user);
     return ok({
       studentNo,
       memberships,
       subscriptions,
+      repairableSubscriptionIds,
+    });
+  }
+
+  if (method === "POST" && path === "admin/preview/class-subscriptions/repair") {
+    const { user: adminUser } = requireAdmin(event);
+    const body = await readJsonBody<{ studentNo?: string; student_no?: string; dryRun?: boolean }>(event);
+    const studentNo = asString(body.studentNo || body.student_no);
+    if (!studentNo) {
+      return toApiError(400, "REPAIR_STUDENT_NO_REQUIRED", "studentNo 不能为空");
+    }
+    const user = store.users.find((item) => item.studentNo === studentNo) || null;
+    if (!user) {
+      return toApiError(404, "REPAIR_USER_NOT_FOUND", "未找到对应学号用户");
+    }
+    const removableSubscriptionIds = new Set(findStaleOwnScheduleSubscriptionIds(store, user));
+    const before = summarizeClassSubscriptionsForUser(store, user);
+    if (body.dryRun === false && removableSubscriptionIds.size > 0) {
+      store.scheduleSubscriptions = store.scheduleSubscriptions.filter((item) => !removableSubscriptionIds.has(item.id));
+      store.schedulePatches = store.schedulePatches.filter((item) => !removableSubscriptionIds.has(item.subscriptionId));
+      store.scheduleConflicts = store.scheduleConflicts.filter((item) => !removableSubscriptionIds.has(item.subscriptionId));
+      appendAudit("admin_repair_class_subscriptions", adminUser.userId, {
+        studentNo,
+        removedSubscriptionIds: Array.from(removableSubscriptionIds.values()),
+      });
+    }
+    const after = summarizeClassSubscriptionsForUser(store, user);
+    return ok({
+      studentNo,
+      dryRun: body.dryRun !== false,
+      removedSubscriptionIds: Array.from(removableSubscriptionIds.values()),
+      before,
+      after,
     });
   }
 

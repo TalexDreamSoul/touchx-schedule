@@ -944,6 +944,10 @@ const upsertClassScheduleInStore = (
     if (!sourceSchedule) {
       return;
     }
+    if (sourceSchedule.createdByUserId === user.userId) {
+      removeSubscriptionIds.add(item.id);
+      return;
+    }
     if (removableClassIds.has(sourceSchedule.classId)) {
       removeSubscriptionIds.add(item.id);
       return;
