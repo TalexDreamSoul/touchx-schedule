@@ -7,6 +7,16 @@ import type {
   SchedulePatch,
   ScheduleSubscription,
   SmartSuggestionItem,
+  SocialActivityInvitationStatus,
+  SocialActivityStatus,
+  SocialCircleMemberRole,
+  SocialCircleMemberStatus,
+  SocialNotificationStatus,
+  SocialNotificationType,
+  SocialSubscriptionRequestStatus,
+  SocialSubscriptionSource,
+  SocialSubscriptionStatus,
+  SocialVisibilityScope,
   StudentIdentity,
 } from "@touchx/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -31,6 +41,123 @@ export interface AuthSessionRecord {
   userId: string;
   role: "admin" | "user";
   expiresAt: number;
+  createdAt: string;
+}
+
+export interface SocialSubscriptionRequestRecord {
+  id: string;
+  requesterUserId: string;
+  targetUserId: string;
+  requestedVisibility: SocialVisibilityScope;
+  status: SocialSubscriptionRequestStatus;
+  decidedVisibility: SocialVisibilityScope;
+  decidedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialSubscriptionEdgeRecord {
+  id: string;
+  subscriberUserId: string;
+  targetUserId: string;
+  visibilityScope: SocialVisibilityScope;
+  source: SocialSubscriptionSource;
+  circleId: string;
+  status: SocialSubscriptionStatus;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string;
+}
+
+export interface SocialCircleRecord {
+  id: string;
+  name: string;
+  circleType: "class" | "club" | "custom";
+  ownerUserId: string;
+  inviteToken: string;
+  status: "active" | "archived";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialCircleMemberRecord {
+  id: string;
+  circleId: string;
+  userId: string;
+  role: SocialCircleMemberRole;
+  visibilityScope: SocialVisibilityScope;
+  status: SocialCircleMemberStatus;
+  joinedAt: string;
+  leftAt: string;
+  updatedAt: string;
+}
+
+export interface SocialActivityRecord {
+  id: string;
+  title: string;
+  activityType: string;
+  status: SocialActivityStatus;
+  createdByUserId: string;
+  participantUserIds: string[];
+  week: number;
+  day: number;
+  startSection: number;
+  endSection: number;
+  calendarToken: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SocialActivityInvitationRecord {
+  id: string;
+  activityId: string;
+  inviterUserId: string;
+  inviteeUserId: string;
+  status: SocialActivityInvitationStatus;
+  createdAt: string;
+  updatedAt: string;
+  respondedAt: string;
+}
+
+export interface SocialNotificationRecord {
+  id: string;
+  type: SocialNotificationType;
+  recipientUserId: string;
+  actorUserId: string;
+  title: string;
+  body: string;
+  payload: Record<string, unknown>;
+  status: SocialNotificationStatus;
+  createdAt: string;
+  readAt: string;
+}
+
+export interface UserScheduleEventRecord {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  source: "manual" | "ai" | "exam" | "activity";
+  day: number;
+  startSection: number;
+  endSection: number;
+  weekExpr: string;
+  parity: "all" | "odd" | "even";
+  tags: string[];
+  priorityScore: number;
+  priorityLabel: "low" | "normal" | "high";
+  examDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleCorrectionRecord {
+  id: string;
+  userId: string;
+  jobId: string;
+  originalPayload: Record<string, unknown>;
+  correctedPayload: Record<string, unknown>;
   createdAt: string;
 }
 
@@ -267,6 +394,15 @@ export interface NexusStore {
   schedules: ScheduleRecord[];
   scheduleVersions: ScheduleVersionRecord[];
   scheduleSubscriptions: ScheduleSubscription[];
+  socialSubscriptionRequests: SocialSubscriptionRequestRecord[];
+  socialSubscriptionEdges: SocialSubscriptionEdgeRecord[];
+  socialCircles: SocialCircleRecord[];
+  socialCircleMembers: SocialCircleMemberRecord[];
+  socialActivities: SocialActivityRecord[];
+  socialActivityInvitations: SocialActivityInvitationRecord[];
+  socialNotifications: SocialNotificationRecord[];
+  userScheduleEvents: UserScheduleEventRecord[];
+  scheduleCorrections: ScheduleCorrectionRecord[];
   schedulePatches: SchedulePatch[];
   scheduleConflicts: ScheduleConflict[];
   sessions: AuthSessionRecord[];
@@ -742,6 +878,36 @@ const upgradeBotTemplates = (store: NexusStore) => {
   });
 };
 
+const upgradeSocialCollaborationCollections = (store: NexusStore) => {
+  if (!Array.isArray(store.socialSubscriptionRequests)) {
+    store.socialSubscriptionRequests = [];
+  }
+  if (!Array.isArray(store.socialSubscriptionEdges)) {
+    store.socialSubscriptionEdges = [];
+  }
+  if (!Array.isArray(store.socialCircles)) {
+    store.socialCircles = [];
+  }
+  if (!Array.isArray(store.socialCircleMembers)) {
+    store.socialCircleMembers = [];
+  }
+  if (!Array.isArray(store.socialActivities)) {
+    store.socialActivities = [];
+  }
+  if (!Array.isArray(store.socialActivityInvitations)) {
+    store.socialActivityInvitations = [];
+  }
+  if (!Array.isArray(store.socialNotifications)) {
+    store.socialNotifications = [];
+  }
+  if (!Array.isArray(store.userScheduleEvents)) {
+    store.userScheduleEvents = [];
+  }
+  if (!Array.isArray(store.scheduleCorrections)) {
+    store.scheduleCorrections = [];
+  }
+};
+
 const upgradeHeartOpenWordBank = (store: NexusStore) => {
   if (!Array.isArray(store.partyGameHeartOpenWords) || store.partyGameHeartOpenWords.length === 0) {
     store.partyGameHeartOpenWords = createHeartOpenWordSeeds(nowIso());
@@ -1126,6 +1292,15 @@ const buildStoreFromLegacyNormalized = (): NexusStore | null => {
     schedules,
     scheduleVersions,
     scheduleSubscriptions,
+    socialSubscriptionRequests: [],
+    socialSubscriptionEdges: [],
+    socialCircles: [],
+    socialCircleMembers: [],
+    socialActivities: [],
+    socialActivityInvitations: [],
+    socialNotifications: [],
+    userScheduleEvents: [],
+    scheduleCorrections: [],
     schedulePatches: [],
     scheduleConflicts: [],
     sessions: [],
@@ -1475,6 +1650,15 @@ const bootstrapStore = (): NexusStore => {
       },
     ],
     scheduleSubscriptions: [],
+    socialSubscriptionRequests: [],
+    socialSubscriptionEdges: [],
+    socialCircles: [],
+    socialCircleMembers: [],
+    socialActivities: [],
+    socialActivityInvitations: [],
+    socialNotifications: [],
+    userScheduleEvents: [],
+    scheduleCorrections: [],
     schedulePatches: [],
     scheduleConflicts: [],
     sessions: [],
@@ -1579,6 +1763,7 @@ export const getNexusStore = () => {
     normalizeCampaignOptions(scoped.store);
     upgradeHeartOpenWordBank(scoped.store);
     upgradeBotTemplates(scoped.store);
+    upgradeSocialCollaborationCollections(scoped.store);
     return scoped.store;
   }
   const context = getGlobalContext();
@@ -1590,6 +1775,7 @@ export const getNexusStore = () => {
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeBotTemplates(store);
+  upgradeSocialCollaborationCollections(store);
   return store;
 };
 
@@ -1600,6 +1786,7 @@ export const resetNexusStore = () => {
     normalizeCampaignOptions(nextStore);
     upgradeHeartOpenWordBank(nextStore);
     upgradeBotTemplates(nextStore);
+    upgradeSocialCollaborationCollections(nextStore);
     scoped.store = nextStore;
     return scoped.store;
   }
@@ -1610,6 +1797,7 @@ export const resetNexusStore = () => {
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeBotTemplates(store);
+  upgradeSocialCollaborationCollections(store);
   return store;
 };
 

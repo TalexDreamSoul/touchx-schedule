@@ -2,6 +2,25 @@ export const ADMIN_ROLES = ["super_admin", "operator", "none"] as const;
 export const CLASS_ROLES = ["class_owner", "class_admin", "class_editor", "class_viewer"] as const;
 export const FOLLOW_MODES = ["following", "patched"] as const;
 export const DISTANCE_LEVELS = ["near", "medium", "far"] as const;
+export const SOCIAL_VISIBILITY_SCOPES = ["busy_free", "detail", "hidden", "blocked"] as const;
+export const SOCIAL_SUBSCRIPTION_REQUEST_STATUSES = ["pending", "accepted", "rejected", "cancelled"] as const;
+export const SOCIAL_SUBSCRIPTION_STATUSES = ["active", "revoked"] as const;
+export const SOCIAL_SUBSCRIPTION_SOURCES = ["request", "circle", "legacy"] as const;
+export const SOCIAL_CIRCLE_MEMBER_ROLES = ["owner", "admin", "member"] as const;
+export const SOCIAL_CIRCLE_MEMBER_STATUSES = ["active", "left"] as const;
+export const SOCIAL_ACTIVITY_STATUSES = ["draft", "inviting", "confirmed", "cancelled", "expired"] as const;
+export const SOCIAL_ACTIVITY_INVITATION_STATUSES = ["pending", "accepted", "declined"] as const;
+export const SOCIAL_NOTIFICATION_TYPES = [
+  "subscription_request",
+  "subscription_accepted",
+  "subscription_rejected",
+  "subscription_revoked",
+  "circle_joined",
+  "circle_left",
+  "activity_invite",
+  "activity_confirmed",
+] as const;
+export const SOCIAL_NOTIFICATION_STATUSES = ["unread", "read"] as const;
 export const DEFAULT_SCHEDULE_TERM_TIMEZONE = "Asia/Shanghai" as const;
 export const DEFAULT_SCHEDULE_TERM_META = {
   name: "2025-2026-2",
@@ -41,6 +60,16 @@ export type AdminRole = (typeof ADMIN_ROLES)[number];
 export type ClassRole = (typeof CLASS_ROLES)[number];
 export type FollowMode = (typeof FOLLOW_MODES)[number];
 export type DistanceLevel = (typeof DISTANCE_LEVELS)[number];
+export type SocialVisibilityScope = (typeof SOCIAL_VISIBILITY_SCOPES)[number];
+export type SocialSubscriptionRequestStatus = (typeof SOCIAL_SUBSCRIPTION_REQUEST_STATUSES)[number];
+export type SocialSubscriptionStatus = (typeof SOCIAL_SUBSCRIPTION_STATUSES)[number];
+export type SocialSubscriptionSource = (typeof SOCIAL_SUBSCRIPTION_SOURCES)[number];
+export type SocialCircleMemberRole = (typeof SOCIAL_CIRCLE_MEMBER_ROLES)[number];
+export type SocialCircleMemberStatus = (typeof SOCIAL_CIRCLE_MEMBER_STATUSES)[number];
+export type SocialActivityStatus = (typeof SOCIAL_ACTIVITY_STATUSES)[number];
+export type SocialActivityInvitationStatus = (typeof SOCIAL_ACTIVITY_INVITATION_STATUSES)[number];
+export type SocialNotificationType = (typeof SOCIAL_NOTIFICATION_TYPES)[number];
+export type SocialNotificationStatus = (typeof SOCIAL_NOTIFICATION_STATUSES)[number];
 export type ScheduleTermHoliday = (typeof DEFAULT_SCHEDULE_TERM_HOLIDAYS)[number];
 
 export interface StudentIdentity {
@@ -125,4 +154,17 @@ export interface FoodCampaignVisibility {
   isAnonymous: boolean;
   revealAfterClose: boolean;
   revealScope: "share_token" | "public";
+}
+
+export interface SocialNotificationPayload {
+  notificationId: string;
+  type: SocialNotificationType;
+  title: string;
+  body: string;
+  status: SocialNotificationStatus;
+  actorUserId: string;
+  recipientUserId: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  readAt?: string;
 }

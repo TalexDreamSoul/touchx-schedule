@@ -919,6 +919,10 @@ const toIcsContent = (schedule: ScheduleRecord, version: ScheduleVersionRecord, 
 const isSocialCompatPath = (path: string) => {
   return (
     path.startsWith("social/") ||
+    path.startsWith("notifications") ||
+    path.startsWith("ai/schedule/") ||
+    path.startsWith("exams/") ||
+    path.startsWith("schedule-import/corrections") ||
     path.startsWith("admin/food-candidates") ||
     path === "auth/wechat-login" ||
     path === "auth/unbind" ||
