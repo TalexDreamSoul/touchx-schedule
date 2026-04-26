@@ -4002,7 +4002,7 @@ export const handleV1Api = async (event: H3Event) => {
   }
 
   if (method === "POST" && path === "admin/preview/class-subscriptions/repair") {
-    const { user: adminUser } = requireAdmin(event);
+    const { user: adminUser } = requireScheduleImportAccess(event);
     const body = await readJsonBody<{ studentNo?: string; student_no?: string; dryRun?: boolean }>(event);
     const studentNo = asString(body.studentNo || body.student_no);
     if (!studentNo) {
