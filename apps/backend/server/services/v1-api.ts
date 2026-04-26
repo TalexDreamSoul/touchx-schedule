@@ -684,7 +684,7 @@ const findStaleOwnScheduleSubscriptionIds = (store: ReturnType<typeof getNexusSt
       if (activeClassIds.has(schedule.classId)) {
         return false;
       }
-      return schedule.createdByUserId === user.userId || schedule.classId.startsWith("class_touchx_");
+      return true;
     })
     .map((item) => item.id);
 };
