@@ -2,10 +2,15 @@ import { getRequestURL, readFormData, readMultipartFormData, type H3Event } from
 import type { ScheduleSubscription } from "@touchx/shared";
 import { getNexusStore, storeHelpers, type ClassMemberRecord, type ClassRecord, type ScheduleEntryRecord, type ScheduleRecord, type ScheduleVersionRecord, type UserRecord } from "./domain-store";
 import { parseSchedulePdf, type ParsedScheduleCourse } from "./schedule-pdf-parser";
+import {
+  buildScheduleImportPreviewEntries,
+  normalizeScheduleImportPreviewCourses,
+  type ScheduleImportPreviewEntry,
+} from "./schedule-import-preview";
 import { withNexusStateScopeByDb } from "./nexus-state-manager";
 
-export type ScheduleImportStatus = "queued" | "processing" | "completed" | "completed_with_errors" | "failed";
-export type ScheduleImportItemStatus = "queued" | "processing" | "retrying" | "success" | "failed";
+export type ScheduleImportStatus = "queued" | "processing" | "preview_ready" | "confirmed" | "completed" | "completed_with_errors" | "failed";
+export type ScheduleImportItemStatus = "queued" | "processing" | "retrying" | "preview_ready" | "confirmed" | "success" | "failed";
 
 export interface ScheduleImportItemResult {
   itemId: string;
@@ -21,6 +26,8 @@ export interface ScheduleImportItemResult {
   errorCode?: string;
   errorMessage?: string;
   errorDetails?: Record<string, unknown> | null;
+  previewEntries?: ScheduleImportPreviewEntry[];
+  confirmed?: boolean;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -91,6 +98,10 @@ interface ScheduleImportPart {
 interface ScheduleImportQueuePayload {
   jobId: string;
   itemId: string;
+}
+
+interface CreateScheduleImportJobOptions {
+  mode?: "direct" | "preview";
 }
 
 interface PreparedScheduleImportItem {
@@ -226,6 +237,10 @@ const parseScheduleImportError = (raw: unknown) => {
       details: null as Record<string, unknown> | null,
     };
   }
+};
+
+export const toScheduleImportErrorPayload = (error: unknown) => {
+  return parseScheduleImportError(serializeScheduleImportError(error));
 };
 
 const toUint8Array = (value: unknown): Uint8Array | null => {
@@ -644,14 +659,35 @@ const prepareScheduleImportItems = (
   });
 };
 
+const parseScheduleImportPdfForPreview = (bytes: Uint8Array, fileName: string) => {
+  const parsed = parseSchedulePdf(bytes);
+  if (!Array.isArray(parsed.courses) || parsed.courses.length <= 0) {
+    const hasIdentityHint = Boolean(asString(parsed.name) || asString(parsed.studentNo));
+    throw createScheduleImportStructuredError(
+      hasIdentityHint ? "COURSE_BLOCK_PARSE_FAILED" : "TEMPLATE_MISMATCH",
+      hasIdentityHint ? "课程块解析失败，请检查 PDF 模板或解析规则" : "PDF 模板不匹配，未识别到课表结构",
+      {
+        fileName,
+        parsedName: asString(parsed.name),
+        parsedStudentNo: asString(parsed.studentNo),
+      },
+    );
+  }
+  return {
+    parsedName: asString(parsed.name) || inferNameFromFileName(fileName),
+    parsedStudentNo: asString(parsed.studentNo),
+    previewEntries: buildScheduleImportPreviewEntries(parsed.courses),
+  };
+};
+
 const computeJobSummary = async (db: D1DatabaseLike, jobId: string) => {
   const row = await db
     .prepare(
       `SELECT
         COUNT(*) AS total_count,
-        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success_count,
+        SUM(CASE WHEN status IN ('success', 'preview_ready', 'confirmed') THEN 1 ELSE 0 END) AS success_count,
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS fail_count,
-        SUM(CASE WHEN status IN ('success', 'failed') THEN 1 ELSE 0 END) AS processed_count
+        SUM(CASE WHEN status IN ('success', 'preview_ready', 'confirmed', 'failed') THEN 1 ELSE 0 END) AS processed_count
       FROM schedule_import_job_items
       WHERE job_id = ?`,
     )
@@ -692,6 +728,19 @@ const updateJobBySummary = async (db: D1DatabaseLike, jobId: string, summary: { 
     .bind(status, summary.processedFiles, summary.successCount, summary.failCount, now, finishedAt, jobId)
     .run();
   return status;
+};
+
+const updatePreviewJobStatus = async (db: D1DatabaseLike, jobId: string, status: "preview_ready" | "confirmed" | "completed_with_errors" | "failed") => {
+  const now = storeHelpers.nowIso();
+  const summary = await computeJobSummary(db, jobId);
+  await db
+    .prepare(
+      `UPDATE schedule_import_jobs
+        SET status = ?, processed_files = ?, success_count = ?, fail_count = ?, updated_at = ?, finished_at = ?
+        WHERE id = ?`,
+    )
+    .bind(status, summary.processedFiles, summary.successCount, summary.failCount, now, now, jobId)
+    .run();
 };
 
 const stableHashBase36 = (value: string) => {
@@ -1017,7 +1066,7 @@ const upsertClassScheduleInStore = (
   };
 };
 
-export const createScheduleImportJob = async (event: H3Event, actorUserId: string) => {
+export const createScheduleImportJob = async (event: H3Event, actorUserId: string, options: CreateScheduleImportJobOptions = {}) => {
   const db = resolveNexusDb(event);
   if (!db) {
     throw new Error("NEXUS_DB 未配置");
@@ -1027,6 +1076,7 @@ export const createScheduleImportJob = async (event: H3Event, actorUserId: strin
     throw new Error("SCHEDULE_IMPORT_BUCKET 未配置");
   }
   const queue = resolveImportQueue(event);
+  const mode = options.mode === "preview" ? "preview" : "direct";
   await ensureImportTables(db);
   const parts = await readScheduleImportParts(event);
   const fileParts = parts
@@ -1135,6 +1185,70 @@ export const createScheduleImportJob = async (event: H3Event, actorUserId: strin
     throw error;
   }
 
+  if (mode === "preview") {
+    let successCount = 0;
+    for (const [index, preparedItem] of preparedItems.entries()) {
+      const payload = queuePayloads[index];
+      const itemId = payload?.itemId || "";
+      const startedAt = storeHelpers.nowIso();
+      const startedMs = Date.now();
+      try {
+        const preview = parseScheduleImportPdfForPreview(preparedItem.bytes, preparedItem.fileName);
+        if (preview.previewEntries.length <= 0) {
+          throw createScheduleImportStructuredError("EMPTY_SCHEDULE", "解析结果为空课表", {
+            studentNo: preparedItem.studentNo,
+            term: preparedItem.term,
+            parsedName: preview.parsedName,
+          });
+        }
+        await db
+          .prepare(
+            `UPDATE schedule_import_job_items
+              SET status = 'preview_ready', entry_count = ?, error_message = '', started_at = ?, finished_at = ?, duration_ms = ?, updated_at = ?
+              WHERE id = ? AND job_id = ?`,
+          )
+          .bind(
+            preview.previewEntries.length,
+            startedAt,
+            storeHelpers.nowIso(),
+            Math.max(0, Date.now() - startedMs),
+            storeHelpers.nowIso(),
+            itemId,
+            jobId,
+          )
+          .run();
+        successCount += 1;
+      } catch (error) {
+        await db
+          .prepare(
+            `UPDATE schedule_import_job_items
+              SET status = 'failed', error_message = ?, started_at = ?, finished_at = ?, duration_ms = ?, updated_at = ?
+              WHERE id = ? AND job_id = ?`,
+          )
+          .bind(
+            serializeScheduleImportError(error),
+            startedAt,
+            storeHelpers.nowIso(),
+            Math.max(0, Date.now() - startedMs),
+            storeHelpers.nowIso(),
+            itemId,
+            jobId,
+          )
+          .run();
+      }
+    }
+    await updatePreviewJobStatus(
+      db,
+      jobId,
+      successCount === preparedItems.length ? "preview_ready" : successCount > 0 ? "completed_with_errors" : "failed",
+    );
+    return {
+      jobId,
+      status: successCount === preparedItems.length ? ("preview_ready" as const) : successCount > 0 ? ("completed_with_errors" as const) : ("failed" as const),
+      totalFiles: preparedItems.length,
+    };
+  }
+
   for (const payload of queuePayloads) {
     await enqueueOrProcessScheduleImportItem(db, bucket, queue, payload);
   }
@@ -1155,6 +1269,7 @@ export const getScheduleImportJobStatus = async (event: H3Event, jobId: string):
   if (!db) {
     throw new Error("NEXUS_DB 未配置");
   }
+  const bucket = resolveImportBucketFromEvent(event);
   await ensureImportTables(db);
   const job = await db
     .prepare(
@@ -1181,8 +1296,21 @@ export const getScheduleImportJobStatus = async (event: H3Event, jobId: string):
     )
     .bind(jobId);
   const itemRows = await queryAll<ScheduleImportItemRow>(itemsResult);
-  const items = itemRows.map((item) => {
+  const items = await Promise.all(itemRows.map(async (item) => {
     const parsedError = parseScheduleImportError(item.error_message);
+    let previewEntries: ScheduleImportPreviewEntry[] = [];
+    const confirmed = Boolean(asString(item.schedule_id) && toInt(item.version_no, 0) > 0);
+    if (!confirmed && bucket && (asString(item.status) === "preview_ready" || asString(item.status) === "success")) {
+      try {
+        const object = await bucket.get(asString(item.r2_key));
+        if (object?.arrayBuffer) {
+          const pdfBytes = new Uint8Array(await object.arrayBuffer());
+          previewEntries = parseScheduleImportPdfForPreview(pdfBytes, asString(item.file_name)).previewEntries;
+        }
+      } catch {
+        previewEntries = [];
+      }
+    }
     return {
       itemId: asString(item.id),
       fileName: asString(item.file_name),
@@ -1197,11 +1325,13 @@ export const getScheduleImportJobStatus = async (event: H3Event, jobId: string):
       errorCode: parsedError.code || undefined,
       errorMessage: parsedError.message || undefined,
       errorDetails: parsedError.details,
+      previewEntries,
+      confirmed,
       startedAt: asString(item.started_at),
       finishedAt: asString(item.finished_at),
       durationMs: toInt(item.duration_ms, 0),
     };
-  });
+  }));
   return {
     jobId: asString(job.id),
     status: (asString(job.status) || "queued") as ScheduleImportStatus,
@@ -1214,6 +1344,145 @@ export const getScheduleImportJobStatus = async (event: H3Event, jobId: string):
     updatedAt: asString(job.updated_at),
     finishedAt: asString(job.finished_at),
     results: items,
+  };
+};
+
+export const confirmScheduleImportJob = async (
+  event: H3Event,
+  jobId: string,
+  actorUserId: string,
+  correctedEntries: ScheduleImportPreviewEntry[],
+) => {
+  const db = resolveNexusDb(event);
+  if (!db) {
+    throw new Error("NEXUS_DB 未配置");
+  }
+  const bucket = resolveImportBucketFromEvent(event);
+  if (!bucket) {
+    throw new Error("SCHEDULE_IMPORT_BUCKET 未配置");
+  }
+  await ensureImportTables(db);
+  const job = await db
+    .prepare(
+      `SELECT id, status, total_files, created_by_user_id
+       FROM schedule_import_jobs
+       WHERE id = ?`,
+    )
+    .bind(jobId)
+    .first<{ id?: string; status?: string; total_files?: number; created_by_user_id?: string }>();
+  if (!job || !asString(job.id)) {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_JOB_NOT_FOUND", "导入任务不存在", { jobId });
+  }
+  const itemsResult = await db
+    .prepare(
+      `SELECT
+        id, job_id, file_name, student_no, term, r2_key, status, attempt_count,
+        entry_count, schedule_id, version_no, error_message, started_at, finished_at,
+        duration_ms, created_at, updated_at
+      FROM schedule_import_job_items
+      WHERE job_id = ?
+      ORDER BY created_at ASC`,
+    )
+    .bind(jobId);
+  const itemRows = await queryAll<ScheduleImportItemRow>(itemsResult);
+  if (itemRows.length !== 1) {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_CONFIRM_SINGLE_ITEM_ONLY", "小程序端一次只能确认一个导入任务", {
+      jobId,
+      itemCount: itemRows.length,
+    });
+  }
+  const item = itemRows[0];
+  if (!item || asString(item.status) === "failed") {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_ITEM_NOT_CONFIRMABLE", "导入任务不可确认", {
+      jobId,
+      itemId: asString(item?.id),
+    });
+  }
+  if (asString(item.schedule_id) && toInt(item.version_no, 0) > 0) {
+    return {
+      scheduleId: asString(item.schedule_id),
+      versionNo: toInt(item.version_no, 0),
+      entryCount: toInt(item.entry_count, 0),
+      alreadyConfirmed: true,
+    };
+  }
+
+  const object = await bucket.get(asString(item.r2_key));
+  if (!object?.arrayBuffer) {
+    throw createScheduleImportStructuredError("PDF_OBJECT_MISSING", "未找到 PDF 文件对象", {
+      jobId,
+      itemId: asString(item.id),
+    });
+  }
+  const pdfBytes = new Uint8Array(await object.arrayBuffer());
+  const originalPreview = parseScheduleImportPdfForPreview(pdfBytes, asString(item.file_name));
+  let normalizedCourses: ParsedScheduleCourse[];
+  try {
+    normalizedCourses = normalizeScheduleImportPreviewCourses(correctedEntries) as ParsedScheduleCourse[];
+  } catch (error) {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_PREVIEW_ENTRY_INVALID", "确认课程包含无效字段", {
+      jobId,
+      itemId: asString(item.id),
+    });
+  }
+  if (normalizedCourses.length <= 0) {
+    throw createScheduleImportStructuredError("EMPTY_SCHEDULE", "确认结果为空课表", {
+      jobId,
+      itemId: asString(item.id),
+    });
+  }
+  const startedAt = storeHelpers.nowIso();
+  const result = await withNexusStateScopeByDb(
+    db,
+    {
+      writeRequest: true,
+      lockOwner: `schedule_import_confirm_${jobId}_${asString(item.id)}`,
+    },
+    async () => {
+      const store = getNexusStore();
+      const writeResult = upsertClassScheduleInStore(store, {
+        studentNo: asString(item.student_no),
+        term: asString(item.term) || DEFAULT_TERM,
+        parsedName: originalPreview.parsedName,
+        courses: normalizedCourses,
+      });
+      store.scheduleCorrections.push({
+        id: storeHelpers.createId("schedule_correction"),
+        userId: actorUserId,
+        jobId,
+        originalPayload: {
+          previewEntries: originalPreview.previewEntries,
+          parsedName: originalPreview.parsedName,
+          parsedStudentNo: originalPreview.parsedStudentNo,
+        },
+        correctedPayload: {
+          previewEntries: correctedEntries,
+          courses: normalizedCourses,
+        },
+        createdAt: storeHelpers.nowIso(),
+      });
+      return writeResult;
+    },
+  );
+
+  await db
+    .prepare(
+      `UPDATE schedule_import_job_items
+        SET status = 'confirmed', entry_count = ?, schedule_id = ?, version_no = ?,
+          error_message = '', started_at = COALESCE(NULLIF(started_at, ''), ?), finished_at = ?, updated_at = ?
+        WHERE id = ? AND job_id = ?`,
+    )
+    .bind(result.entryCount, result.scheduleId, result.versionNo, startedAt, storeHelpers.nowIso(), storeHelpers.nowIso(), asString(item.id), jobId)
+    .run();
+  await updatePreviewJobStatus(db, jobId, "confirmed");
+  if (typeof bucket.delete === "function") {
+    await bucket.delete(asString(item.r2_key));
+  }
+  return {
+    scheduleId: result.scheduleId,
+    versionNo: result.versionNo,
+    entryCount: result.entryCount,
+    alreadyConfirmed: false,
   };
 };
 
@@ -1312,7 +1581,7 @@ const processScheduleImportQueueMessage = async (
     return { action: "ack" as const };
   }
   const currentStatus = asString(item.status) as ScheduleImportItemStatus;
-  if (currentStatus === "success" || currentStatus === "failed") {
+  if (currentStatus === "success" || currentStatus === "preview_ready" || currentStatus === "confirmed" || currentStatus === "failed") {
     return { action: "ack" as const };
   }
   const now = storeHelpers.nowIso();

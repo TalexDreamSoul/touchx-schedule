@@ -13,7 +13,7 @@ export interface ParsedScheduleCourse {
   startSection: number;
   endSection: number;
   weekExpr: string;
-  parity?: "odd" | "even";
+  parity?: "all" | "odd" | "even";
   classroom?: string;
   teacher?: string;
   teachingClasses?: string;

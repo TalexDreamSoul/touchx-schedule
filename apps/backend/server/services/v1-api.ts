@@ -49,7 +49,14 @@ import {
 } from "../utils/api-envelope";
 import { createSignedSession } from "../utils/session-token";
 import { handleSocialV1Api } from "./social-v1-api";
-import { createScheduleImportJob, getScheduleImportJobStatus, listRecentScheduleImportJobIds } from "./schedule-import-service";
+import type { ScheduleImportPreviewEntry } from "./schedule-import-preview";
+import {
+  confirmScheduleImportJob,
+  createScheduleImportJob,
+  getScheduleImportJobStatus,
+  listRecentScheduleImportJobIds,
+  toScheduleImportErrorPayload,
+} from "./schedule-import-service";
 import {
   ackReminderDelivery,
   getBotDeliveryTokenHeader,
@@ -2189,12 +2196,46 @@ export const handleV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "schedule-import/jobs") {
     const { user } = requireUser(event);
-    const result = await createScheduleImportJob(event, user.userId);
+    const result = await createScheduleImportJob(event, user.userId, { mode: "preview" });
     appendAudit("schedule_import_job_create", user.userId, {
       jobId: result.jobId,
       totalFiles: result.totalFiles,
     });
     return ok(result);
+  }
+
+  const scheduleImportJobConfirmMatch = path.match(/^schedule-import\/jobs\/([^/]+)\/confirm$/);
+  if (method === "POST" && scheduleImportJobConfirmMatch) {
+    const { user } = requireUser(event);
+    const jobId = decodeURIComponent(scheduleImportJobConfirmMatch[1]);
+    const status = await getScheduleImportJobStatus(event, jobId);
+    if (!status) {
+      return toApiError(404, "SCHEDULE_IMPORT_JOB_NOT_FOUND", "导入任务不存在");
+    }
+    if (status.createdByUserId !== user.userId && !isAdminRole(user)) {
+      return toApiError(403, "SCHEDULE_IMPORT_JOB_FORBIDDEN", "无权确认该导入任务");
+    }
+    const body = await readJsonBody<{ previewEntries?: unknown[]; entries?: unknown[] }>(event);
+    const previewEntries = Array.isArray(body.previewEntries)
+      ? body.previewEntries
+      : Array.isArray(body.entries)
+        ? body.entries
+        : [];
+    try {
+      const result = await confirmScheduleImportJob(event, jobId, user.userId, previewEntries as ScheduleImportPreviewEntry[]);
+      appendAudit("schedule_import_job_confirm", user.userId, {
+        jobId,
+        scheduleId: result.scheduleId,
+        versionNo: result.versionNo,
+        entryCount: result.entryCount,
+      });
+      return ok(result);
+    } catch (error) {
+      const payload = toScheduleImportErrorPayload(error);
+      const code = payload.code || "SCHEDULE_IMPORT_CONFIRM_FAILED";
+      const statusCode = code === "SCHEDULE_IMPORT_JOB_NOT_FOUND" ? 404 : 400;
+      return toApiError(statusCode, code, payload.message || "确认导入失败", payload.details || undefined);
+    }
   }
 
   const scheduleImportJobMatch = path.match(/^schedule-import\/jobs\/([^/]+)$/);
