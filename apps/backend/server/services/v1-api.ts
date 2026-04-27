@@ -2187,6 +2187,30 @@ export const handleV1Api = async (event: H3Event) => {
     return ok(status);
   }
 
+  if (method === "POST" && path === "schedule-import/jobs") {
+    const { user } = requireUser(event);
+    const result = await createScheduleImportJob(event, user.userId);
+    appendAudit("schedule_import_job_create", user.userId, {
+      jobId: result.jobId,
+      totalFiles: result.totalFiles,
+    });
+    return ok(result);
+  }
+
+  const scheduleImportJobMatch = path.match(/^schedule-import\/jobs\/([^/]+)$/);
+  if (method === "GET" && scheduleImportJobMatch) {
+    const { user } = requireUser(event);
+    const jobId = decodeURIComponent(scheduleImportJobMatch[1]);
+    const status = await getScheduleImportJobStatus(event, jobId);
+    if (!status) {
+      return toApiError(404, "SCHEDULE_IMPORT_JOB_NOT_FOUND", "导入任务不存在");
+    }
+    if (status.createdByUserId !== user.userId && user.adminRole !== "super_admin" && user.adminRole !== "operator") {
+      return toApiError(403, "SCHEDULE_IMPORT_JOB_FORBIDDEN", "无权查看该导入任务");
+    }
+    return ok(status);
+  }
+
   if (method === "GET" && path === "classes") {
     const { user } = requireUser(event);
     const items = store.classes.map((classItem) => {

@@ -27,6 +27,40 @@ export interface ScheduleIntelligence {
   confidence: number;
 }
 
+export interface ScheduleCandidateDraft {
+  title: string;
+  description: string;
+  tags: string[];
+  priorityLabel: SchedulePriorityLabel;
+  priorityScore: number;
+  repeatWeekdays: number[];
+  day: number;
+  startSection: number;
+  endSection: number;
+  weekExpr: string;
+  parity: "all" | "odd" | "even";
+  examLike: boolean;
+  confidence: number;
+}
+
+export interface ActivitySplitParticipantDraft {
+  userId: string;
+  studentId: string;
+  name: string;
+}
+
+export interface ActivitySplitInput {
+  activityId: string;
+  totalAmount: number;
+  currency: string;
+  participants: ActivitySplitParticipantDraft[];
+  perPerson?: Array<{
+    userId?: string;
+    studentId?: string;
+    amount?: number;
+  }>;
+}
+
 export const normalizeVisibilityScope = (
   value: unknown,
   fallback: SocialVisibilityScope = "busy_free",
@@ -59,7 +93,10 @@ export const resolveNextActivityStatus = (
   status: SocialActivityStatus,
   action: SocialActivityAction,
 ): SocialActivityStatus => {
-  if (status === "cancelled" || status === "expired" || status === "confirmed") {
+  if (status === "cancelled" || status === "expired") {
+    return status;
+  }
+  if (status === "confirmed" && action !== "cancel") {
     return status;
   }
   if (action === "cancel") {
@@ -199,5 +236,109 @@ export const buildScheduleIntelligence = (text: unknown): ScheduleIntelligence =
     suggestedDay: repeatWeekdays[0] || 1,
     ...suggestedSections,
     confidence: normalized ? 0.72 : 0,
+  };
+};
+
+export const buildScheduleCandidateDrafts = (text: unknown): ScheduleCandidateDraft[] => {
+  const normalized = String(text || "").trim();
+  const intelligence = buildScheduleIntelligence(normalized);
+  const weekdays = intelligence.repeatWeekdays.length > 0 ? intelligence.repeatWeekdays : [intelligence.suggestedDay || 1];
+  return weekdays.map((day) => ({
+    title: normalized.slice(0, 48) || "新的日程",
+    description: normalized,
+    tags: [...intelligence.tags],
+    priorityLabel: intelligence.priorityLabel,
+    priorityScore: intelligence.priorityScore,
+    repeatWeekdays: [...intelligence.repeatWeekdays],
+    day,
+    startSection: intelligence.suggestedStartSection,
+    endSection: intelligence.suggestedEndSection,
+    weekExpr: "1-20",
+    parity: "all",
+    examLike: intelligence.examLike,
+    confidence: intelligence.confidence,
+  }));
+};
+
+const normalizeMoneyAmount = (value: unknown) => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 0;
+  }
+  return Number(amount.toFixed(2));
+};
+
+const toCents = (value: unknown) => Math.round(normalizeMoneyAmount(value) * 100);
+
+export const buildActivitySplitDraft = (input: ActivitySplitInput) => {
+  const participants = Array.isArray(input.participants) ? input.participants.filter((item) => item.userId) : [];
+  const currency = String(input.currency || "CNY").trim() || "CNY";
+  const totalCents = toCents(input.totalAmount);
+  if (totalCents <= 0 || participants.length <= 0) {
+    return {
+      activityId: input.activityId,
+      totalAmount: 0,
+      currency,
+      perPerson: [] as Array<{ userId: string; studentId: string; name: string; amount: number }>,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  const byUserId = new Map(participants.map((item) => [item.userId, item]));
+  const byStudentId = new Map(participants.filter((item) => item.studentId).map((item) => [item.studentId, item]));
+  if (Array.isArray(input.perPerson) && input.perPerson.length > 0) {
+    const seen = new Set<string>();
+    const perPerson = input.perPerson.map((row) => {
+      const participant =
+        byUserId.get(String(row.userId || "").trim()) ||
+        byStudentId.get(String(row.studentId || "").trim()) ||
+        null;
+      if (!participant) {
+        throw new Error("AA_SPLIT_MEMBER_NOT_FOUND");
+      }
+      if (seen.has(participant.userId)) {
+        throw new Error("AA_SPLIT_MEMBER_DUPLICATED");
+      }
+      seen.add(participant.userId);
+      return {
+        userId: participant.userId,
+        studentId: participant.studentId,
+        name: participant.name,
+        amount: Number((toCents(row.amount) / 100).toFixed(2)),
+      };
+    });
+    if (perPerson.length !== participants.length) {
+      throw new Error("AA_SPLIT_MEMBER_INCOMPLETE");
+    }
+    const splitCents = perPerson.reduce((sum, row) => sum + toCents(row.amount), 0);
+    if (splitCents !== totalCents) {
+      throw new Error("AA_SPLIT_TOTAL_MISMATCH");
+    }
+    return {
+      activityId: input.activityId,
+      totalAmount: Number((totalCents / 100).toFixed(2)),
+      currency,
+      perPerson,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  const baseCents = Math.floor(totalCents / participants.length);
+  let remainder = totalCents - baseCents * participants.length;
+  return {
+    activityId: input.activityId,
+    totalAmount: Number((totalCents / 100).toFixed(2)),
+    currency,
+    perPerson: participants.map((participant) => {
+      const extra = remainder > 0 ? 1 : 0;
+      remainder = Math.max(0, remainder - 1);
+      return {
+        userId: participant.userId,
+        studentId: participant.studentId,
+        name: participant.name,
+        amount: Number(((baseCents + extra) / 100).toFixed(2)),
+      };
+    }),
+    updatedAt: new Date().toISOString(),
   };
 };

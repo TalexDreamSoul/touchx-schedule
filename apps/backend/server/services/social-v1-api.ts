@@ -52,6 +52,8 @@ import {
   zonedDateTimeToUtc,
 } from "./schedule-calendar";
 import {
+  buildActivitySplitDraft,
+  buildScheduleCandidateDrafts,
   buildScheduleIntelligence,
   normalizeVisibilityScope,
   pickStrongerVisibilityScope,
@@ -2130,13 +2132,22 @@ const toSubscriptionRequestPayload = (store: NexusStore, state: LegacyCompatStat
 
 const toCirclePayload = (store: NexusStore, item: SocialCircleRecord) => {
   const members = store.socialCircleMembers.filter((member) => member.circleId === item.id && member.status === "active");
+  const owner = findUserByUserId(store, item.ownerUserId);
   return {
     circleId: item.id,
     name: item.name,
     circleType: item.circleType,
+    owner: toSocialUserBrief(owner),
     inviteToken: item.inviteToken,
     status: item.status,
     memberCount: members.length,
+    members: members.map((member) => ({
+      memberId: member.id,
+      role: member.role,
+      visibilityScope: member.visibilityScope,
+      joinedAt: member.joinedAt,
+      user: toSocialUserBrief(findUserByUserId(store, member.userId)),
+    })),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -2251,35 +2262,16 @@ const normalizeMoneyAmount = (value: unknown) => {
 };
 
 const buildEqualActivitySplit = (activity: SocialActivityRecord, participantUsers: UserRecord[], totalAmount: number, currency: string) => {
-  const normalizedTotal = normalizeMoneyAmount(totalAmount);
-  const members = participantUsers.length > 0 ? participantUsers : [];
-  if (normalizedTotal <= 0 || members.length <= 0) {
-    return {
-      totalAmount: 0,
-      currency,
-      perPerson: [],
-      updatedAt: storeHelpers.nowIso(),
-    };
-  }
-  const cents = Math.round(normalizedTotal * 100);
-  const baseCents = Math.floor(cents / members.length);
-  let remainder = cents - baseCents * members.length;
-  return {
-    totalAmount: Number((cents / 100).toFixed(2)),
-    currency,
-    perPerson: members.map((user) => {
-      const extra = remainder > 0 ? 1 : 0;
-      remainder = Math.max(0, remainder - 1);
-      return {
-        userId: user.userId,
-        studentId: user.studentId || "",
-        name: resolveUserDisplayLabel(user),
-        amount: Number(((baseCents + extra) / 100).toFixed(2)),
-      };
-    }),
+  return buildActivitySplitDraft({
     activityId: activity.id,
-    updatedAt: storeHelpers.nowIso(),
-  };
+    totalAmount,
+    currency,
+    participants: participantUsers.map((user) => ({
+      userId: user.userId,
+      studentId: user.studentId || "",
+      name: resolveUserDisplayLabel(user),
+    })),
+  });
 };
 
 const eventMatchesWeekAndCell = (
@@ -2311,6 +2303,94 @@ const isUserBusyAtCell = (store: NexusStore, user: UserRecord, week: number, day
   return store.userScheduleEvents
     .filter((item) => item.userId === user.userId)
     .some((item) => eventMatchesWeekAndCell(item, week, day, section));
+};
+
+const isUserFreeForRange = (
+  store: NexusStore,
+  user: UserRecord,
+  week: number,
+  day: number,
+  startSection: number,
+  endSection: number,
+) => {
+  for (let section = startSection; section <= endSection; section += 1) {
+    if (isUserBusyAtCell(store, user, week, day, section)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const buildScheduleCandidateConflictPayload = (
+  store: NexusStore,
+  user: UserRecord,
+  candidate: { day: number; startSection: number; endSection: number },
+) => {
+  const week = resolveCurrentWeekForDate(new Date(), getUserReminderTimezone(store, user));
+  const day = Math.max(1, Math.min(7, Math.trunc(Number(candidate.day || 1))));
+  const startSection = Math.max(1, Math.trunc(Number(candidate.startSection || 1)));
+  const endSection = Math.max(startSection, Math.trunc(Number(candidate.endSection || startSection)));
+  const hasConflict = !isUserFreeForRange(store, user, week, day, startSection, endSection);
+  const alternatives: Array<{ week: number; day: number; startSection: number; endSection: number; reason: string }> = [];
+  if (hasConflict) {
+    const duration = endSection - startSection;
+    for (let dayOffset = 0; dayOffset < 7 && alternatives.length < 3; dayOffset += 1) {
+      const nextDay = ((day + dayOffset - 1) % 7) + 1;
+      for (let start = 1; start + duration <= 11 && alternatives.length < 3; start += 1) {
+        const end = start + duration;
+        if (isUserFreeForRange(store, user, week, nextDay, start, end)) {
+          alternatives.push({
+            week,
+            day: nextDay,
+            startSection: start,
+            endSection: end,
+            reason: "避开你当前课表和个人日程冲突",
+          });
+        }
+      }
+    }
+  }
+  return {
+    conflicts: hasConflict
+      ? [
+          {
+            scope: "self",
+            week,
+            day,
+            startSection,
+            endSection,
+            message: "该时间与你当前课表或个人日程冲突",
+          },
+        ]
+      : [],
+    alternatives,
+  };
+};
+
+const extractExamDateFromText = (text: unknown) => {
+  const normalized = asString(text);
+  if (!/(考试|期末|期中|补考|考后)/.test(normalized)) {
+    return "";
+  }
+  const fullDate = normalized.match(/(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})/);
+  if (fullDate) {
+    const year = Number(fullDate[1]);
+    const month = Number(fullDate[2]);
+    const day = Number(fullDate[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  const shortDate = normalized.match(/(\d{1,2})[-/.月](\d{1,2})日?/);
+  if (shortDate) {
+    const currentYear = toDateTimeParts(new Date(), SCHEDULE_DEFAULT_TIMEZONE).year || new Date().getFullYear();
+    const month = Number(shortDate[1]);
+    const day = Number(shortDate[2]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${currentYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+  return "";
 };
 
 const resolveHeatmapUsers = (
@@ -3112,6 +3192,29 @@ export const handleSocialV1Api = async (event: H3Event) => {
     return { ok: true, items: circles, stateRevision: getNexusStoreRevision() };
   }
 
+  if (method === "GET" && path === "social/circles/join-preview") {
+    const { user } = resolveLegacyAuthContext(event);
+    const inviteToken = asString(query.token || query.inviteToken || query.invite_token);
+    if (!inviteToken) {
+      createLegacyError(400, "CIRCLE_INVITE_TOKEN_REQUIRED", "邀请 token 不能为空");
+    }
+    const circle = ensureValue(
+      store.socialCircles.find((item) => item.inviteToken === inviteToken && item.status === "active") || null,
+      404,
+      "CIRCLE_NOT_FOUND",
+      "圈子不存在或已停用",
+    );
+    const member = store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === user.userId) || null;
+    return {
+      ok: true,
+      circle: toCirclePayload(store, circle),
+      inviteToken,
+      joined: member?.status === "active",
+      currentVisibilityScope: member?.visibilityScope || "",
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
   if (method === "POST" && path === "social/circles") {
     const { user } = resolveLegacyAuthContext(event);
     const body = await readJsonBody<{ name?: string; circleType?: "class" | "club" | "custom"; circle_type?: "class" | "club" | "custom" }>(event);
@@ -3207,14 +3310,18 @@ export const handleSocialV1Api = async (event: H3Event) => {
           circleId: circle.id,
         });
       });
-    createSocialNotification(store, {
-      type: "circle_joined",
-      recipientUserId: circle.ownerUserId,
-      actorUserId: user.userId,
-      title: "圈子有新成员加入",
-      body: `${resolveUserDisplayLabel(user)} 加入了 ${circle.name}`,
-      payload: { circleId: circle.id },
-    });
+    store.socialCircleMembers
+      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
+      .forEach((item) => {
+        createSocialNotification(store, {
+          type: "circle_joined",
+          recipientUserId: item.userId,
+          actorUserId: user.userId,
+          title: "圈子有新成员加入",
+          body: `${resolveUserDisplayLabel(user)} 加入了 ${circle.name}`,
+          payload: { circleId: circle.id },
+        });
+      });
     return { ok: true, circle: toCirclePayload(store, circle), member, stateRevision: getNexusStoreRevision() };
   }
 
@@ -3253,14 +3360,18 @@ export const handleSocialV1Api = async (event: H3Event) => {
         removeScheduleSubscriptionsByTarget(store, edge.subscriberUserId, targetUser);
       }
     });
-    createSocialNotification(store, {
-      type: "circle_left",
-      recipientUserId: circle.ownerUserId,
-      actorUserId: user.userId,
-      title: "圈子成员已退出",
-      body: `${resolveUserDisplayLabel(user)} 已退出 ${circle.name}`,
-      payload: { circleId: circle.id },
-    });
+    store.socialCircleMembers
+      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
+      .forEach((item) => {
+        createSocialNotification(store, {
+          type: "circle_left",
+          recipientUserId: item.userId,
+          actorUserId: user.userId,
+          title: "圈子成员已退出",
+          body: `${resolveUserDisplayLabel(user)} 已退出 ${circle.name}`,
+          payload: { circleId: circle.id },
+        });
+      });
     return { ok: true, left: true, circleId: circle.id, stateRevision: getNexusStoreRevision() };
   }
 
@@ -3401,16 +3512,35 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_SPLIT_FORBIDDEN", "仅发起人可编辑分摊");
     }
-    const body = await readJsonBody<{ totalAmount?: number; total_amount?: number; currency?: string }>(event);
+    const body = await readJsonBody<{
+      totalAmount?: number;
+      total_amount?: number;
+      currency?: string;
+      perPerson?: Array<{ userId?: string; studentId?: string; amount?: number }>;
+      per_person?: Array<{ userId?: string; studentId?: string; amount?: number }>;
+    }>(event);
     const participantUsers = activity.participantUserIds
       .map((userId) => findUserByUserId(store, userId))
       .filter((item): item is UserRecord => Boolean(item));
-    const split = buildEqualActivitySplit(
-      activity,
-      participantUsers,
-      normalizeMoneyAmount(body.totalAmount || body.total_amount),
-      asString(body.currency) || "CNY",
-    );
+    let split: ReturnType<typeof buildEqualActivitySplit> | null = null;
+    try {
+      split = buildActivitySplitDraft({
+        activityId: activity.id,
+        totalAmount: normalizeMoneyAmount(body.totalAmount || body.total_amount),
+        currency: asString(body.currency) || "CNY",
+        participants: participantUsers.map((item) => ({
+          userId: item.userId,
+          studentId: item.studentId || "",
+          name: resolveUserDisplayLabel(item),
+        })),
+        perPerson: body.perPerson || body.per_person,
+      });
+    } catch (error) {
+      createLegacyError(400, "ACTIVITY_SPLIT_INVALID", error instanceof Error ? error.message : "分摊金额不合法");
+    }
+    if (!split) {
+      createLegacyError(400, "ACTIVITY_SPLIT_INVALID", "分摊金额不合法");
+    }
     activity.metadata = {
       ...(activity.metadata || {}),
       split,
@@ -3419,6 +3549,79 @@ export const handleSocialV1Api = async (event: H3Event) => {
     return {
       ok: true,
       split,
+      activity: toActivityPayload(store, activity, user.userId),
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
+  const activityCancelMatch = path.match(/^social\/activities\/([^/]+)\/cancel$/);
+  if (method === "POST" && activityCancelMatch) {
+    const { user } = resolveLegacyAuthContext(event);
+    const activityId = decodeURIComponent(activityCancelMatch[1]);
+    const activity = ensureValue(
+      store.socialActivities.find((item) => item.id === activityId) || null,
+      404,
+      "ACTIVITY_NOT_FOUND",
+      "活动不存在",
+    );
+    if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
+      createLegacyError(403, "ACTIVITY_CANCEL_FORBIDDEN", "仅发起人可取消活动");
+    }
+    const previousStatus = activity.status;
+    activity.status = resolveNextActivityStatus(activity.status, "cancel");
+    activity.updatedAt = storeHelpers.nowIso();
+    if (previousStatus !== activity.status) {
+      activity.participantUserIds.forEach((recipientUserId) => {
+        if (recipientUserId === user.userId) {
+          return;
+        }
+        createSocialNotification(store, {
+          type: "activity_cancelled",
+          recipientUserId,
+          actorUserId: user.userId,
+          title: "组局已取消",
+          body: `「${activity.title}」已被发起人取消`,
+          payload: { activityId: activity.id },
+        });
+      });
+    }
+    return {
+      ok: true,
+      activity: toActivityPayload(store, activity, user.userId),
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
+  const activityExpireMatch = path.match(/^social\/activities\/([^/]+)\/expire$/);
+  if (method === "POST" && activityExpireMatch) {
+    const { user } = resolveLegacyAuthContext(event);
+    const activityId = decodeURIComponent(activityExpireMatch[1]);
+    const activity = ensureValue(
+      store.socialActivities.find((item) => item.id === activityId) || null,
+      404,
+      "ACTIVITY_NOT_FOUND",
+      "活动不存在",
+    );
+    if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
+      createLegacyError(403, "ACTIVITY_EXPIRE_FORBIDDEN", "仅发起人可过期活动");
+    }
+    const previousStatus = activity.status;
+    activity.status = resolveNextActivityStatus(activity.status, "expire");
+    activity.updatedAt = storeHelpers.nowIso();
+    if (previousStatus !== activity.status) {
+      activity.participantUserIds.forEach((recipientUserId) => {
+        createSocialNotification(store, {
+          type: "activity_expired",
+          recipientUserId,
+          actorUserId: user.userId,
+          title: "组局已过期",
+          body: `「${activity.title}」已过期，无法继续响应`,
+          payload: { activityId: activity.id },
+        });
+      });
+    }
+    return {
+      ok: true,
       activity: toActivityPayload(store, activity, user.userId),
       stateRevision: getNexusStoreRevision(),
     };
@@ -3513,12 +3716,25 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (invitation.inviteeUserId !== user.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_INVITATION_FORBIDDEN", "无权处理该活动邀请");
     }
+    if (activity.status === "cancelled" || activity.status === "expired") {
+      createLegacyError(400, "ACTIVITY_NOT_RESPONDABLE", "活动已取消或过期，无法继续响应");
+    }
     const body = await readJsonBody<{ action?: string }>(event);
     const action = asString(body.action);
     invitation.status = action === "decline" || action === "declined" ? "declined" : "accepted";
     invitation.respondedAt = storeHelpers.nowIso();
     invitation.updatedAt = invitation.respondedAt;
     activity.updatedAt = invitation.updatedAt;
+    if (invitation.status === "declined") {
+      createSocialNotification(store, {
+        type: "activity_invite",
+        recipientUserId: activity.createdByUserId,
+        actorUserId: user.userId,
+        title: "组局邀请已拒绝",
+        body: `${resolveUserDisplayLabel(user)} 拒绝了「${activity.title}」`,
+        payload: { activityId: activity.id, invitationId: invitation.id, status: "declined" },
+      });
+    }
     const invitations = store.socialActivityInvitations.filter((item) => item.activityId === activity.id);
     if (invitations.length > 0 && invitations.every((item) => item.status === "accepted")) {
       activity.status = resolveNextActivityStatus(activity.status, "confirm");
@@ -3549,27 +3765,15 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (!text) {
       createLegacyError(400, "AI_SCHEDULE_TEXT_REQUIRED", "请输入需要解析的日程文本");
     }
-    const intelligence = buildScheduleIntelligence(text);
+    const candidates = buildScheduleCandidateDrafts(text).map((candidate) => ({
+      ...candidate,
+      examDate: extractExamDateFromText(text),
+      ...buildScheduleCandidateConflictPayload(store, user, candidate),
+    }));
     return {
       ok: true,
       provider: "rules",
-      candidates: [
-        {
-          title: text.slice(0, 48),
-          description: text,
-          tags: intelligence.tags,
-          priorityLabel: intelligence.priorityLabel,
-          priorityScore: intelligence.priorityScore,
-          repeatWeekdays: intelligence.repeatWeekdays,
-          day: intelligence.suggestedDay,
-          startSection: intelligence.suggestedStartSection,
-          endSection: intelligence.suggestedEndSection,
-          weekExpr: "1-20",
-          parity: "all",
-          examLike: intelligence.examLike,
-          confidence: intelligence.confidence,
-        },
-      ],
+      candidates,
       userId: user.userId,
     };
   }
@@ -3588,6 +3792,8 @@ export const handleSocialV1Api = async (event: H3Event) => {
       week_expr?: string;
       parity?: "all" | "odd" | "even";
       tags?: string[];
+      examDate?: string;
+      exam_date?: string;
     }>(event);
     const title = asString(body.title);
     if (!title) {
@@ -3611,7 +3817,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       tags: Array.isArray(body.tags) && body.tags.length > 0 ? body.tags.map((item) => asString(item)).filter((item) => item) : intelligence.tags,
       priorityScore: intelligence.priorityScore,
       priorityLabel: intelligence.priorityLabel,
-      examDate: "",
+      examDate: asString(body.examDate || body.exam_date) || extractExamDateFromText(`${title} ${asString(body.description)}`),
       createdAt: storeHelpers.nowIso(),
       updatedAt: storeHelpers.nowIso(),
     };

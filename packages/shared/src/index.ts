@@ -19,6 +19,8 @@ export const SOCIAL_NOTIFICATION_TYPES = [
   "circle_left",
   "activity_invite",
   "activity_confirmed",
+  "activity_cancelled",
+  "activity_expired",
 ] as const;
 export const SOCIAL_NOTIFICATION_STATUSES = ["unread", "read"] as const;
 export const DEFAULT_SCHEDULE_TERM_TIMEZONE = "Asia/Shanghai" as const;

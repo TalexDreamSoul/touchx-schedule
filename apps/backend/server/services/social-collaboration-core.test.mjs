@@ -36,6 +36,7 @@ test("keeps social activity status transitions inside the activity state machine
   assert.equal(core.resolveNextActivityStatus("draft", "send"), "inviting");
   assert.equal(core.resolveNextActivityStatus("inviting", "confirm"), "confirmed");
   assert.equal(core.resolveNextActivityStatus("inviting", "cancel"), "cancelled");
+  assert.equal(core.resolveNextActivityStatus("confirmed", "cancel"), "cancelled");
   assert.equal(core.resolveNextActivityStatus("confirmed", "expire"), "confirmed");
 });
 
@@ -57,4 +58,45 @@ test("extracts first-pass schedule intelligence without requiring an LLM", async
   assert.equal(batchParsed.repeatWeekdays.join(","), "1,3,5");
   assert.equal(batchParsed.suggestedStartSection, 5);
   assert.equal(batchParsed.suggestedEndSection, 7);
+});
+
+test("expands repeated natural-language schedules into separate candidates", async () => {
+  const core = await loadCoreModule();
+
+  const candidates = core.buildScheduleCandidateDrafts("周一三五下午2-4点训练");
+
+  assert.equal(candidates.length, 3);
+  assert.deepEqual(candidates.map((item) => item.day), [1, 3, 5]);
+  assert.equal(candidates.every((item) => item.startSection === 5 && item.endSection === 7), true);
+  assert.equal(candidates.every((item) => item.tags.includes("运动")), true);
+});
+
+test("normalizes custom AA split rows and rejects mismatched totals", async () => {
+  const core = await loadCoreModule();
+
+  const okSplit = core.buildActivitySplitDraft({
+    activityId: "activity_1",
+    totalAmount: 30,
+    currency: "CNY",
+    participants: [
+      { userId: "u1", studentId: "s1", name: "A" },
+      { userId: "u2", studentId: "s2", name: "B" },
+    ],
+    perPerson: [
+      { userId: "u1", amount: 12.5 },
+      { userId: "u2", amount: 17.5 },
+    ],
+  });
+
+  assert.equal(okSplit.totalAmount, 30);
+  assert.deepEqual(okSplit.perPerson.map((item) => item.amount), [12.5, 17.5]);
+  assert.throws(() => {
+    core.buildActivitySplitDraft({
+      activityId: "activity_1",
+      totalAmount: 30,
+      currency: "CNY",
+      participants: [{ userId: "u1", studentId: "s1", name: "A" }],
+      perPerson: [{ userId: "u1", amount: 29 }],
+    });
+  }, /AA_SPLIT_TOTAL_MISMATCH/);
 });

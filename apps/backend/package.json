@@ -13,6 +13,7 @@
     "deploy": "nuxt build && wrangler --cwd .output deploy --domains schedule-backend.tagzxia.com --keep-vars",
     "type-check": "nuxt prepare && tsc -p .nuxt/tsconfig.json --noEmit",
     "smoke:local": "bash ./scripts/smoke-local.sh",
+    "smoke:production": "bash ./scripts/smoke-production.sh",
     "sync:legacy": "node ./scripts/sync-legacy-normalized.mjs"
   },
   "dependencies": {
