@@ -27,12 +27,14 @@
               </view>
             </view>
           </view>
-          <view class="tab-screen-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(2) }">
+          <view class="tab-screen-panel profile-tab-panel" :class="{ 'tab-screen-panel-blur': shouldBlurPanel(2) }">
             <schedule-top-header v-bind="profileScheduleTopHeaderProps" @include-click="openIncludePicker" @week-click="openWeekPicker" />
+            <scroll-view class="profile-tab-scroll" scroll-y :show-scrollbar="false">
               <view class="profile-tab-wrap">
                 <profile-display-section v-bind="profileDisplayProps" />
                 <profile-actions-section style="flex: 1" v-bind="profileActionsProps" />
               </view>
+            </scroll-view>
           </view>
         </view>
       </view>
@@ -3346,6 +3348,18 @@ function formatMonthDay(date: Date) {
   flex-direction: column;
 }
 
+.profile-tab-panel {
+  height: calc(100vh - 108rpx);
+  height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx);
+  max-height: calc(100vh - 108rpx - env(safe-area-inset-bottom));
+  max-height: calc(100vh - 108rpx - constant(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .tab-screen-panel-blur {
   filter: blur(1.8px);
 }
@@ -3381,14 +3395,21 @@ function formatMonthDay(date: Date) {
   padding: 20rpx 20rpx calc(130rpx + constant(safe-area-inset-bottom));
 }
 
+.profile-tab-scroll {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+
 .profile-tab-wrap {
   display: flex;
   flex-direction: column;
   gap: 22rpx;
-
-  height: calc(100vh - 110rpx);
-  height: calc(100vh - 110rpx - env(safe-area-inset-bottom));
-  height: calc(100vh - 110rpx - constant(safe-area-inset-bottom));
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 0 20rpx 132rpx;
+  padding: 0 20rpx calc(132rpx + env(safe-area-inset-bottom));
+  padding: 0 20rpx calc(132rpx + constant(safe-area-inset-bottom));
 }
 
 .schedule-content {
