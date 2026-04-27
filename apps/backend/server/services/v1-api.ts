@@ -54,6 +54,7 @@ import {
   confirmScheduleImportJob,
   createScheduleImportJob,
   getScheduleImportJobStatus,
+  listRecentScheduleImportJobs,
   listRecentScheduleImportJobIds,
   toScheduleImportErrorPayload,
 } from "./schedule-import-service";
@@ -2202,6 +2203,22 @@ export const handleV1Api = async (event: H3Event) => {
       totalFiles: result.totalFiles,
     });
     return ok(result);
+  }
+
+  if (method === "GET" && path === "schedule-import/jobs") {
+    const { user } = requireUser(event);
+    const parsedLimit = Number(query.limit);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(50, Math.trunc(parsedLimit))) : 10;
+    const items = await listRecentScheduleImportJobs(event, {
+      actorUserId: user.userId,
+      includeAll: isAdminRole(user) && query.scope === "all",
+      limit,
+    });
+    return ok({
+      items,
+      total: items.length,
+      limit,
+    });
   }
 
   const scheduleImportJobConfirmMatch = path.match(/^schedule-import\/jobs\/([^/]+)\/confirm$/);

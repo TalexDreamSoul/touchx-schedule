@@ -3,6 +3,11 @@ import type { ScheduleSubscription } from "@touchx/shared";
 import { getNexusStore, storeHelpers, type ClassMemberRecord, type ClassRecord, type ScheduleEntryRecord, type ScheduleRecord, type ScheduleVersionRecord, type UserRecord } from "./domain-store";
 import { parseSchedulePdf, type ParsedScheduleCourse } from "./schedule-pdf-parser";
 import {
+  normalizeScheduleImportJobSummaryRows,
+  type ScheduleImportJobSummary,
+  type ScheduleImportJobSummaryRow,
+} from "./schedule-import-history";
+import {
   buildScheduleImportPreviewEntries,
   normalizeScheduleImportPreviewCourses,
   type ScheduleImportPreviewEntry,
@@ -1723,6 +1728,63 @@ export const listRecentScheduleImportJobIds = async (event: H3Event, limit = 20)
     .bind(safeLimit);
   const listRows = await queryAll<{ id?: string }>(rows);
   return listRows.map((row) => asString(row.id)).filter((item) => item !== "");
+};
+
+export const listRecentScheduleImportJobs = async (
+  event: H3Event,
+  options: {
+    actorUserId?: string;
+    includeAll?: boolean;
+    limit?: number;
+  } = {},
+): Promise<ScheduleImportJobSummary[]> => {
+  const db = resolveNexusDb(event);
+  if (!db) {
+    throw new Error("NEXUS_DB 未配置");
+  }
+  await ensureImportTables(db);
+  const safeLimit = Math.max(1, Math.min(50, toInt(options.limit, 10)));
+  const actorUserId = asString(options.actorUserId);
+  const includeAll = Boolean(options.includeAll);
+  if (!includeAll && !actorUserId) {
+    return [];
+  }
+  const whereSql = includeAll ? "" : "WHERE j.created_by_user_id = ?";
+  const statement = db.prepare(
+    `SELECT
+      j.id,
+      j.status,
+      j.total_files,
+      j.processed_files,
+      j.success_count,
+      j.fail_count,
+      j.created_by_user_id,
+      j.created_at,
+      j.updated_at,
+      j.finished_at,
+      i.file_name,
+      i.student_no,
+      i.term,
+      i.status AS item_status,
+      i.entry_count,
+      i.schedule_id,
+      i.version_no
+    FROM schedule_import_jobs j
+    LEFT JOIN schedule_import_job_items i ON i.id = (
+      SELECT ii.id
+      FROM schedule_import_job_items ii
+      WHERE ii.job_id = j.id
+      ORDER BY ii.created_at ASC
+      LIMIT 1
+    )
+    ${whereSql}
+    ORDER BY j.created_at DESC
+    LIMIT ?`,
+  );
+  const rows = includeAll
+    ? await queryAll<ScheduleImportJobSummaryRow>(statement.bind(safeLimit))
+    : await queryAll<ScheduleImportJobSummaryRow>(statement.bind(actorUserId, safeLimit));
+  return normalizeScheduleImportJobSummaryRows(rows);
 };
 
 export const resolveScheduleImportDebugContext = (event: H3Event) => {
