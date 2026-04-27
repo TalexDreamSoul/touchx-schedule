@@ -14,6 +14,17 @@
     <view v-for="(item, index) in candidates" :key="`candidate-${index}`" class="card">
       <view class="title small">{{ item.title }}</view>
       <view class="sub">标签：{{ item.tags.join(" / ") }} · 优先级：{{ formatPriority(item.priorityLabel) }} · 置信度 {{ Math.round(item.confidence * 100) }}%</view>
+      <view v-if="item.conflicts?.length" class="warning-line">{{ item.conflicts[0]?.message || "存在时间冲突" }}</view>
+      <view v-if="item.alternatives?.length" class="alternative-row">
+        <view
+          v-for="slot in item.alternatives"
+          :key="`${slot.week}-${slot.day}-${slot.startSection}`"
+          class="alt-chip"
+          @click="applyAlternative(item, slot)"
+        >
+          周{{ formatDay(slot.day) }} {{ slot.startSection }}-{{ slot.endSection }} 节
+        </view>
+      </view>
       <view class="form-grid">
         <view class="form-field">
           <view class="label">周几</view>
@@ -64,7 +75,10 @@ interface ScheduleCandidate {
   weekExpr: string;
   parity: "all" | "odd" | "even";
   examLike: boolean;
+  examDate?: string;
   confidence: number;
+  conflicts?: Array<{ message: string }>;
+  alternatives?: Array<{ week: number; day: number; startSection: number; endSection: number; reason: string }>;
 }
 
 interface ParseResponse {
@@ -93,6 +107,20 @@ const formatPriority = (label: PriorityLabel) => {
   return "普通";
 };
 
+const formatDay = (day: number) => {
+  return ["一", "二", "三", "四", "五", "六", "日"][Math.max(1, Math.min(7, Number(day || 1))) - 1] || "一";
+};
+
+const applyAlternative = (
+  candidate: ScheduleCandidate,
+  slot: { day: number; startSection: number; endSection: number },
+) => {
+  candidate.day = slot.day;
+  candidate.startSection = slot.startSection;
+  candidate.endSection = slot.endSection;
+  candidate.conflicts = [];
+};
+
 const parseText = async () => {
   syncContext();
   if (!authSession.value.token) {
@@ -119,6 +147,9 @@ const parseText = async () => {
       parity: item.parity || "all",
     }));
     pageError.value = "";
+    if (candidates.value.length > 1) {
+      uni.showToast({ title: `已生成 ${candidates.value.length} 条候选`, icon: "none", duration: 1200 });
+    }
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : "解析失败";
   }
@@ -138,6 +169,7 @@ const commitCandidate = async (candidate: ScheduleCandidate) => {
         weekExpr: candidate.weekExpr,
         parity: candidate.parity,
         tags: candidate.tags,
+        examDate: candidate.examDate || "",
       },
       authSession.value.token,
     );
@@ -180,6 +212,31 @@ onShow(() => {
   font-size: 21rpx;
   color: var(--text-sub);
   line-height: 1.45;
+}
+
+.warning-line {
+  margin-top: 10rpx;
+  padding: 10rpx 12rpx;
+  border-radius: 8rpx;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  font-size: 21rpx;
+}
+
+.alternative-row {
+  margin-top: 10rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.alt-chip {
+  border: 1rpx solid var(--line);
+  border-radius: 999rpx;
+  padding: 8rpx 12rpx;
+  color: var(--text-main);
+  background: var(--muted-bg);
+  font-size: 20rpx;
 }
 
 .textarea {

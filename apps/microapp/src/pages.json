@@ -98,6 +98,12 @@
           }
         },
         {
+          "path": "circle-join",
+          "style": {
+            "navigationBarTitleText": "加入圈子"
+          }
+        },
+        {
           "path": "social-activities",
           "style": {
             "navigationBarTitleText": "组局与活动"

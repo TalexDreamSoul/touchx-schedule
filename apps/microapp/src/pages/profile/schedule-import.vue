@@ -1,9 +1,9 @@
 <template>
-  <PageContainer title="PDF 导入" :theme-key="themeKey">
+  <PageContainer title="课表导入" :theme-key="themeKey">
     <view class="page">
       <view class="card">
-        <view class="title">管理员单文件导入</view>
-        <view class="sub">小程序端一次只上传一个 PDF，后端仍复用同一套导入任务接口。</view>
+        <view class="title">用户侧课表导入</view>
+        <view class="sub">PDF 会进入识别任务；拍照/相册入口先返回清晰的 OCR 配置提示，不阻塞 PDF 导入。</view>
         <view class="form-field">
           <view class="label">学期</view>
           <input v-model.trim="term" class="input" placeholder="例如 2025-2026-2" />
@@ -13,10 +13,11 @@
           <input v-model.trim="studentNo" class="input" placeholder="留空则尝试从 PDF/文件名识别" />
         </view>
         <view class="form-field">
-          <view class="label">PDF 文件</view>
+          <view class="label">课表文件</view>
           <view class="picker-row">
             <view class="picker-file">{{ selectedFileName || "未选择文件" }}</view>
             <view class="btn ghost" @click="choosePdf">选择 PDF</view>
+            <view class="btn ghost" @click="chooseImage">拍照/相册</view>
           </view>
         </view>
         <view class="actions">
@@ -88,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import { onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import PageContainer from "@/components/PageContainer.vue";
 import { useSocialDashboard, type SocialDashboardResponse } from "@/composables/useSocialDashboard";
@@ -144,6 +145,7 @@ const term = ref("2025-2026-2");
 const studentNo = ref("");
 const selectedFilePath = ref("");
 const selectedFileName = ref("");
+const selectedFileKind = ref<"pdf" | "image">("pdf");
 const submitPending = ref(false);
 const pollingPending = ref(false);
 const statusText = ref("");
@@ -153,10 +155,8 @@ const correctionJobId = ref("");
 const originalPayloadText = ref("");
 const correctedPayloadText = ref("");
 const correctionPending = ref(false);
-const { dashboard, refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
+const { refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
-
-const isAdmin = computed(() => Boolean(dashboard.value?.me?.isAdmin));
 
 const clearPollTimer = () => {
   if (!pollTimer) {
@@ -185,7 +185,7 @@ const loadPageContext = async () => {
   }
   if (!session.token) {
     clearDashboard(true);
-    pageError.value = "请先登录管理员账号。";
+    pageError.value = "请先登录后导入课表。";
     return;
   }
   try {
@@ -198,18 +198,10 @@ const loadPageContext = async () => {
       clearDashboard();
     }
   }
-  if (!isAdmin.value) {
-    pageError.value = "当前账号不是管理员，无法使用 PDF 导入，但可以提交修正样本。";
-  } else {
-    pageError.value = "";
-  }
+  pageError.value = "";
 };
 
 const choosePdf = () => {
-  if (!isAdmin.value) {
-    uni.showToast({ title: "仅管理员可导入", icon: "none", duration: 1600 });
-    return;
-  }
   uni.chooseMessageFile({
     count: 1,
     type: "file",
@@ -224,10 +216,33 @@ const choosePdf = () => {
       }
       selectedFilePath.value = filePath;
       selectedFileName.value = fileName;
+      selectedFileKind.value = "pdf";
       pageError.value = "";
     },
     fail: (error) => {
       const message = String(error?.errMsg || "选择 PDF 失败");
+      uni.showToast({ title: message, icon: "none", duration: 1800 });
+    },
+  });
+};
+
+const chooseImage = () => {
+  uni.chooseImage({
+    count: 1,
+    sourceType: ["album", "camera"],
+    success: (result) => {
+      const filePath = String(result.tempFilePaths?.[0] || "").trim();
+      if (!filePath) {
+        uni.showToast({ title: "未读取到图片", icon: "none", duration: 1800 });
+        return;
+      }
+      selectedFilePath.value = filePath;
+      selectedFileName.value = filePath.split("/").pop() || `schedule_${Date.now()}.jpg`;
+      selectedFileKind.value = "image";
+      pageError.value = "图片 OCR Provider 暂未配置，请先选择 PDF 导入；该图片可保留用于后续 OCR 接入验证。";
+    },
+    fail: (error) => {
+      const message = String(error?.errMsg || "选择图片失败");
       uni.showToast({ title: message, icon: "none", duration: 1800 });
     },
   });
@@ -313,16 +328,17 @@ const schedulePoll = (jobId: string) => {
 };
 
 const submitImport = async () => {
-  if (!isAdmin.value) {
-    uni.showToast({ title: "仅管理员可导入", icon: "none", duration: 1600 });
-    return;
-  }
   if (!authToken.value) {
     uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
     return;
   }
   if (!selectedFilePath.value || !selectedFileName.value) {
     uni.showToast({ title: "请先选择 PDF", icon: "none", duration: 1600 });
+    return;
+  }
+  if (selectedFileKind.value === "image") {
+    pageError.value = "图片 OCR Provider 暂未配置，请先选择 PDF 导入。";
+    uni.showToast({ title: "图片 OCR 暂未配置", icon: "none", duration: 1600 });
     return;
   }
   if (submitPending.value || pollingPending.value) {
@@ -332,7 +348,7 @@ const submitImport = async () => {
   pageError.value = "";
   statusText.value = "正在提交导入任务...";
   try {
-    const payload = await uploadBackendFile<ScheduleImportCreateResponse>(backendBaseUrl.value, "/api/v1/admin/schedule-import/jobs", {
+    const payload = await uploadBackendFile<ScheduleImportCreateResponse>(backendBaseUrl.value, "/api/v1/schedule-import/jobs", {
       filePath: selectedFilePath.value,
       name: "files[]",
       token: authToken.value,

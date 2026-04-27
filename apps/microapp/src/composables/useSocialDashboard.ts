@@ -31,6 +31,14 @@ export interface SocialCircleItem {
   circleType?: "class" | "club" | "custom";
   inviteToken?: string;
   memberCount?: number;
+  owner?: SocialUserItem | null;
+  members?: Array<{
+    memberId: string;
+    role: "owner" | "admin" | "member";
+    visibilityScope: "busy_free" | "detail" | "hidden" | "blocked";
+    joinedAt?: string;
+    user?: SocialUserItem | null;
+  }>;
 }
 
 export interface SocialDashboardResponse {
@@ -133,7 +141,7 @@ const normalizeSubscriptionRequests = (raw: unknown, backendBaseUrl = "") => {
   return items;
 };
 
-const normalizeSocialCircles = (raw: unknown) => {
+const normalizeSocialCircles = (raw: unknown, backendBaseUrl = "") => {
   if (!Array.isArray(raw)) {
     return [] as SocialCircleItem[];
   }
@@ -150,6 +158,16 @@ const normalizeSocialCircles = (raw: unknown) => {
       circleType: data.circleType || "custom",
       inviteToken: String(data.inviteToken || "").trim(),
       memberCount: Number(data.memberCount || 0),
+      owner: data.owner ? normalizeSocialUserItem(data.owner, backendBaseUrl) : null,
+      members: Array.isArray(data.members)
+        ? data.members.map((member) => ({
+            memberId: String(member.memberId || "").trim(),
+            role: member.role || "member",
+            visibilityScope: member.visibilityScope || "busy_free",
+            joinedAt: String(member.joinedAt || ""),
+            user: member.user ? normalizeSocialUserItem(member.user, backendBaseUrl) : null,
+          }))
+        : [],
     });
   });
   return items;
@@ -168,7 +186,7 @@ const normalizeSocialDashboardResponse = (raw: unknown, backendBaseUrl = ""): So
     candidates: normalizeSocialUserList(data.candidates, backendBaseUrl),
     subscribers: normalizeSocialUserList(data.subscribers, backendBaseUrl),
     subscriptionRequests: normalizeSubscriptionRequests(data.subscriptionRequests, backendBaseUrl),
-    circles: normalizeSocialCircles(data.circles),
+    circles: normalizeSocialCircles(data.circles, backendBaseUrl),
     unreadNotificationCount: Number(data.unreadNotificationCount || 0),
     bound: Boolean(data.bound),
     stateRevision: Number(data.stateRevision || 0),

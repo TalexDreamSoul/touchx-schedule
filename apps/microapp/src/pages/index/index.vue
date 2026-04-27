@@ -2796,29 +2796,40 @@ const createActivityFromFreeCell = (week: number, day: number, section: number) 
   ];
   uni.showActionSheet({
     itemList: typeOptions.map((item) => item.label),
-    success: async (result) => {
+    success: (result) => {
       const selected = typeOptions[result.tapIndex] || typeOptions[0];
-      try {
-        await requestBackendPost(
-          "/api/v1/social/activities",
-          {
-            title: `${selected.label}组局`,
-            activityType: selected.value,
-            week,
-            day,
-            startSection: section,
-            endSection: section,
-            participantStudentIds,
-            sendNow: true,
-          },
-          true,
-        );
-        uni.showToast({ title: "邀请已发送", icon: "none", duration: 1200 });
-        void refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "发起失败";
-        uni.showToast({ title: message, icon: "none", duration: 1800 });
-      }
+      const participantText = participantStudentIds.length > 3 ? `${participantStudentIds.length} 人` : participantStudentIds.join("、");
+      uni.showModal({
+        title: `${selected.label}组局`,
+        content: `第 ${week} 周周${["一", "二", "三", "四", "五", "六", "日"][day - 1] || day}第 ${section} 节，邀请 ${participantText}`,
+        confirmText: "发送邀请",
+        success: async (modalResult) => {
+          if (!modalResult.confirm) {
+            return;
+          }
+          try {
+            await requestBackendPost(
+              "/api/v1/social/activities",
+              {
+                title: `${selected.label}组局`,
+                activityType: selected.value,
+                week,
+                day,
+                startSection: section,
+                endSection: section,
+                participantStudentIds,
+                sendNow: true,
+              },
+              true,
+            );
+            uni.showToast({ title: "邀请已发送", icon: "none", duration: 1200 });
+            void refreshSocialDashboard({ skipActiveScheduleLoad: activeTab.value !== "schedule" });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "发起失败";
+            uni.showToast({ title: message, icon: "none", duration: 1800 });
+          }
+        },
+      });
     },
   });
 };

@@ -22,8 +22,8 @@
               <view class="mini-value">{{ subscriptions.length }} 人</view>
             </view>
             <view class="mini-item">
-              <view class="mini-key">我的验证码</view>
-              <view class="mini-value code">{{ dashboard?.me?.randomCode || "----" }}</view>
+              <view class="mini-key">待我处理</view>
+              <view class="mini-value">{{ inboundPendingRequests.length }} 条</view>
             </view>
             <view class="mini-item">
               <view class="mini-key">未读通知</view>
@@ -105,7 +105,10 @@
               <view class="sub-name">{{ item.name }}</view>
               <view class="sub-meta">成员 {{ item.memberCount || 1 }} 人 · 邀请码 {{ item.inviteToken || "--" }}</view>
             </view>
-            <view class="sub-action remove" @click="leaveCircle(item.circleId)">退出</view>
+            <view class="action-row compact">
+              <view class="sub-action" @click="copyCircleInvite(item)">邀请</view>
+              <view class="sub-action remove" @click="leaveCircle(item.circleId)">退出</view>
+            </view>
           </view>
         </view>
 
@@ -136,7 +139,7 @@
               {{
                 disableMutations
                   ? "处理中..."
-                  : (subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : "请求订阅")
+                  : (subscribedStudentIdSet.has(item.studentId) ? "取消订阅" : pendingRequestStudentIdSet.has(item.studentId) ? "已请求" : "请求订阅")
               }}
             </view>
           </view>
@@ -191,6 +194,7 @@ import PageViewContainer from "@/components/PageViewContainer.vue";
 import {
   useSocialDashboard,
   type SocialDashboardResponse,
+  type SocialCircleItem,
   type SocialUserItem,
 } from "@/composables/useSocialDashboard";
 import {
@@ -247,6 +251,15 @@ const inboundPendingRequests = computed(() => {
   return (dashboard.value?.subscriptionRequests || []).filter((item) => {
     return item.status === "pending" && normalizeStudentId(item.target?.studentId) === meStudentId;
   });
+});
+const pendingRequestStudentIdSet = computed(() => {
+  const meStudentId = normalizeStudentId(dashboard.value?.me?.studentId);
+  return new Set(
+    (dashboard.value?.subscriptionRequests || [])
+      .filter((item) => item.status === "pending" && normalizeStudentId(item.requester?.studentId) === meStudentId)
+      .map((item) => normalizeStudentId(item.target?.studentId))
+      .filter((item) => item),
+  );
 });
 
 const normalizeStudentId = (value: unknown) => String(value || "").trim();
@@ -421,7 +434,7 @@ const subscribeStudent = async (studentId: string) => {
   try {
     const payload = await requestBackendPost<SocialSubscribeMutationResponse>(
       backendBaseUrl.value,
-      "/api/v1/social/subscribe",
+      "/api/v1/social/subscription-requests",
       { targetStudentId: normalizedStudentId, visibilityScope: "busy_free" },
       authSession.value.token,
     );
@@ -523,6 +536,27 @@ const leaveCircle = async (circleId: string) => {
   }
 };
 
+const buildCircleJoinUrl = (item: SocialCircleItem) => {
+  const token = normalizeStudentId(item.inviteToken);
+  if (!token) {
+    return "";
+  }
+  return `/pages/profile/circle-join?token=${encodeURIComponent(token)}`;
+};
+
+const copyCircleInvite = (item: SocialCircleItem) => {
+  const path = buildCircleJoinUrl(item);
+  if (!path) {
+    uni.showToast({ title: "邀请码缺失", icon: "none", duration: 1600 });
+    return;
+  }
+  const text = `${item.name} 邀请链接：${path}`;
+  uni.setClipboardData({
+    data: text,
+    success: () => uni.showToast({ title: "邀请链接已复制", icon: "none", duration: 1200 }),
+  });
+};
+
 const markNotificationRead = async (notificationId: string) => {
   if (!notificationId || disableMutations.value) {
     return;
@@ -549,6 +583,10 @@ const toggleSubscribe = async (studentId: string) => {
   }
   if (subscribedStudentIdSet.value.has(normalizedStudentId)) {
     await unsubscribe(normalizedStudentId);
+    return;
+  }
+  if (pendingRequestStudentIdSet.value.has(normalizedStudentId)) {
+    uni.showToast({ title: "订阅请求已发送", icon: "none", duration: 1200 });
     return;
   }
   await subscribeStudent(normalizedStudentId);

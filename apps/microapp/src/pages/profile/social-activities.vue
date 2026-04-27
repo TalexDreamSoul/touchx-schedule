@@ -45,6 +45,10 @@
         <view class="btn ghost" @click="predictActivity(item)">成功率</view>
         <view class="btn ghost" @click="calcSmartReminder(item)">提醒时机</view>
       </view>
+      <view v-if="item.status !== 'cancelled' && item.status !== 'expired'" class="action-row">
+        <view class="btn ghost danger" @click="cancelActivity(item)">取消活动</view>
+        <view class="btn ghost" @click="expireActivity(item)">设为过期</view>
+      </view>
     </view>
   </PageViewContainer>
 </template>
@@ -65,6 +69,7 @@ import {
 interface ActivityUserBrief {
   studentId: string;
   name: string;
+  userId?: string;
 }
 
 interface ActivityPrediction {
@@ -143,6 +148,38 @@ const formatSplit = (value: unknown) => {
   return `${data.currency || "CNY"} ${totalAmount.toFixed(2)}，人均 ${Number(first?.amount || 0).toFixed(2)}`;
 };
 
+const parseSplitInput = (activity: SocialActivityItem, text: string) => {
+  const trimmed = String(text || "").trim();
+  if (!trimmed.includes("=") && !trimmed.includes("：") && !trimmed.includes(":")) {
+    return {
+      totalAmount: Number(trimmed || 0),
+      currency: "CNY",
+    };
+  }
+  const rows = trimmed
+    .split(/[，,;\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item)
+    .map((item) => {
+      const [rawName, rawAmount] = item.split(/[=：:]/);
+      const name = String(rawName || "").trim();
+      const participant = activity.participants.find((candidate) => {
+        return candidate.name === name || candidate.studentId === name;
+      });
+      return {
+        userId: participant?.userId,
+        studentId: participant?.studentId || name,
+        amount: Number(String(rawAmount || "").trim()),
+      };
+    });
+  const totalAmount = rows.reduce((sum, row) => sum + (Number.isFinite(row.amount) ? row.amount : 0), 0);
+  return {
+    totalAmount,
+    currency: "CNY",
+    perPerson: rows,
+  };
+};
+
 const loadActivities = async () => {
   backendBaseUrl.value = resolveBackendBaseUrlFromStorage();
   authSession.value = readAuthSessionFromStorage();
@@ -195,13 +232,13 @@ const createSplit = (activity: SocialActivityItem) => {
   uni.showModal({
     title: "AA 分摊金额",
     editable: true,
-    placeholderText: "输入总金额，例如 88",
+    placeholderText: "总金额 88，或 张三=30,李四=58",
     success: async (result) => {
       if (!result.confirm) {
         return;
       }
-      const totalAmount = Number((result as { content?: string }).content || 0);
-      if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      const splitPayload = parseSplitInput(activity, String((result as { content?: string }).content || ""));
+      if (!Number.isFinite(splitPayload.totalAmount) || splitPayload.totalAmount <= 0) {
         uni.showToast({ title: "请输入有效金额", icon: "none", duration: 1600 });
         return;
       }
@@ -209,7 +246,7 @@ const createSplit = (activity: SocialActivityItem) => {
         await requestBackendPost(
           backendBaseUrl.value,
           `/api/v1/social/activities/${encodeURIComponent(activity.activityId)}/splits`,
-          { totalAmount, currency: "CNY" },
+          splitPayload,
           authSession.value.token,
         );
         await loadActivities();
@@ -219,6 +256,39 @@ const createSplit = (activity: SocialActivityItem) => {
       }
     },
   });
+};
+
+const mutateActivityStatus = async (activity: SocialActivityItem, action: "cancel" | "expire") => {
+  const title = action === "cancel" ? "确认取消活动？" : "确认设为过期？";
+  uni.showModal({
+    title,
+    content: action === "cancel" ? "取消后参与人会收到通知。" : "过期后邀请将不可继续响应。",
+    success: async (result) => {
+      if (!result.confirm) {
+        return;
+      }
+      try {
+        await requestBackendPost(
+          backendBaseUrl.value,
+          `/api/v1/social/activities/${encodeURIComponent(activity.activityId)}/${action}`,
+          {},
+          authSession.value.token,
+        );
+        await loadActivities();
+        uni.showToast({ title: action === "cancel" ? "已取消" : "已过期", icon: "none", duration: 1200 });
+      } catch (error) {
+        uni.showToast({ title: error instanceof Error ? error.message : "操作失败", icon: "none", duration: 1800 });
+      }
+    },
+  });
+};
+
+const cancelActivity = (activity: SocialActivityItem) => {
+  void mutateActivityStatus(activity, "cancel");
+};
+
+const expireActivity = (activity: SocialActivityItem) => {
+  void mutateActivityStatus(activity, "expire");
 };
 
 const copySnapshot = async (activity: SocialActivityItem) => {
@@ -343,5 +413,9 @@ onShow(() => {
   color: var(--text-main);
   background: var(--card-bg);
   border: 1rpx solid var(--line);
+}
+
+.btn.danger {
+  color: var(--danger);
 }
 </style>
