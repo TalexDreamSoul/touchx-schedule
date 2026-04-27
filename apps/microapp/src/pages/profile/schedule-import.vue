@@ -63,6 +63,23 @@
         </view>
       </view>
 
+      <view class="card">
+        <view class="title small">最近导入</view>
+        <view class="sub">离开页面后可从这里继续查看识别结果或确认写入。</view>
+        <view v-if="historyPending" class="status">正在加载最近任务...</view>
+        <view v-else-if="recentJobs.length <= 0" class="empty-text">暂无导入任务</view>
+        <view v-for="item in recentJobs" :key="item.jobId" class="history-item" @click="openRecentJob(item)">
+          <view class="history-main">
+            <view class="history-title">{{ item.fileName || "课表导入任务" }}</view>
+            <view class="history-meta">
+              {{ formatJobStatus(item.status) }} · {{ item.entryCount }} 条 · {{ item.studentNo || "自动识别学号" }}
+            </view>
+            <view class="history-time">{{ formatDateTime(item.updatedAt || item.createdAt) }}</view>
+          </view>
+          <view class="history-action">{{ item.canResumePreview ? "继续确认" : "查看" }}</view>
+        </view>
+      </view>
+
       <view v-if="editablePreviewEntries.length > 0" class="card">
         <view class="title small">识别预览</view>
         <view class="sub">确认前可修正课程名、节次、周次、单双周、教室和教师；确认后才会写入正式课表。</view>
@@ -159,6 +176,9 @@ import {
   readAuthSessionFromStorage,
   requestBackendGet,
   requestBackendPost,
+  STORAGE_SCHEDULE_CACHE_SOURCE_KEY,
+  STORAGE_SCHEDULE_CACHE_TIME_KEY,
+  STORAGE_SELECTED_STUDENT_KEY,
   uploadBackendFile,
 } from "@/utils/profile-service";
 
@@ -209,6 +229,34 @@ interface ScheduleImportJobDetail {
   results: ScheduleImportJobItem[];
 }
 
+interface ScheduleImportJobSummary {
+  jobId: string;
+  status: JobStatus;
+  totalFiles: number;
+  processedFiles: number;
+  successCount: number;
+  failCount: number;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string;
+  fileName: string;
+  studentNo: string;
+  term: string;
+  itemStatus: ItemStatus;
+  entryCount: number;
+  scheduleId: string;
+  versionNo: number;
+  confirmed: boolean;
+  canResumePreview: boolean;
+}
+
+interface ScheduleImportJobListResponse {
+  items: ScheduleImportJobSummary[];
+  total: number;
+  limit: number;
+}
+
 interface ScheduleImportCreateResponse {
   jobId: string;
   status: JobStatus;
@@ -228,6 +276,8 @@ const pollingPending = ref(false);
 const statusText = ref("");
 const pageError = ref("");
 const jobDetail = ref<ScheduleImportJobDetail | null>(null);
+const recentJobs = ref<ScheduleImportJobSummary[]>([]);
+const historyPending = ref(false);
 const originalPreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
 const editablePreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
 const confirmPending = ref(false);
@@ -285,6 +335,7 @@ const loadPageContext = async () => {
     }
   }
   pageError.value = "";
+  void fetchRecentJobs();
 };
 
 const choosePdf = () => {
@@ -382,6 +433,19 @@ const formatParity = (parity: ScheduleImportPreviewParity) => {
   return parityOptions.find((item) => item.value === parity)?.label || "全部";
 };
 
+const formatDateTime = (value: string) => {
+  const timestamp = Date.parse(String(value || ""));
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+  const date = new Date(timestamp);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${month}-${day} ${hour}:${minute}`;
+};
+
 const getParityIndex = (parity: ScheduleImportPreviewParity) => {
   return Math.max(0, parityOptions.findIndex((item) => item.value === parity));
 };
@@ -436,6 +500,26 @@ const restorePreviewEntries = () => {
   editablePreviewEntries.value = clonePreviewEntries(originalPreviewEntries.value);
 };
 
+const fetchRecentJobs = async () => {
+  if (!authToken.value || historyPending.value) {
+    return;
+  }
+  historyPending.value = true;
+  try {
+    const payload = await requestBackendGet<ScheduleImportJobListResponse>(
+      backendBaseUrl.value,
+      "/api/v1/schedule-import/jobs",
+      { limit: "8" },
+      authToken.value,
+    );
+    recentJobs.value = Array.isArray(payload.items) ? payload.items : [];
+  } catch (error) {
+    recentJobs.value = [];
+  } finally {
+    historyPending.value = false;
+  }
+};
+
 const fetchJobDetail = async (jobId: string) => {
   const detail = await requestBackendGet<ScheduleImportJobDetail>(
     backendBaseUrl.value,
@@ -447,6 +531,25 @@ const fetchJobDetail = async (jobId: string) => {
   syncPreviewEntriesFromJob(detail);
   statusText.value = `任务 ${formatJobStatus(detail.status)}：${detail.processedFiles}/${detail.totalFiles}`;
   return detail;
+};
+
+const openRecentJob = async (item: ScheduleImportJobSummary) => {
+  if (!item.jobId) {
+    return;
+  }
+  pageError.value = "";
+  statusText.value = "正在加载导入任务...";
+  try {
+    const detail = await fetchJobDetail(item.jobId);
+    if (!isTerminalJobStatus(detail.status)) {
+      pollingPending.value = true;
+      schedulePoll(detail.jobId);
+    } else {
+      pollingPending.value = false;
+    }
+  } catch (error) {
+    pageError.value = error instanceof Error ? error.message : "加载任务失败";
+  }
 };
 
 const schedulePoll = (jobId: string) => {
@@ -463,6 +566,7 @@ const schedulePoll = (jobId: string) => {
         } else {
           uni.showToast({ title: "导入结束，请查看结果", icon: "none", duration: 1600 });
         }
+        void fetchRecentJobs();
         return;
       }
       schedulePoll(jobId);
@@ -512,6 +616,7 @@ const submitImport = async () => {
     });
     pollingPending.value = true;
     await fetchJobDetail(payload.jobId);
+    void fetchRecentJobs();
     schedulePoll(payload.jobId);
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : "导入失败";
@@ -519,6 +624,15 @@ const submitImport = async () => {
   } finally {
     submitPending.value = false;
   }
+};
+
+const invalidateScheduleCacheAfterConfirm = (studentNo: string) => {
+  uni.removeStorageSync(STORAGE_SCHEDULE_CACHE_TIME_KEY);
+  uni.setStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY, "backend");
+  if (studentNo) {
+    uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, studentNo);
+  }
+  clearDashboard(true);
 };
 
 const validatePreviewEntries = () => {
@@ -569,8 +683,14 @@ const confirmImport = async () => {
       authToken.value,
     );
     correctedPayloadText.value = JSON.stringify({ previewEntries: correctedPreviewEntries, result }, null, 2);
+    const confirmedStudentNo = String(jobDetail.value.results?.[0]?.studentNo || "").trim();
+    invalidateScheduleCacheAfterConfirm(confirmedStudentNo);
     await fetchJobDetail(jobDetail.value.jobId);
+    await fetchRecentJobs();
     uni.showToast({ title: `已写入 ${result.entryCount} 条课程`, icon: "none", duration: 1600 });
+    setTimeout(() => {
+      uni.reLaunch({ url: "/pages/index/index" });
+    }, 700);
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : "确认导入失败";
   } finally {
@@ -772,6 +892,12 @@ onUnmounted(() => {
   color: var(--danger);
 }
 
+.empty-text {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
 .summary-grid {
   margin-top: 12rpx;
   display: grid;
@@ -865,6 +991,43 @@ onUnmounted(() => {
   font-size: 20rpx;
   color: var(--danger);
   line-height: 1.5;
+}
+
+.history-item {
+  margin-top: 12rpx;
+  padding: 14rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid var(--line);
+  background: var(--muted-bg);
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.history-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.history-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text-main);
+  word-break: break-all;
+}
+
+.history-meta,
+.history-time {
+  margin-top: 6rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+
+.history-action {
+  flex: 0 0 auto;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .preview-toolbar {
