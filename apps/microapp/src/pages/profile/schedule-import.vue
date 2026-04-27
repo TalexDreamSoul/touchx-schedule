@@ -63,6 +63,66 @@
         </view>
       </view>
 
+      <view v-if="editablePreviewEntries.length > 0" class="card">
+        <view class="title small">识别预览</view>
+        <view class="sub">确认前可修正课程名、节次、周次、单双周、教室和教师；确认后才会写入正式课表。</view>
+        <view class="preview-toolbar">
+          <view class="preview-count">共 {{ editablePreviewEntries.length }} 条课程</view>
+          <view class="link-btn" @click="restorePreviewEntries">恢复原始识别</view>
+        </view>
+        <view v-for="(entry, index) in editablePreviewEntries" :key="entry.previewEntryId" class="preview-item">
+          <view class="preview-head">
+            <view class="preview-index">#{{ index + 1 }}</view>
+            <view class="link-btn danger" @click="removePreviewEntry(index)">删除</view>
+          </view>
+          <view class="form-field compact">
+            <view class="label">课程名</view>
+            <input v-model.trim="entry.courseName" class="input" placeholder="课程名" />
+          </view>
+          <view class="preview-grid">
+            <view class="form-field compact">
+              <view class="label">周几</view>
+              <input v-model.number="entry.day" class="input" type="number" placeholder="1-7" />
+            </view>
+            <view class="form-field compact">
+              <view class="label">开始节</view>
+              <input v-model.number="entry.startSection" class="input" type="number" placeholder="1" />
+            </view>
+            <view class="form-field compact">
+              <view class="label">结束节</view>
+              <input v-model.number="entry.endSection" class="input" type="number" placeholder="2" />
+            </view>
+          </view>
+          <view class="preview-grid two">
+            <view class="form-field compact">
+              <view class="label">周次</view>
+              <input v-model.trim="entry.weekExpr" class="input" placeholder="1-16" />
+            </view>
+            <view class="form-field compact">
+              <view class="label">单双周</view>
+              <picker :range="parityOptions" range-key="label" :value="getParityIndex(entry.parity)" @change="updatePreviewParity(index, $event)">
+                <view class="input picker-input">{{ formatParity(entry.parity) }}</view>
+              </picker>
+            </view>
+          </view>
+          <view class="preview-grid two">
+            <view class="form-field compact">
+              <view class="label">教室</view>
+              <input v-model.trim="entry.classroom" class="input" placeholder="教室" />
+            </view>
+            <view class="form-field compact">
+              <view class="label">教师</view>
+              <input v-model.trim="entry.teacher" class="input" placeholder="教师" />
+            </view>
+          </view>
+        </view>
+        <view class="actions">
+          <view class="btn" :class="{ disabled: confirmPending || editablePreviewEntries.length <= 0 }" @click="confirmImport">
+            {{ confirmPending ? "确认中..." : "确认导入" }}
+          </view>
+        </view>
+      </view>
+
       <view class="card">
         <view class="title small">识别修正回流</view>
         <view class="sub">把 AI/OCR 原始识别和你修正后的结果一起提交，后续用于本校模型优化。</view>
@@ -103,8 +163,23 @@ import {
 } from "@/utils/profile-service";
 
 type ThemeKey = "black" | "purple" | "green" | "pink" | "blue" | "yellow" | "orange";
-type JobStatus = "queued" | "processing" | "completed" | "completed_with_errors" | "failed";
-type ItemStatus = "queued" | "processing" | "retrying" | "success" | "failed";
+type JobStatus = "queued" | "processing" | "preview_ready" | "confirmed" | "completed" | "completed_with_errors" | "failed";
+type ItemStatus = "queued" | "processing" | "retrying" | "preview_ready" | "confirmed" | "success" | "failed";
+type ScheduleImportPreviewParity = "all" | "odd" | "even";
+
+interface ScheduleImportPreviewEntry {
+  previewEntryId: string;
+  sourceIndex: number;
+  courseName: string;
+  day: number;
+  startSection: number;
+  endSection: number;
+  weekExpr: string;
+  parity: ScheduleImportPreviewParity;
+  classroom: string;
+  teacher: string;
+  confidence: number;
+}
 
 interface ScheduleImportJobItem {
   itemId: string;
@@ -120,6 +195,8 @@ interface ScheduleImportJobItem {
   errorCode?: string;
   errorMessage?: string;
   errorDetails?: Record<string, unknown> | null;
+  previewEntries?: ScheduleImportPreviewEntry[];
+  confirmed?: boolean;
 }
 
 interface ScheduleImportJobDetail {
@@ -151,12 +228,21 @@ const pollingPending = ref(false);
 const statusText = ref("");
 const pageError = ref("");
 const jobDetail = ref<ScheduleImportJobDetail | null>(null);
+const originalPreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
+const editablePreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
+const confirmPending = ref(false);
 const correctionJobId = ref("");
 const originalPayloadText = ref("");
 const correctedPayloadText = ref("");
 const correctionPending = ref(false);
 const { refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+const parityOptions: Array<{ label: string; value: ScheduleImportPreviewParity }> = [
+  { label: "全部", value: "all" },
+  { label: "单周", value: "odd" },
+  { label: "双周", value: "even" },
+];
 
 const clearPollTimer = () => {
   if (!pollTimer) {
@@ -249,6 +335,12 @@ const chooseImage = () => {
 };
 
 const formatJobStatus = (status: JobStatus) => {
+  if (status === "preview_ready") {
+    return "待确认";
+  }
+  if (status === "confirmed") {
+    return "已确认";
+  }
   if (status === "completed") {
     return "已完成";
   }
@@ -265,6 +357,12 @@ const formatJobStatus = (status: JobStatus) => {
 };
 
 const formatItemStatus = (status: ItemStatus) => {
+  if (status === "preview_ready") {
+    return "待确认";
+  }
+  if (status === "confirmed") {
+    return "已确认";
+  }
   if (status === "success") {
     return "成功";
   }
@@ -280,6 +378,24 @@ const formatItemStatus = (status: ItemStatus) => {
   return "排队中";
 };
 
+const formatParity = (parity: ScheduleImportPreviewParity) => {
+  return parityOptions.find((item) => item.value === parity)?.label || "全部";
+};
+
+const getParityIndex = (parity: ScheduleImportPreviewParity) => {
+  return Math.max(0, parityOptions.findIndex((item) => item.value === parity));
+};
+
+const updatePreviewParity = (index: number, event: unknown) => {
+  const detail = (event || {}) as { detail?: { value?: number | string } };
+  const optionIndex = Number(detail.detail?.value ?? 0);
+  const next = parityOptions[Number.isFinite(optionIndex) ? optionIndex : 0] || parityOptions[0];
+  const entry = editablePreviewEntries.value[index];
+  if (entry) {
+    entry.parity = next.value;
+  }
+};
+
 const formatErrorDetails = (details?: Record<string, unknown> | null) => {
   if (!details || Object.keys(details).length <= 0) {
     return "";
@@ -290,17 +406,45 @@ const formatErrorDetails = (details?: Record<string, unknown> | null) => {
 };
 
 const isTerminalJobStatus = (status: JobStatus) => {
-  return status === "completed" || status === "completed_with_errors" || status === "failed";
+  return status === "preview_ready" || status === "confirmed" || status === "completed" || status === "completed_with_errors" || status === "failed";
+};
+
+const clonePreviewEntries = (entries: ScheduleImportPreviewEntry[]) => {
+  return entries.map((entry) => ({ ...entry }));
+};
+
+const syncPreviewEntriesFromJob = (detail: ScheduleImportJobDetail) => {
+  const previewItem = detail.results.find((item) => !item.confirmed && Array.isArray(item.previewEntries) && item.previewEntries.length > 0);
+  if (!previewItem?.previewEntries?.length) {
+    if (detail.status === "confirmed" || detail.status === "completed" || detail.status === "failed") {
+      originalPreviewEntries.value = [];
+      editablePreviewEntries.value = [];
+    }
+    return;
+  }
+  originalPreviewEntries.value = clonePreviewEntries(previewItem.previewEntries);
+  editablePreviewEntries.value = clonePreviewEntries(previewItem.previewEntries);
+  correctionJobId.value = detail.jobId;
+  originalPayloadText.value = JSON.stringify({ previewEntries: previewItem.previewEntries }, null, 2);
+};
+
+const removePreviewEntry = (index: number) => {
+  editablePreviewEntries.value.splice(index, 1);
+};
+
+const restorePreviewEntries = () => {
+  editablePreviewEntries.value = clonePreviewEntries(originalPreviewEntries.value);
 };
 
 const fetchJobDetail = async (jobId: string) => {
   const detail = await requestBackendGet<ScheduleImportJobDetail>(
     backendBaseUrl.value,
-    `/api/v1/admin/schedule-import/jobs/${encodeURIComponent(jobId)}`,
+    `/api/v1/schedule-import/jobs/${encodeURIComponent(jobId)}`,
     {},
     authToken.value,
   );
   jobDetail.value = detail;
+  syncPreviewEntriesFromJob(detail);
   statusText.value = `任务 ${formatJobStatus(detail.status)}：${detail.processedFiles}/${detail.totalFiles}`;
   return detail;
 };
@@ -312,7 +456,9 @@ const schedulePoll = (jobId: string) => {
       const detail = await fetchJobDetail(jobId);
       if (isTerminalJobStatus(detail.status)) {
         pollingPending.value = false;
-        if (detail.status === "completed") {
+        if (detail.status === "preview_ready") {
+          uni.showToast({ title: "识别完成，请确认导入", icon: "none", duration: 1600 });
+        } else if (detail.status === "confirmed" || detail.status === "completed") {
           uni.showToast({ title: "导入完成", icon: "none", duration: 1200 });
         } else {
           uni.showToast({ title: "导入结束，请查看结果", icon: "none", duration: 1600 });
@@ -347,6 +493,8 @@ const submitImport = async () => {
   submitPending.value = true;
   pageError.value = "";
   statusText.value = "正在提交导入任务...";
+  originalPreviewEntries.value = [];
+  editablePreviewEntries.value = [];
   try {
     const payload = await uploadBackendFile<ScheduleImportCreateResponse>(backendBaseUrl.value, "/api/v1/schedule-import/jobs", {
       filePath: selectedFilePath.value,
@@ -370,6 +518,63 @@ const submitImport = async () => {
     statusText.value = "";
   } finally {
     submitPending.value = false;
+  }
+};
+
+const validatePreviewEntries = () => {
+  if (editablePreviewEntries.value.length <= 0) {
+    return "预览课程为空，无法确认导入";
+  }
+  const invalid = editablePreviewEntries.value.find((entry) => {
+    const day = Number(entry.day);
+    const startSection = Number(entry.startSection);
+    const endSection = Number(entry.endSection);
+    return (
+      !String(entry.courseName || "").trim() ||
+      !Number.isFinite(day) ||
+      day < 1 ||
+      day > 7 ||
+      !Number.isFinite(startSection) ||
+      startSection <= 0 ||
+      !Number.isFinite(endSection) ||
+      endSection < startSection
+    );
+  });
+  return invalid ? "请检查课程名、周几和节次范围" : "";
+};
+
+const confirmImport = async () => {
+  if (!authToken.value || !jobDetail.value) {
+    uni.showToast({ title: "请先完成上传识别", icon: "none", duration: 1600 });
+    return;
+  }
+  if (confirmPending.value) {
+    return;
+  }
+  const validationError = validatePreviewEntries();
+  if (validationError) {
+    uni.showToast({ title: validationError, icon: "none", duration: 1800 });
+    return;
+  }
+  confirmPending.value = true;
+  pageError.value = "";
+  try {
+    const correctedPreviewEntries = clonePreviewEntries(editablePreviewEntries.value);
+    const result = await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
+      backendBaseUrl.value,
+      `/api/v1/schedule-import/jobs/${encodeURIComponent(jobDetail.value.jobId)}/confirm`,
+      {
+        previewEntries: correctedPreviewEntries,
+      },
+      authToken.value,
+    );
+    correctedPayloadText.value = JSON.stringify({ previewEntries: correctedPreviewEntries, result }, null, 2);
+    await fetchJobDetail(jobDetail.value.jobId);
+    uni.showToast({ title: `已写入 ${result.entryCount} 条课程`, icon: "none", duration: 1600 });
+  } catch (error) {
+    pageError.value = error instanceof Error ? error.message : "确认导入失败";
+  } finally {
+    confirmPending.value = false;
   }
 };
 
@@ -469,6 +674,10 @@ onUnmounted(() => {
   margin-top: 16rpx;
 }
 
+.form-field.compact {
+  margin-top: 10rpx;
+}
+
 .label {
   font-size: 22rpx;
   font-weight: 600;
@@ -484,6 +693,12 @@ onUnmounted(() => {
   background: var(--muted-bg);
   color: var(--text-main);
   font-size: 24rpx;
+}
+
+.picker-input {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
 }
 
 .textarea {
@@ -621,6 +836,12 @@ onUnmounted(() => {
   color: #15803d;
 }
 
+.tag-preview_ready,
+.tag-confirmed {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca;
+}
+
 .tag-failed {
   background: rgba(239, 68, 68, 0.12);
   color: #b91c1c;
@@ -644,5 +865,58 @@ onUnmounted(() => {
   font-size: 20rpx;
   color: var(--danger);
   line-height: 1.5;
+}
+
+.preview-toolbar {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.preview-count {
+  font-size: 22rpx;
+  color: var(--text-sub);
+}
+
+.link-btn {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.link-btn.danger {
+  color: var(--danger);
+}
+
+.preview-item {
+  margin-top: 14rpx;
+  padding: 14rpx;
+  border-radius: 12rpx;
+  border: 1rpx solid var(--line);
+  background: var(--muted-bg);
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-index {
+  font-size: 22rpx;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.preview-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 </style>
