@@ -36,6 +36,40 @@
       </view>
     </view>
 
+    <view class="card" v-if="isAuthed && props.examCountdowns.length > 0">
+      <view class="exam-section-head">
+        <view>
+          <view class="section-title">考试倒计时</view>
+          <view class="section-sub">最近 {{ props.examCountdowns.length }} 个考试安排</view>
+        </view>
+        <view class="exam-section-badge">{{ formatExamCountdown(props.examCountdowns[0]) }}</view>
+      </view>
+      <view class="exam-countdown-list">
+        <view v-for="item in props.examCountdowns" :key="item.eventId" class="exam-countdown-item">
+          <view class="exam-countdown-main">
+            <view class="exam-countdown-title">{{ item.title }}</view>
+            <view class="exam-countdown-meta">{{ item.examDate || "日期待补全" }} · {{ formatExamPriority(item.priorityLabel) }}</view>
+          </view>
+          <view class="exam-countdown-value">{{ formatExamCountdown(item) }}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card" v-if="isAuthed && props.priorityItems.length > 0">
+      <view class="section-title">今日优先事项</view>
+      <view class="section-sub">课程、日程、考试和活动按优先级合并展示</view>
+      <view class="priority-list">
+        <view v-for="item in props.priorityItems" :key="item.id" class="priority-item">
+          <view class="priority-rank">{{ formatPriorityLabel(item.priorityLabel) }}</view>
+          <view class="priority-main">
+            <view class="priority-title">{{ item.title }}</view>
+            <view class="priority-sub">{{ item.subtitle }}</view>
+          </view>
+          <view class="priority-source">{{ formatPrioritySource(item.source) }}</view>
+        </view>
+      </view>
+    </view>
+
     <view v-if="!isAuthed || shouldShowStudyCard" class="lesson-widget-block">
       <view class="lesson-widget-head">
         <view class="lesson-widget-title">今日待上课程</view>
@@ -177,6 +211,8 @@ const props = defineProps<{
   getSectionStartTime: (section: number) => string;
   getSectionEndTime: (section: number) => string;
   foodCampaignHighlights: TodayFoodCampaignHighlightItem[];
+  examCountdowns: ExamCountdownItem[];
+  priorityItems: DailyPriorityItem[];
 }>();
 
 const semesterElapsed = computed(() => {
@@ -213,6 +249,27 @@ interface TodayFoodCampaignHighlightItem {
   statusLabel: string;
   headcount: number;
   timeTs: number;
+}
+
+interface ExamCountdownItem {
+  eventId: string;
+  title: string;
+  examDate: string;
+  priorityLabel: "low" | "normal" | "high";
+  daysRemaining: number | null;
+  status: "upcoming" | "today" | "finished" | "unknown";
+  source: string;
+}
+
+interface DailyPriorityItem {
+  id: string;
+  source: string;
+  title: string;
+  subtitle: string;
+  priorityScore: number;
+  priorityLabel: "low" | "normal" | "high";
+  startSection: number;
+  tags: string[];
 }
 
 interface PendingCourseItem {
@@ -500,6 +557,55 @@ const formatFoodCampaignTime = (timestamp: number) => {
   const hours = `${date.getHours()}`.padStart(2, "0");
   const minutes = `${date.getMinutes()}`.padStart(2, "0");
   return `${hours}:${minutes}`;
+};
+
+const formatExamPriority = (priority: ExamCountdownItem["priorityLabel"]) => {
+  if (priority === "high") {
+    return "高优先级";
+  }
+  if (priority === "low") {
+    return "低优先级";
+  }
+  return "普通优先级";
+};
+
+const formatExamCountdown = (item?: ExamCountdownItem) => {
+  if (!item) {
+    return "待定";
+  }
+  if (item.status === "today") {
+    return "今天";
+  }
+  if (item.status === "finished") {
+    return "已结束";
+  }
+  if (typeof item.daysRemaining === "number") {
+    return `${item.daysRemaining}天`;
+  }
+  return "待定";
+};
+
+const formatPriorityLabel = (priority: DailyPriorityItem["priorityLabel"]) => {
+  if (priority === "high") {
+    return "高";
+  }
+  if (priority === "low") {
+    return "低";
+  }
+  return "中";
+};
+
+const formatPrioritySource = (source: string) => {
+  if (source === "course") {
+    return "课程";
+  }
+  if (source === "exam") {
+    return "考试";
+  }
+  if (source === "activity") {
+    return "活动";
+  }
+  return "日程";
 };
 </script>
 
@@ -809,6 +915,116 @@ const formatFoodCampaignTime = (timestamp: number) => {
   color: var(--text-sub);
   opacity: 0.4;
   flex-shrink: 0;
+}
+
+.exam-section-head,
+.exam-countdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.exam-section-badge {
+  flex-shrink: 0;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 20rpx;
+  font-weight: 700;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1rpx solid rgba(245, 158, 11, 0.26);
+}
+
+.exam-countdown-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.exam-countdown-item {
+  padding-top: 8rpx;
+  border-top: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.exam-countdown-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.exam-countdown-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.exam-countdown-meta {
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+}
+
+.exam-countdown-value {
+  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.priority-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.priority-item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding-top: 10rpx;
+  border-top: 1rpx solid color-mix(in srgb, var(--line) 72%, transparent);
+}
+
+.priority-rank {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 20rpx;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--muted-bg) 90%);
+}
+
+.priority-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.priority-title {
+  font-size: 24rpx;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.priority-sub {
+  margin-top: 4rpx;
+  font-size: 20rpx;
+  color: var(--text-sub);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.priority-source {
+  flex-shrink: 0;
+  font-size: 20rpx;
+  color: var(--text-sub);
 }
 
 .today-semester-card {

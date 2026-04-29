@@ -31,6 +31,7 @@
       <view v-if="predictionByActivityId[item.activityId]" class="meta-line">
         成功率：{{ Math.round((predictionByActivityId[item.activityId].successRate || 0) * 100) }}% · {{ predictionByActivityId[item.activityId].suggestions?.[0] || "" }}
       </view>
+      <image v-if="snapshotByActivityId[item.activityId]?.posterDataUrl" class="poster-preview" :src="snapshotByActivityId[item.activityId].posterDataUrl" mode="widthFix" />
 
       <view v-if="item.viewerInvitation?.status === 'pending'" class="action-row">
         <view class="btn" @click="respondInvitation(item, 'accept')">同意</view>
@@ -39,7 +40,7 @@
       <view class="action-row">
         <view class="btn ghost" @click="copyCalendarUrl(item)">复制日历</view>
         <view class="btn ghost" @click="createSplit(item)">AA 分摊</view>
-        <view class="btn ghost" @click="copySnapshot(item)">分享文本</view>
+        <view class="btn ghost" @click="copySnapshot(item)">生成海报</view>
       </view>
       <view class="action-row">
         <view class="btn ghost" @click="predictActivity(item)">成功率</view>
@@ -104,6 +105,7 @@ interface ActivitiesResponse {
 interface SnapshotResponse {
   card: {
     shareText: string;
+    posterDataUrl?: string;
   };
 }
 
@@ -115,6 +117,7 @@ const backendBaseUrl = ref("");
 const authSession = ref<AuthSessionState>({ token: "", expiresAt: 0, mode: "none", user: null });
 const activities = ref<SocialActivityItem[]>([]);
 const predictionByActivityId = ref<Record<string, ActivityPrediction>>({});
+const snapshotByActivityId = ref<Record<string, SnapshotResponse["card"]>>({});
 const pageError = ref("");
 
 const formatActivityStatus = (status: string) => {
@@ -299,6 +302,10 @@ const copySnapshot = async (activity: SocialActivityItem) => {
       {},
       authSession.value.token,
     );
+    snapshotByActivityId.value = {
+      ...snapshotByActivityId.value,
+      [activity.activityId]: payload.card,
+    };
     copyText(payload.card?.shareText || activity.title, "分享文本已复制");
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : "生成失败", icon: "none", duration: 1800 });
@@ -397,6 +404,14 @@ onShow(() => {
   font-size: 19rpx;
   color: var(--text-sub);
   background: var(--muted-bg);
+}
+
+.poster-preview {
+  width: 100%;
+  margin-top: 14rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 10rpx;
+  background: #f8fafc;
 }
 
 .btn {

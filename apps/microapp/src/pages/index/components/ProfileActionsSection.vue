@@ -46,6 +46,15 @@
         <view class="profile-nav-arrow">›</view>
       </view>
 
+      <view class="profile-nav-item" @click="openProfileCalendarViewsPage">
+        <view class="profile-nav-icon profile-nav-icon-calendar">历</view>
+        <view class="profile-nav-main">
+          <view class="profile-nav-title">日历分类视图</view>
+          <view class="profile-nav-sub">学习、社交、个人日程按标签过滤展示</view>
+        </view>
+        <view class="profile-nav-arrow">›</view>
+      </view>
+
       <view class="profile-nav-item" @click="openProfileFreeHeatmapPage">
         <view class="profile-nav-icon profile-nav-icon-heatmap">热</view>
         <view class="profile-nav-main">
@@ -90,6 +99,7 @@ defineProps<{
   openProfileActivitiesPage: () => void;
   openProfileAiAssistantPage: () => void;
   openProfileExamCompanionPage: () => void;
+  openProfileCalendarViewsPage: () => void;
   openProfileFreeHeatmapPage: () => void;
   openProfileScheduleImportPage: () => void;
   openProfilePreferencesPage: () => void;
@@ -159,6 +169,10 @@ defineProps<{
 
 .profile-nav-icon-exam {
   background: #fa8c16;
+}
+
+.profile-nav-icon-calendar {
+  background: #2563eb;
 }
 
 .profile-nav-icon-heatmap {

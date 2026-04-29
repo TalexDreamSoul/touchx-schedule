@@ -122,6 +122,12 @@
           }
         },
         {
+          "path": "calendar-views",
+          "style": {
+            "navigationBarTitleText": "日历分类视图"
+          }
+        },
+        {
           "path": "free-heatmap",
           "style": {
             "navigationBarTitleText": "共同空闲热力图"

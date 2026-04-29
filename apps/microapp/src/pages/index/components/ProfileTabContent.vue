@@ -16,6 +16,7 @@
       :open-profile-activities-page="openProfileActivitiesPage"
       :open-profile-ai-assistant-page="openProfileAiAssistantPage"
       :open-profile-exam-companion-page="openProfileExamCompanionPage"
+      :open-profile-calendar-views-page="openProfileCalendarViewsPage"
       :open-profile-free-heatmap-page="openProfileFreeHeatmapPage"
       :open-profile-schedule-import-page="openProfileScheduleImportPage"
       :open-profile-preferences-page="openProfilePreferencesPage"
@@ -41,6 +42,7 @@ defineProps<{
   openProfileActivitiesPage: () => void;
   openProfileAiAssistantPage: () => void;
   openProfileExamCompanionPage: () => void;
+  openProfileCalendarViewsPage: () => void;
   openProfileFreeHeatmapPage: () => void;
   openProfileScheduleImportPage: () => void;
   openProfilePreferencesPage: () => void;

@@ -7,6 +7,18 @@
         <input v-model.number="week" class="input" type="number" />
         <view class="btn" @click="loadHeatmap">刷新</view>
       </view>
+      <view class="mode-row">
+        <view class="mode-chip" :class="{ active: selectedScope === 'subscriptions' }" @click="selectSubscriptions">订阅分组</view>
+        <view
+          v-for="circle in circles"
+          :key="circle.circleId"
+          class="mode-chip"
+          :class="{ active: selectedScope === 'circle' && selectedCircleId === circle.circleId }"
+          @click="selectCircle(circle.circleId)"
+        >
+          {{ circle.name }}
+        </view>
+      </view>
     </view>
 
     <view v-if="pageError" class="card">
@@ -40,6 +52,7 @@ import {
 interface SocialMeResponse {
   me?: { studentId?: string };
   subscriptions?: Array<{ studentId: string }>;
+  circles?: Array<{ circleId: string; name: string; memberCount?: number }>;
 }
 
 interface HeatmapCell {
@@ -64,6 +77,9 @@ const backendBaseUrl = ref("");
 const authSession = ref<AuthSessionState>({ token: "", expiresAt: 0, mode: "none", user: null });
 const week = ref(1);
 const heatmap = ref<HeatmapPayload | null>(null);
+const circles = ref<Array<{ circleId: string; name: string; memberCount?: number }>>([]);
+const selectedScope = ref<"subscriptions" | "circle">("subscriptions");
+const selectedCircleId = ref("");
 const pageError = ref("");
 
 const cellStyle = (ratio: number) => {
@@ -72,6 +88,18 @@ const cellStyle = (ratio: number) => {
     background: `rgba(47, 85, 200, ${alpha})`,
     color: alpha > 0.45 ? "#ffffff" : "var(--text-main)",
   };
+};
+
+const selectSubscriptions = () => {
+  selectedScope.value = "subscriptions";
+  selectedCircleId.value = "";
+  void loadHeatmap();
+};
+
+const selectCircle = (circleId: string) => {
+  selectedScope.value = "circle";
+  selectedCircleId.value = circleId;
+  void loadHeatmap();
 };
 
 const loadHeatmap = async () => {
@@ -88,11 +116,24 @@ const loadHeatmap = async () => {
       {},
       authSession.value.token,
     );
+    circles.value = social.circles || [];
+    if (selectedScope.value === "circle" && !circles.value.some((item) => item.circleId === selectedCircleId.value)) {
+      selectedScope.value = "subscriptions";
+      selectedCircleId.value = "";
+    }
     const studentIds = (social.subscriptions || []).map((item) => item.studentId).filter((item) => item);
+    const params: Record<string, string> = {
+      week: String(Math.max(1, Number(week.value || 1))),
+    };
+    if (selectedScope.value === "circle" && selectedCircleId.value) {
+      params.circleId = selectedCircleId.value;
+    } else {
+      params.studentIds = studentIds.join(",");
+    }
     const payload = await requestBackendGet<HeatmapResponse>(
       backendBaseUrl.value,
       "/api/v1/social/free-heatmap",
-      { week: String(Math.max(1, Number(week.value || 1))), studentIds: studentIds.join(",") },
+      params,
       authSession.value.token,
     );
     heatmap.value = payload.heatmap;
@@ -140,6 +181,29 @@ onShow(() => {
   margin-top: 14rpx;
   display: flex;
   gap: 10rpx;
+}
+
+.mode-row {
+  margin-top: 14rpx;
+  display: flex;
+  gap: 8rpx;
+  overflow-x: auto;
+}
+
+.mode-chip {
+  flex-shrink: 0;
+  padding: 8rpx 12rpx;
+  border-radius: 8rpx;
+  border: 1rpx solid var(--line);
+  color: var(--text-sub);
+  font-size: 21rpx;
+  background: var(--muted-bg);
+}
+
+.mode-chip.active {
+  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 .input {

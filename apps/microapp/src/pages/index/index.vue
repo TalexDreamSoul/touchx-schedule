@@ -269,6 +269,25 @@ interface BackendTodayBrief {
     from: string;
   } | null;
   tips?: string[];
+  examCountdowns?: Array<{
+    eventId: string;
+    title: string;
+    examDate: string;
+    priorityLabel: "low" | "normal" | "high";
+    daysRemaining: number | null;
+    status: "upcoming" | "today" | "finished" | "unknown";
+    source: string;
+  }>;
+  priorityItems?: Array<{
+    id: string;
+    source: string;
+    title: string;
+    subtitle: string;
+    priorityScore: number;
+    priorityLabel: "low" | "normal" | "high";
+    startSection: number;
+    tags: string[];
+  }>;
   serverNowIso?: string;
   serverTimezone?: string;
   termMeta?: {
@@ -2371,6 +2390,14 @@ const openProfileExamCompanionPage = () => {
   uni.navigateTo({ url: "/pages/profile/exam-companion" });
 };
 
+const openProfileCalendarViewsPage = () => {
+  if (!isAuthed.value) {
+    openQuickAuthDialog();
+    return;
+  }
+  uni.navigateTo({ url: "/pages/profile/calendar-views" });
+};
+
 const openProfileFreeHeatmapPage = () => {
   if (!isAuthed.value) {
     openQuickAuthDialog();
@@ -3002,6 +3029,8 @@ const todayTabProps = computed(() => ({
   getSectionStartTime,
   getSectionEndTime,
   foodCampaignHighlights: todayFoodCampaignHighlights.value,
+  examCountdowns: todayBackendBrief.value?.examCountdowns || [],
+  priorityItems: todayBackendBrief.value?.priorityItems || [],
 }));
 
 const scheduleTabProps = computed(() => ({
@@ -3049,6 +3078,7 @@ const profileActionsProps = computed(() => ({
   openProfileActivitiesPage,
   openProfileAiAssistantPage,
   openProfileExamCompanionPage,
+  openProfileCalendarViewsPage,
   openProfileFreeHeatmapPage,
   openProfileScheduleImportPage,
   openProfilePreferencesPage,
