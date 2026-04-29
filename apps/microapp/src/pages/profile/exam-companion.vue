@@ -21,9 +21,9 @@
       <view v-for="item in countdowns" :key="item.eventId" class="list-item">
         <view>
           <view class="item-title">{{ item.title }}</view>
-          <view class="sub">{{ item.examDate ? `考试日期：${item.examDate}` : "考试日期待补全" }} · {{ formatPriority(item.priorityLabel) }}</view>
+          <view class="sub">{{ item.examDate ? `考试日期：${item.examDate}` : "考试日期待补全" }} · {{ formatPriority(item.priorityLabel) }} · {{ formatSource(item.source) }}</view>
         </view>
-        <view class="countdown">{{ formatCountdown(item.examDate) }}</view>
+        <view class="countdown">{{ formatCountdown(item) }}</view>
       </view>
     </view>
 
@@ -70,6 +70,9 @@ interface ExamCountdown {
   title: string;
   examDate: string;
   priorityLabel: PriorityLabel;
+  daysRemaining: number | null;
+  status: "upcoming" | "today" | "finished" | "unknown";
+  source: string;
 }
 
 interface StudyRoomRecommendation {
@@ -131,11 +134,30 @@ const formatPriority = (label: PriorityLabel) => {
   return "普通优先级";
 };
 
-const formatCountdown = (examDate: string) => {
-  if (!examDate) {
+const formatSource = (source: string) => {
+  if (source === "schedule") {
+    return "课表识别";
+  }
+  if (source === "exam") {
+    return "考试日程";
+  }
+  return "AI 日程";
+};
+
+const formatCountdown = (item: ExamCountdown) => {
+  if (item.status === "today") {
+    return "今天";
+  }
+  if (item.status === "finished") {
+    return "已结束";
+  }
+  if (typeof item.daysRemaining === "number") {
+    return `${item.daysRemaining} 天`;
+  }
+  if (!item.examDate) {
     return "待定";
   }
-  const target = Date.parse(examDate);
+  const target = Date.parse(item.examDate);
   if (!Number.isFinite(target)) {
     return "待定";
   }

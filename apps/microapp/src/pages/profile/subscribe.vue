@@ -54,6 +54,52 @@
         <view class="card">
           <view class="section-head">
             <view>
+              <view class="title small">搜索同学</view>
+              <view class="sub">支持按学号、昵称、姓名搜索，发起后对方会收到订阅请求。</view>
+            </view>
+          </view>
+          <view class="search-row">
+            <input
+              v-model.trim="searchQuery"
+              class="input"
+              confirm-type="search"
+              placeholder="输入学号或昵称"
+              @confirm="searchUsers"
+            />
+            <view class="btn" :class="{ pending: searchPending }" @click="searchUsers">
+              {{ searchPending ? "搜索中" : "搜索" }}
+            </view>
+          </view>
+          <view v-if="searchResults.length === 0 && hasSearched" class="empty">未找到匹配用户</view>
+          <view v-for="item in searchResults" :key="`search-${item.studentId}`" class="sub-item">
+            <view class="user-line">
+              <image
+                v-if="canShowAvatar(`search-${item.studentId}`, item.avatarUrl)"
+                class="avatar"
+                :src="item.avatarUrl"
+                mode="aspectFill"
+                @error="onAvatarLoadError(`search-${item.studentId}`)"
+              />
+              <view v-else class="avatar placeholder">{{ item.name.slice(0, 1) }}</view>
+              <view>
+                <view class="sub-name">{{ item.name }}</view>
+                <view class="sub-meta">{{ formatSearchUserMeta(item) }}</view>
+                <view class="sub-meta">{{ formatRelationStatus(item) }}</view>
+              </view>
+            </view>
+            <view
+              class="sub-action"
+              :class="{ remove: item.relationStatus?.status === 'subscribed', pending: disableMutations || !canRequestFromSearch(item) }"
+              @click="requestFromSearch(item)"
+            >
+              {{ formatSearchAction(item) }}
+            </view>
+          </view>
+        </view>
+
+        <view class="card">
+          <view class="section-head">
+            <view>
               <view class="title small">通知（{{ notifications.length }}）</view>
               <view class="sub">订阅、圈子和组局事件会进入离线通知队列。</view>
             </view>
@@ -64,7 +110,10 @@
               <view class="sub-name">{{ item.title }}</view>
               <view class="sub-meta">{{ item.body }}</view>
             </view>
-            <view v-if="item.status === 'unread'" class="sub-action" @click="markNotificationRead(item.notificationId)">已读</view>
+            <view class="action-row compact">
+              <view v-if="item.payload?.activityId" class="sub-action" @click="openActivitiesPage">活动</view>
+              <view v-if="item.status === 'unread'" class="sub-action" @click="markNotificationRead(item.notificationId)">已读</view>
+            </view>
           </view>
         </view>
 
@@ -167,10 +216,10 @@
             <view class="action-row compact">
               <view
                 class="sub-action remove"
-                :class="{ pending: disableMutations }"
-                @click="unsubscribe(item.studentId)"
+                :class="{ pending: disableMutations || !item.canUnsubscribe }"
+                @click="item.canUnsubscribe && unsubscribe(item.studentId)"
               >
-                {{ disableMutations ? "处理中..." : "取消" }}
+                {{ disableMutations ? "处理中..." : item.canUnsubscribe ? "取消" : "圈子可见" }}
               </view>
               <view
                 class="sub-action danger"
@@ -222,6 +271,10 @@ const bootstrapping = ref(true);
 const pendingByStudentId = ref<Record<string, boolean>>({});
 const brokenAvatarKeys = ref<Record<string, boolean>>({});
 const notifications = ref<SocialNotificationItem[]>([]);
+const searchQuery = ref("");
+const searchResults = ref<SocialUserItem[]>([]);
+const searchPending = ref(false);
+const hasSearched = ref(false);
 
 interface SocialSubscribeMutationResponse {
   ok?: boolean;
@@ -236,10 +289,15 @@ interface SocialNotificationItem {
   title: string;
   body: string;
   status: "unread" | "read";
+  payload?: Record<string, unknown>;
 }
 
 interface SocialNotificationsResponse {
   items: SocialNotificationItem[];
+}
+
+interface SocialUserSearchResponse {
+  items: SocialUserItem[];
 }
 
 const isAuthed = computed(() => Boolean(authSession.value.token && authSession.value.user));
@@ -395,6 +453,10 @@ const goAccountPage = () => {
   uni.navigateTo({ url: "/pages/profile/account" });
 };
 
+const openActivitiesPage = () => {
+  uni.navigateTo({ url: "/pages/profile/social-activities" });
+};
+
 const canShowAvatar = (key: string, avatarUrl: unknown) => {
   const normalizedKey = String(key || "").trim();
   const normalizedUrl = String(avatarUrl || "").trim();
@@ -423,6 +485,98 @@ const formatVisibility = (value: unknown) => {
     return "不可见";
   }
   return "仅忙闲";
+};
+
+const formatRelationStatus = (item: SocialUserItem) => {
+  const status = item.relationStatus?.status || "none";
+  if (status === "self") {
+    return "这是你当前绑定的账号";
+  }
+  if (status === "blocked") {
+    return "已屏蔽";
+  }
+  if (status === "pending_outbound") {
+    return "订阅请求已发送，等待对方处理";
+  }
+  if (status === "pending_inbound") {
+    return "对方已请求订阅你，可在待处理请求中处理";
+  }
+  if (status === "subscribed") {
+    const sources = item.relationSources?.includes("circle") ? "圈子" : "直接订阅";
+    return `已建立可见关系 · ${sources} · ${formatVisibility(item.visibilityScope)}`;
+  }
+  return "可发送订阅请求";
+};
+
+const formatSearchUserMeta = (item: SocialUserItem) => {
+  const rows = [item.studentNo ? `学号：${item.studentNo}` : "", item.classLabel ? `班级：${item.classLabel}` : ""].filter((value) => value);
+  return rows.length > 0 ? rows.join(" · ") : "资料未完善";
+};
+
+const canRequestFromSearch = (item: SocialUserItem) => {
+  return Boolean(item.relationStatus?.canRequest) && !disableMutations.value;
+};
+
+const formatSearchAction = (item: SocialUserItem) => {
+  const status = item.relationStatus?.status || "none";
+  if (status === "subscribed") {
+    return item.relationStatus?.canUnsubscribe ? "取消订阅" : "圈子可见";
+  }
+  if (status === "pending_outbound") {
+    return "已请求";
+  }
+  if (status === "pending_inbound") {
+    return "待我处理";
+  }
+  if (status === "blocked") {
+    return "已屏蔽";
+  }
+  if (status === "self") {
+    return "本人";
+  }
+  return "请求订阅";
+};
+
+const searchUsers = async () => {
+  const q = normalizeStudentId(searchQuery.value);
+  hasSearched.value = true;
+  if (!q) {
+    searchResults.value = [];
+    uni.showToast({ title: "请输入学号或昵称", icon: "none", duration: 1400 });
+    return;
+  }
+  if (!isAuthed.value || searchPending.value) {
+    return;
+  }
+  searchPending.value = true;
+  try {
+    const payload = await requestBackendGet<SocialUserSearchResponse>(
+      backendBaseUrl.value,
+      "/api/v1/social/users/search",
+      { q, limit: "20" },
+      authSession.value.token,
+    );
+    searchResults.value = payload.items || [];
+  } catch (error) {
+    searchResults.value = [];
+    uni.showToast({ title: error instanceof Error ? error.message : "搜索失败", icon: "none", duration: 1800 });
+  } finally {
+    searchPending.value = false;
+  }
+};
+
+const requestFromSearch = async (item: SocialUserItem) => {
+  const status = item.relationStatus?.status || "none";
+  if (status === "subscribed" && item.relationStatus?.canUnsubscribe) {
+    await unsubscribe(item.studentId);
+    await searchUsers();
+    return;
+  }
+  if (!canRequestFromSearch(item)) {
+    return;
+  }
+  await subscribeStudent(item.studentId);
+  await searchUsers();
 };
 
 const subscribeStudent = async (studentId: string) => {
@@ -497,27 +651,38 @@ const createCircle = () => {
   if (!isAuthed.value || disableMutations.value) {
     return;
   }
-  uni.showModal({
-    title: "新建圈子",
-    editable: true,
-    placeholderText: "班级/社团名称",
-    success: async (result) => {
-      if (!result.confirm) {
-        return;
-      }
-      const name = String((result as { content?: string }).content || "").trim();
-      if (!name) {
-        uni.showToast({ title: "请输入圈子名称", icon: "none", duration: 1600 });
-        return;
-      }
-      try {
-        await requestBackendPost(backendBaseUrl.value, "/api/v1/social/circles", { name, circleType: "custom" }, authSession.value.token);
-        await refreshDashboard();
-        uni.showToast({ title: "圈子已创建", icon: "none", duration: 1200 });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "创建失败";
-        uni.showToast({ title: message, icon: "none", duration: 1800 });
-      }
+  const typeOptions = [
+    { label: "班级圈子", value: "class" },
+    { label: "社团圈子", value: "club" },
+    { label: "自定义圈子", value: "custom" },
+  ] as const;
+  uni.showActionSheet({
+    itemList: typeOptions.map((item) => item.label),
+    success: (sheetResult) => {
+      const circleType = typeOptions[sheetResult.tapIndex]?.value || "custom";
+      uni.showModal({
+        title: "新建圈子",
+        editable: true,
+        placeholderText: "班级/社团名称",
+        success: async (result) => {
+          if (!result.confirm) {
+            return;
+          }
+          const name = String((result as { content?: string }).content || "").trim();
+          if (!name) {
+            uni.showToast({ title: "请输入圈子名称", icon: "none", duration: 1600 });
+            return;
+          }
+          try {
+            await requestBackendPost(backendBaseUrl.value, "/api/v1/social/circles", { name, circleType }, authSession.value.token);
+            await refreshDashboard();
+            uni.showToast({ title: "圈子已创建", icon: "none", duration: 1200 });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "创建失败";
+            uni.showToast({ title: message, icon: "none", duration: 1800 });
+          }
+        },
+      });
     },
   });
 };
@@ -764,6 +929,23 @@ onShow(() => {
 
 .btn.pending {
   opacity: 0.64;
+}
+
+.search-row {
+  margin-top: 14rpx;
+  display: flex;
+  gap: 10rpx;
+}
+
+.input {
+  flex: 1;
+  min-height: 64rpx;
+  padding: 0 14rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 8rpx;
+  background: var(--muted-bg);
+  color: var(--text-main);
+  font-size: 22rpx;
 }
 
 .empty {

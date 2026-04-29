@@ -12,6 +12,18 @@ export interface SocialUserItem {
   isAdmin?: boolean;
   notifyBound?: boolean;
   practiceCourseKeys?: string[];
+  visibilityScope?: "busy_free" | "detail" | "hidden" | "blocked";
+  relationSources?: string[];
+  canUnsubscribe?: boolean;
+  canBlock?: boolean;
+  relationStatus?: {
+    status: "self" | "blocked" | "subscribed" | "pending_outbound" | "pending_inbound" | "none";
+    visibilityScope: "busy_free" | "detail" | "hidden" | "blocked";
+    sources: string[];
+    canRequest: boolean;
+    canUnsubscribe: boolean;
+    canBlock: boolean;
+  };
 }
 
 export interface SocialSubscriptionRequestItem {
@@ -96,6 +108,22 @@ const normalizeSocialUserItem = (raw: unknown, backendBaseUrl = ""): SocialUserI
     isAdmin: Boolean(data.isAdmin),
     notifyBound: Boolean(data.notifyBound),
     practiceCourseKeys: normalizePracticeCourseKeys(data.practiceCourseKeys),
+    visibilityScope: data.visibilityScope || data.relationStatus?.visibilityScope || "hidden",
+    relationSources: Array.isArray(data.relationSources)
+      ? data.relationSources.map((item) => String(item || "").trim()).filter((item) => item)
+      : data.relationStatus?.sources || [],
+    canUnsubscribe: Boolean(data.canUnsubscribe ?? data.relationStatus?.canUnsubscribe),
+    canBlock: Boolean(data.canBlock ?? data.relationStatus?.canBlock),
+    relationStatus: data.relationStatus
+      ? {
+          status: data.relationStatus.status || "none",
+          visibilityScope: data.relationStatus.visibilityScope || "hidden",
+          sources: Array.isArray(data.relationStatus.sources) ? data.relationStatus.sources : [],
+          canRequest: Boolean(data.relationStatus.canRequest),
+          canUnsubscribe: Boolean(data.relationStatus.canUnsubscribe),
+          canBlock: Boolean(data.relationStatus.canBlock),
+        }
+      : undefined,
   };
 };
 

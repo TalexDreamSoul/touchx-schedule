@@ -3,7 +3,7 @@
     <view class="page">
       <view class="card">
         <view class="title">用户侧课表导入</view>
-        <view class="sub">PDF 会进入识别任务；拍照/相册入口先返回清晰的 OCR 配置提示，不阻塞 PDF 导入。</view>
+        <view class="sub">PDF 会进入识别任务；拍照/相册会走 AI/OCR，识别结果统一进入可编辑预览。</view>
         <view class="form-field">
           <view class="label">学期</view>
           <input v-model.trim="term" class="input" placeholder="例如 2025-2026-2" />
@@ -263,6 +263,22 @@ interface ScheduleImportCreateResponse {
   totalFiles: number;
 }
 
+interface AiAttachmentUploadResponse {
+  asset?: {
+    assetId?: string;
+    url?: string;
+  };
+}
+
+interface AiScheduleOcrPreviewResponse {
+  assetUrl?: string;
+  rawText?: string;
+  studentNo?: string;
+  term?: string;
+  parsedName?: string;
+  previewEntries?: ScheduleImportPreviewEntry[];
+}
+
 const themeKey = ref<ThemeKey>("black");
 const backendBaseUrl = ref("");
 const authToken = ref("");
@@ -285,6 +301,7 @@ const correctionJobId = ref("");
 const originalPayloadText = ref("");
 const correctedPayloadText = ref("");
 const correctionPending = ref(false);
+const imagePreviewContext = ref<AiScheduleOcrPreviewResponse | null>(null);
 const { refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -354,6 +371,7 @@ const choosePdf = () => {
       selectedFilePath.value = filePath;
       selectedFileName.value = fileName;
       selectedFileKind.value = "pdf";
+      imagePreviewContext.value = null;
       pageError.value = "";
     },
     fail: (error) => {
@@ -376,7 +394,8 @@ const chooseImage = () => {
       selectedFilePath.value = filePath;
       selectedFileName.value = filePath.split("/").pop() || `schedule_${Date.now()}.jpg`;
       selectedFileKind.value = "image";
-      pageError.value = "图片 OCR Provider 暂未配置，请先选择 PDF 导入；该图片可保留用于后续 OCR 接入验证。";
+      imagePreviewContext.value = null;
+      pageError.value = "";
     },
     fail: (error) => {
       const message = String(error?.errMsg || "选择图片失败");
@@ -478,6 +497,7 @@ const clonePreviewEntries = (entries: ScheduleImportPreviewEntry[]) => {
 };
 
 const syncPreviewEntriesFromJob = (detail: ScheduleImportJobDetail) => {
+  imagePreviewContext.value = null;
   const previewItem = detail.results.find((item) => !item.confirmed && Array.isArray(item.previewEntries) && item.previewEntries.length > 0);
   if (!previewItem?.previewEntries?.length) {
     if (detail.status === "confirmed" || detail.status === "completed" || detail.status === "failed") {
@@ -577,18 +597,64 @@ const schedulePoll = (jobId: string) => {
   }, 2000);
 };
 
+const submitImageOcrPreview = async () => {
+  statusText.value = "正在上传图片...";
+  const upload = await uploadBackendFile<AiAttachmentUploadResponse>(backendBaseUrl.value, "/api/v1/ai/attachments", {
+    filePath: selectedFilePath.value,
+    name: "file",
+    token: authToken.value,
+  });
+  const assetUrl = String(upload.asset?.url || "").trim();
+  if (!assetUrl) {
+    throw new Error("图片上传成功但未返回可识别地址");
+  }
+  statusText.value = "正在进行 AI/OCR 识别...";
+  const preview = await requestBackendPost<AiScheduleOcrPreviewResponse>(
+    backendBaseUrl.value,
+    "/api/v1/ai/schedule/ocr-preview",
+    {
+      assetUrl,
+      fileName: selectedFileName.value,
+      studentNo: studentNo.value.trim(),
+      term: term.value.trim() || "2025-2026-2",
+    },
+    authToken.value,
+  );
+  if (!Array.isArray(preview.previewEntries) || preview.previewEntries.length <= 0) {
+    throw new Error("AI/OCR 未识别到可导入课程");
+  }
+  imagePreviewContext.value = {
+    ...preview,
+    assetUrl,
+    studentNo: String(preview.studentNo || studentNo.value).trim(),
+    term: String(preview.term || term.value || "2025-2026-2").trim(),
+  };
+  jobDetail.value = null;
+  pollingPending.value = false;
+  originalPreviewEntries.value = clonePreviewEntries(preview.previewEntries);
+  editablePreviewEntries.value = clonePreviewEntries(preview.previewEntries);
+  correctionJobId.value = `ai_ocr_${Date.now()}`;
+  originalPayloadText.value = JSON.stringify(
+    {
+      source: "ai_ocr",
+      assetUrl,
+      rawText: preview.rawText || "",
+      previewEntries: preview.previewEntries,
+    },
+    null,
+    2,
+  );
+  statusText.value = `AI/OCR 识别完成：${preview.previewEntries.length} 条课程，请确认导入`;
+  uni.showToast({ title: "识别完成，请确认导入", icon: "none", duration: 1600 });
+};
+
 const submitImport = async () => {
   if (!authToken.value) {
     uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
     return;
   }
   if (!selectedFilePath.value || !selectedFileName.value) {
-    uni.showToast({ title: "请先选择 PDF", icon: "none", duration: 1600 });
-    return;
-  }
-  if (selectedFileKind.value === "image") {
-    pageError.value = "图片 OCR Provider 暂未配置，请先选择 PDF 导入。";
-    uni.showToast({ title: "图片 OCR 暂未配置", icon: "none", duration: 1600 });
+    uni.showToast({ title: "请先选择课表文件", icon: "none", duration: 1600 });
     return;
   }
   if (submitPending.value || pollingPending.value) {
@@ -600,6 +666,11 @@ const submitImport = async () => {
   originalPreviewEntries.value = [];
   editablePreviewEntries.value = [];
   try {
+    if (selectedFileKind.value === "image") {
+      await submitImageOcrPreview();
+      return;
+    }
+    imagePreviewContext.value = null;
     const payload = await uploadBackendFile<ScheduleImportCreateResponse>(backendBaseUrl.value, "/api/v1/schedule-import/jobs", {
       filePath: selectedFilePath.value,
       name: "files[]",
@@ -658,7 +729,7 @@ const validatePreviewEntries = () => {
 };
 
 const confirmImport = async () => {
-  if (!authToken.value || !jobDetail.value) {
+  if (!authToken.value || (!jobDetail.value && !imagePreviewContext.value)) {
     uni.showToast({ title: "请先完成上传识别", icon: "none", duration: 1600 });
     return;
   }
@@ -674,19 +745,37 @@ const confirmImport = async () => {
   pageError.value = "";
   try {
     const correctedPreviewEntries = clonePreviewEntries(editablePreviewEntries.value);
-    const result = await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
-      backendBaseUrl.value,
-      `/api/v1/schedule-import/jobs/${encodeURIComponent(jobDetail.value.jobId)}/confirm`,
-      {
-        previewEntries: correctedPreviewEntries,
-      },
-      authToken.value,
-    );
+    const imageContext = imagePreviewContext.value;
+    const result = imageContext
+      ? await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
+          backendBaseUrl.value,
+          "/api/v1/ai/schedule/ocr-confirm",
+          {
+            studentNo: String(imageContext.studentNo || studentNo.value).trim(),
+            term: String(imageContext.term || term.value || "2025-2026-2").trim(),
+            parsedName: String(imageContext.parsedName || "").trim(),
+            rawText: String(imageContext.rawText || ""),
+            assetUrl: String(imageContext.assetUrl || ""),
+            previewEntries: correctedPreviewEntries,
+          },
+          authToken.value,
+        )
+      : await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
+          backendBaseUrl.value,
+          `/api/v1/schedule-import/jobs/${encodeURIComponent(jobDetail.value?.jobId || "")}/confirm`,
+          {
+            previewEntries: correctedPreviewEntries,
+          },
+          authToken.value,
+        );
     correctedPayloadText.value = JSON.stringify({ previewEntries: correctedPreviewEntries, result }, null, 2);
-    const confirmedStudentNo = String(jobDetail.value.results?.[0]?.studentNo || "").trim();
+    const confirmedStudentNo = String(imageContext?.studentNo || jobDetail.value?.results?.[0]?.studentNo || "").trim();
     invalidateScheduleCacheAfterConfirm(confirmedStudentNo);
-    await fetchJobDetail(jobDetail.value.jobId);
+    if (jobDetail.value) {
+      await fetchJobDetail(jobDetail.value.jobId);
+    }
     await fetchRecentJobs();
+    imagePreviewContext.value = null;
     uni.showToast({ title: `已写入 ${result.entryCount} 条课程`, icon: "none", duration: 1600 });
     setTimeout(() => {
       uni.reLaunch({ url: "/pages/index/index" });
