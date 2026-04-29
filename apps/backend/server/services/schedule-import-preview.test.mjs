@@ -91,3 +91,36 @@ test("rejects empty or invalid preview entries before confirmation", async () =>
     ]);
   }, /SCHEDULE_IMPORT_PREVIEW_ENTRY_INVALID/);
 });
+
+test("normalizes AI OCR JSON into editable preview entries", async () => {
+  const preview = await loadPreviewModule();
+
+  const result = preview.normalizeAiScheduleOcrPreview(`
+    识别结果：
+    {
+      "studentNo": "2024123401",
+      "term": "2025-2026-2",
+      "courses": [
+        {
+          "courseName": "数据库系统",
+          "weekday": 3,
+          "sections": [3, 4],
+          "weeks": "1-16",
+          "parity": "even",
+          "location": "A-301",
+          "teacher": "李老师"
+        }
+      ]
+    }
+  `);
+
+  assert.equal(result.studentNo, "2024123401");
+  assert.equal(result.term, "2025-2026-2");
+  assert.equal(result.previewEntries.length, 1);
+  assert.equal(result.previewEntries[0].courseName, "数据库系统");
+  assert.equal(result.previewEntries[0].day, 3);
+  assert.equal(result.previewEntries[0].startSection, 3);
+  assert.equal(result.previewEntries[0].endSection, 4);
+  assert.equal(result.previewEntries[0].weekExpr, "1-16");
+  assert.equal(result.previewEntries[0].parity, "even");
+});

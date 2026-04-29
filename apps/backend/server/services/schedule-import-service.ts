@@ -116,6 +116,16 @@ interface PreparedScheduleImportItem {
   bytes: Uint8Array;
 }
 
+export interface ConfirmScheduleImportPreviewInput {
+  studentNo: string;
+  term: string;
+  parsedName?: string;
+  previewEntries: ScheduleImportPreviewEntry[];
+  originalPayload?: Record<string, unknown>;
+  jobId?: string;
+  sourceLabel?: string;
+}
+
 interface QueueMessageLike {
   body?: unknown;
   ack?: () => void;
@@ -825,6 +835,7 @@ const upsertClassScheduleInStore = (
     term: string;
     parsedName: string;
     courses: ParsedScheduleCourse[];
+    sourceLabel?: string;
   },
 ) => {
   const now = storeHelpers.nowIso();
@@ -925,7 +936,7 @@ const upsertClassScheduleInStore = (
       id: scheduleId,
       classId: classItem.id,
       title: `${normalizedClassLabel}课表`,
-      description: `${input.term} PDF 导入`,
+      description: `${input.term} ${input.sourceLabel || "PDF 导入"}`,
       publishedVersionNo: 0,
       createdByUserId: user.userId,
       createdAt: now,
@@ -935,7 +946,7 @@ const upsertClassScheduleInStore = (
   } else {
     schedule.classId = classItem.id;
     schedule.title = `${normalizedClassLabel}课表`;
-    schedule.description = `${input.term} PDF 导入`;
+    schedule.description = `${input.term} ${input.sourceLabel || "PDF 导入"}`;
     schedule.updatedAt = now;
   }
 
@@ -1069,6 +1080,72 @@ const upsertClassScheduleInStore = (
     versionNo: nextVersionNo,
     entryCount: entries.length,
   };
+};
+
+export const confirmScheduleImportPreviewEntries = async (
+  event: H3Event,
+  actorUserId: string,
+  input: ConfirmScheduleImportPreviewInput,
+) => {
+  const db = resolveNexusDb(event);
+  if (!db) {
+    throw new Error("NEXUS_DB 未配置");
+  }
+  const studentNo = asString(input.studentNo);
+  if (!/^\d{6,32}$/.test(studentNo)) {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_STUDENT_NO_REQUIRED", "请填写有效学号", {
+      studentNo,
+    });
+  }
+  const term = asString(input.term) || DEFAULT_TERM;
+  let normalizedCourses: ParsedScheduleCourse[];
+  try {
+    normalizedCourses = normalizeScheduleImportPreviewCourses(input.previewEntries) as ParsedScheduleCourse[];
+  } catch (error) {
+    throw createScheduleImportStructuredError("SCHEDULE_IMPORT_PREVIEW_ENTRY_INVALID", "确认课程包含无效字段", {
+      studentNo,
+      term,
+    });
+  }
+  if (normalizedCourses.length <= 0) {
+    throw createScheduleImportStructuredError("EMPTY_SCHEDULE", "确认结果为空课表", {
+      studentNo,
+      term,
+    });
+  }
+  const correctionJobId = asString(input.jobId) || `ai_ocr_${Date.now()}`;
+  return withNexusStateScopeByDb(
+    db,
+    {
+      writeRequest: true,
+      lockOwner: `schedule_import_preview_confirm_${actorUserId}_${Date.now()}`,
+    },
+    async () => {
+      const store = getNexusStore();
+      const writeResult = upsertClassScheduleInStore(store, {
+        studentNo,
+        term,
+        parsedName: asString(input.parsedName),
+        courses: normalizedCourses,
+        sourceLabel: asString(input.sourceLabel) || "AI/OCR 导入",
+      });
+      store.scheduleCorrections.push({
+        id: storeHelpers.createId("schedule_correction"),
+        userId: actorUserId,
+        jobId: correctionJobId,
+        originalPayload: input.originalPayload || {
+          source: "ai_ocr",
+          previewEntries: input.previewEntries,
+        },
+        correctedPayload: {
+          previewEntries: input.previewEntries,
+          courses: normalizedCourses,
+        },
+        createdAt: storeHelpers.nowIso(),
+      });
+      return writeResult;
+    },
+  );
 };
 
 export const createScheduleImportJob = async (event: H3Event, actorUserId: string, options: CreateScheduleImportJobOptions = {}) => {

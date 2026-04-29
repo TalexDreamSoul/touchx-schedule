@@ -2,8 +2,16 @@ export type SocialVisibilityScope = "busy_free" | "detail" | "hidden" | "blocked
 export type SocialActivityStatus = "draft" | "inviting" | "confirmed" | "cancelled" | "expired";
 export type SocialActivityAction = "send" | "confirm" | "cancel" | "expire";
 export type SchedulePriorityLabel = "low" | "normal" | "high";
+export type SocialRelationStatusLabel =
+  | "self"
+  | "blocked"
+  | "subscribed"
+  | "pending_outbound"
+  | "pending_inbound"
+  | "none";
 
 const VISIBILITY_SCOPES = new Set<SocialVisibilityScope>(["busy_free", "detail", "hidden", "blocked"]);
+const ACTIVE_STATUS = "active";
 const WEEKDAY_MAP: Record<string, number> = {
   一: 1,
   二: 2,
@@ -61,6 +69,20 @@ export interface ActivitySplitInput {
   }>;
 }
 
+export interface SocialVisibilityGrantLike {
+  visibilityScope?: unknown;
+  source?: unknown;
+  status?: unknown;
+}
+
+export interface SocialRelationStatusInput {
+  isSelf: boolean;
+  outboundPending: boolean;
+  inboundPending: boolean;
+  effectiveVisibility: SocialVisibilityScope;
+  activeSources: string[];
+}
+
 export const normalizeVisibilityScope = (
   value: unknown,
   fallback: SocialVisibilityScope = "busy_free",
@@ -87,6 +109,52 @@ export const pickStrongerVisibilityScope = (
   right: SocialVisibilityScope,
 ): SocialVisibilityScope => {
   return compareVisibilityScope(left, right) >= 0 ? left : right;
+};
+
+export const resolveEffectiveVisibilityScope = (
+  grants: SocialVisibilityGrantLike[],
+  fallback: SocialVisibilityScope = "hidden",
+): SocialVisibilityScope => {
+  let effective = normalizeVisibilityScope(fallback, "hidden");
+  const activeGrants = (Array.isArray(grants) ? grants : []).filter((grant) => {
+    return !grant.status || String(grant.status) === ACTIVE_STATUS;
+  });
+  if (activeGrants.some((grant) => normalizeVisibilityScope(grant.visibilityScope, "hidden") === "blocked")) {
+    return "blocked";
+  }
+  for (const grant of activeGrants) {
+    const scope = normalizeVisibilityScope(grant.visibilityScope, "hidden");
+    if (scope === "hidden" || scope === "blocked") {
+      continue;
+    }
+    effective = pickStrongerVisibilityScope(effective, scope);
+  }
+  return effective;
+};
+
+export const buildSocialRelationStatus = (input: SocialRelationStatusInput) => {
+  const sources = Array.from(new Set((input.activeSources || []).map((item) => String(item || "").trim()).filter((item) => item)));
+  const visibilityScope = normalizeVisibilityScope(input.effectiveVisibility, "hidden");
+  let status: SocialRelationStatusLabel = "none";
+  if (input.isSelf) {
+    status = "self";
+  } else if (visibilityScope === "blocked") {
+    status = "blocked";
+  } else if (visibilityScope === "busy_free" || visibilityScope === "detail") {
+    status = "subscribed";
+  } else if (input.outboundPending) {
+    status = "pending_outbound";
+  } else if (input.inboundPending) {
+    status = "pending_inbound";
+  }
+  return {
+    status,
+    visibilityScope,
+    sources,
+    canRequest: status === "none",
+    canUnsubscribe: status === "subscribed" && sources.some((source) => source !== "circle"),
+    canBlock: status !== "self" && status !== "blocked",
+  };
 };
 
 export const resolveNextActivityStatus = (
@@ -341,4 +409,119 @@ export const buildActivitySplitDraft = (input: ActivitySplitInput) => {
     }),
     updatedAt: new Date().toISOString(),
   };
+};
+
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const parseDateKeyUtc = (value: unknown) => {
+  const text = String(value || "").trim();
+  if (!DATE_KEY_PATTERN.test(text)) {
+    return null;
+  }
+  const timestamp = Date.parse(`${text}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
+
+export const buildExamCountdownState = (examDate: unknown, todayDate: unknown) => {
+  const examTs = parseDateKeyUtc(examDate);
+  const todayTs = parseDateKeyUtc(todayDate);
+  if (examTs === null || todayTs === null) {
+    return {
+      daysRemaining: null as number | null,
+      status: "unknown" as const,
+    };
+  }
+  const daysRemaining = Math.ceil((examTs - todayTs) / DAY_MS);
+  return {
+    daysRemaining,
+    status: daysRemaining < 0 ? ("finished" as const) : daysRemaining === 0 ? ("today" as const) : ("upcoming" as const),
+  };
+};
+
+export const sortDailyPriorityItems = <
+  T extends {
+    title?: string;
+    priorityScore?: number;
+    startSection?: number;
+  },
+>(
+  items: T[],
+) => {
+  return [...items].sort((left, right) => {
+    const leftScore = Number(left.priorityScore || 0);
+    const rightScore = Number(right.priorityScore || 0);
+    if (leftScore !== rightScore) {
+      return rightScore - leftScore;
+    }
+    const leftStart = Number(left.startSection || Number.POSITIVE_INFINITY);
+    const rightStart = Number(right.startSection || Number.POSITIVE_INFINITY);
+    if (leftStart !== rightStart) {
+      return leftStart - rightStart;
+    }
+    return String(left.title || "").localeCompare(String(right.title || ""), "zh-CN");
+  });
+};
+
+export type CalendarViewKey = "learning" | "social" | "personal";
+
+export const resolveCalendarViewKey = (input: {
+  tags?: unknown[];
+  source?: unknown;
+  title?: unknown;
+}): CalendarViewKey => {
+  const text = [
+    ...(Array.isArray(input.tags) ? input.tags : []),
+    input.source,
+    input.title,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter((item) => item)
+    .join(" ");
+  if (/(学习|课程|考试|DDL|作业|复习|实验|论文|讲座|course|exam|study|deadline)/i.test(text)) {
+    return "learning";
+  }
+  if (/(社团|活动|组局|聚会|娱乐|吃饭|社交|club|activity|party|social)/i.test(text)) {
+    return "social";
+  }
+  return "personal";
+};
+
+const escapeSvgText = (value: unknown) => {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+};
+
+export const buildActivitySnapshotPosterSvg = (input: {
+  title: unknown;
+  statusLabel: unknown;
+  timeLabel: unknown;
+  participants?: unknown[];
+}) => {
+  const title = escapeSvgText(input.title || "组局活动");
+  const statusLabel = escapeSvgText(input.statusLabel || "活动");
+  const timeLabel = escapeSvgText(input.timeLabel || "时间待定");
+  const participantText = escapeSvgText(
+    (Array.isArray(input.participants) ? input.participants : [])
+      .map((item) => String(item || "").trim())
+      .filter((item) => item)
+      .join("、") || "参与人待定",
+  );
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="750" height="1000" viewBox="0 0 750 1000">`,
+    `<rect width="750" height="1000" rx="0" fill="#f8fafc"/>`,
+    `<rect x="52" y="64" width="646" height="872" rx="28" fill="#ffffff" stroke="#dbe4ef" stroke-width="2"/>`,
+    `<text x="88" y="140" fill="#2563eb" font-size="32" font-family="Arial, sans-serif" font-weight="700">TouchX 简程</text>`,
+    `<text x="88" y="235" fill="#0f172a" font-size="54" font-family="Arial, sans-serif" font-weight="800">${title}</text>`,
+    `<text x="88" y="310" fill="#475569" font-size="30" font-family="Arial, sans-serif">${statusLabel}</text>`,
+    `<text x="88" y="390" fill="#0f172a" font-size="34" font-family="Arial, sans-serif" font-weight="700">${timeLabel}</text>`,
+    `<text x="88" y="472" fill="#475569" font-size="28" font-family="Arial, sans-serif">参与人</text>`,
+    `<text x="88" y="526" fill="#0f172a" font-size="32" font-family="Arial, sans-serif">${participantText}</text>`,
+    `<rect x="88" y="760" width="574" height="96" rx="20" fill="#eff6ff"/>`,
+    `<text x="120" y="820" fill="#2563eb" font-size="28" font-family="Arial, sans-serif" font-weight="700">复制日历链接或分享给好友确认</text>`,
+    `</svg>`,
+  ].join("");
 };

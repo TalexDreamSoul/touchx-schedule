@@ -979,8 +979,9 @@ const isSocialCompatPath = (path: string) => {
   return (
     path.startsWith("social/") ||
     path.startsWith("notifications") ||
-    path.startsWith("ai/schedule/") ||
+    path.startsWith("ai/") ||
     path.startsWith("exams/") ||
+    path.startsWith("calendar/") ||
     path.startsWith("schedule-import/corrections") ||
     path.startsWith("admin/food-candidates") ||
     path === "auth/wechat-login" ||

@@ -53,13 +53,22 @@ import {
 } from "./schedule-calendar";
 import {
   buildActivitySplitDraft,
+  buildActivitySnapshotPosterSvg,
+  buildExamCountdownState,
   buildScheduleCandidateDrafts,
   buildScheduleIntelligence,
+  buildSocialRelationStatus,
   normalizeVisibilityScope,
   pickStrongerVisibilityScope,
+  resolveCalendarViewKey,
+  resolveEffectiveVisibilityScope,
   resolveNextActivityStatus,
+  sortDailyPriorityItems,
   type SocialVisibilityScope,
 } from "./social-collaboration-core";
+import { requestAiChatCompletion, resolveAiProviderConfig } from "./ai-provider";
+import { confirmScheduleImportPreviewEntries } from "./schedule-import-service";
+import { normalizeAiScheduleOcrPreview } from "./schedule-import-preview";
 
 type LegacyJoinMode = "all" | "invite" | "password";
 type LegacyCandidateStatus = "approved" | "pending_eat" | "pending_review" | "rejected";
@@ -140,6 +149,7 @@ const legacyStateMap = new WeakMap<NexusStore, LegacyCompatState>();
 const LEGACY_AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 const LEGACY_WALLPAPER_MAX_BYTES = 5 * 1024 * 1024;
 const LEGACY_FOOD_CANDIDATE_EVIDENCE_MAX_BYTES = 5 * 1024 * 1024;
+const LEGACY_AI_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 
 const asString = (value: unknown) => String(value || "").trim();
 
@@ -1473,6 +1483,46 @@ const toLegacySocialUser = (
   };
 };
 
+const buildSocialRelationStatusPayload = (
+  store: NexusStore,
+  viewer: UserRecord,
+  target: UserRecord,
+) => {
+  const pendingRequests = store.socialSubscriptionRequests.filter((item) => {
+    return (
+      item.status === "pending" &&
+      ((item.requesterUserId === viewer.userId && item.targetUserId === target.userId) ||
+        (item.requesterUserId === target.userId && item.targetUserId === viewer.userId))
+    );
+  });
+  const outboundPending = pendingRequests.some((item) => item.requesterUserId === viewer.userId);
+  const inboundPending = pendingRequests.some((item) => item.targetUserId === viewer.userId);
+  return buildSocialRelationStatus({
+    isSelf: viewer.userId === target.userId,
+    outboundPending,
+    inboundPending,
+    effectiveVisibility: resolveViewerVisibilityScope(store, viewer, target),
+    activeSources: getActiveSocialEdgeSources(store, viewer.userId, target.userId),
+  });
+};
+
+const toLegacySocialUserWithRelation = (
+  store: NexusStore,
+  state: LegacyCompatState,
+  viewer: UserRecord,
+  target: UserRecord,
+) => {
+  const relationStatus = buildSocialRelationStatusPayload(store, viewer, target);
+  return {
+    ...toLegacySocialUser(target, state),
+    relationStatus,
+    visibilityScope: relationStatus.visibilityScope,
+    relationSources: relationStatus.sources,
+    canUnsubscribe: relationStatus.canUnsubscribe,
+    canBlock: relationStatus.canBlock,
+  };
+};
+
 const ensureCampaignParticipants = (state: LegacyCompatState, campaign: FoodCampaignRecord) => {
   const existing = state.campaignParticipantsByCampaignId.get(campaign.id);
   if (existing) {
@@ -1969,15 +2019,55 @@ const findActiveSocialEdge = (
   subscriberUserId: string,
   targetUserId: string,
 ) => {
-  return (
-    store.socialSubscriptionEdges.find((item) => {
-      return (
-        item.subscriberUserId === subscriberUserId &&
-        item.targetUserId === targetUserId &&
-        item.status === "active"
-      );
-    }) || null
+  const edges = findActiveSocialEdges(store, subscriberUserId, targetUserId);
+  const effectiveVisibility = resolveEffectiveVisibilityScope(edges);
+  if (effectiveVisibility === "hidden") {
+    return null;
+  }
+  return edges.find((item) => normalizeVisibilityScope(item.visibilityScope, "hidden") === effectiveVisibility) || edges[0] || null;
+};
+
+const findActiveSocialEdges = (
+  store: NexusStore,
+  subscriberUserId: string,
+  targetUserId: string,
+) => {
+  return store.socialSubscriptionEdges.filter((item) => {
+    return item.subscriberUserId === subscriberUserId && item.targetUserId === targetUserId && item.status === "active";
+  });
+};
+
+const getActiveSocialEdgeSources = (
+  store: NexusStore,
+  subscriberUserId: string,
+  targetUserId: string,
+) => {
+  return Array.from(
+    new Set(
+      findActiveSocialEdges(store, subscriberUserId, targetUserId)
+        .filter((item) => {
+          const scope = normalizeVisibilityScope(item.visibilityScope, "hidden");
+          return scope === "busy_free" || scope === "detail" || scope === "blocked";
+        })
+        .map((item) => item.source),
+    ),
   );
+};
+
+const syncLegacySubscriptionTarget = (
+  store: NexusStore,
+  state: LegacyCompatState,
+  subscriberUserId: string,
+  targetUser: UserRecord,
+) => {
+  const effectiveScope = resolveEffectiveVisibilityScope(findActiveSocialEdges(store, subscriberUserId, targetUser.userId));
+  if (effectiveScope === "busy_free" || effectiveScope === "detail") {
+    ensureSet(state.subscriptionTargetsByUserId, subscriberUserId).add(targetUser.userId);
+    ensureScheduleSubscriptionsByTarget(store, subscriberUserId, targetUser);
+    return;
+  }
+  ensureSet(state.subscriptionTargetsByUserId, subscriberUserId).delete(targetUser.userId);
+  removeScheduleSubscriptionsByTarget(store, subscriberUserId, targetUser);
 };
 
 const upsertSocialSubscriptionEdge = (
@@ -1992,11 +2082,19 @@ const upsertSocialSubscriptionEdge = (
   },
 ) => {
   const visibilityScope = normalizeVisibilityScope(input.visibilityScope);
-  const existing = findActiveSocialEdge(store, input.subscriberUserId, input.targetUser.userId);
+  const sourceCircleId = input.source === "circle" ? input.circleId || "" : "";
+  const existing =
+    store.socialSubscriptionEdges.find((item) => {
+      return (
+        item.subscriberUserId === input.subscriberUserId &&
+        item.targetUserId === input.targetUser.userId &&
+        item.status === "active" &&
+        item.source === input.source &&
+        item.circleId === sourceCircleId
+      );
+    }) || null;
   if (existing) {
     existing.visibilityScope = pickStrongerVisibilityScope(existing.visibilityScope, visibilityScope);
-    existing.source = existing.source === "request" ? existing.source : input.source;
-    existing.circleId = existing.circleId || input.circleId || "";
     existing.updatedAt = storeHelpers.nowIso();
   } else {
     const edge: SocialSubscriptionEdgeRecord = {
@@ -2005,7 +2103,7 @@ const upsertSocialSubscriptionEdge = (
       targetUserId: input.targetUser.userId,
       visibilityScope,
       source: input.source,
-      circleId: input.circleId || "",
+      circleId: sourceCircleId,
       status: "active",
       createdAt: storeHelpers.nowIso(),
       updatedAt: storeHelpers.nowIso(),
@@ -2013,10 +2111,7 @@ const upsertSocialSubscriptionEdge = (
     };
     store.socialSubscriptionEdges.push(edge);
   }
-  if (visibilityScope === "busy_free" || visibilityScope === "detail") {
-    ensureSet(state.subscriptionTargetsByUserId, input.subscriberUserId).add(input.targetUser.userId);
-    ensureScheduleSubscriptionsByTarget(store, input.subscriberUserId, input.targetUser);
-  }
+  syncLegacySubscriptionTarget(store, state, input.subscriberUserId, input.targetUser);
 };
 
 const upsertBlockedSocialEdge = (
@@ -2055,10 +2150,8 @@ const blockSocialSubscriptionBetweenUsers = (
 ) => {
   const leftEdge = upsertBlockedSocialEdge(store, leftUser.userId, rightUser.userId);
   const rightEdge = upsertBlockedSocialEdge(store, rightUser.userId, leftUser.userId);
-  ensureSet(state.subscriptionTargetsByUserId, leftUser.userId).delete(rightUser.userId);
-  ensureSet(state.subscriptionTargetsByUserId, rightUser.userId).delete(leftUser.userId);
-  removeScheduleSubscriptionsByTarget(store, leftUser.userId, rightUser);
-  removeScheduleSubscriptionsByTarget(store, rightUser.userId, leftUser);
+  syncLegacySubscriptionTarget(store, state, leftUser.userId, rightUser);
+  syncLegacySubscriptionTarget(store, state, rightUser.userId, leftUser);
   return [leftEdge, rightEdge];
 };
 
@@ -2067,7 +2160,9 @@ const revokeSocialSubscriptionBetweenUsers = (
   state: LegacyCompatState,
   leftUser: UserRecord,
   rightUser: UserRecord,
+  options: { includeCircle?: boolean } = {},
 ) => {
+  const includeCircle = options.includeCircle !== false;
   let removed = false;
   store.socialSubscriptionEdges.forEach((edge) => {
     const matches =
@@ -2076,15 +2171,16 @@ const revokeSocialSubscriptionBetweenUsers = (
     if (!matches || edge.status !== "active") {
       return;
     }
+    if (!includeCircle && edge.source === "circle") {
+      return;
+    }
     edge.status = "revoked";
     edge.revokedAt = storeHelpers.nowIso();
     edge.updatedAt = edge.revokedAt;
     removed = true;
   });
-  ensureSet(state.subscriptionTargetsByUserId, leftUser.userId).delete(rightUser.userId);
-  ensureSet(state.subscriptionTargetsByUserId, rightUser.userId).delete(leftUser.userId);
-  removeScheduleSubscriptionsByTarget(store, leftUser.userId, rightUser);
-  removeScheduleSubscriptionsByTarget(store, rightUser.userId, leftUser);
+  syncLegacySubscriptionTarget(store, state, leftUser.userId, rightUser);
+  syncLegacySubscriptionTarget(store, state, rightUser.userId, leftUser);
   return removed;
 };
 
@@ -2096,11 +2192,11 @@ const resolveViewerVisibilityScope = (
   if (viewer.userId === target.userId || isAdminRole(viewer)) {
     return "detail";
   }
-  const directEdge = findActiveSocialEdge(store, viewer.userId, target.userId);
-  if (directEdge?.visibilityScope === "blocked") {
+  const directEdges = findActiveSocialEdges(store, viewer.userId, target.userId);
+  if (directEdges.some((item) => normalizeVisibilityScope(item.visibilityScope, "hidden") === "blocked")) {
     return "blocked";
   }
-  let scope = directEdge ? normalizeVisibilityScope(directEdge.visibilityScope, "hidden") : "hidden";
+  let scope = resolveEffectiveVisibilityScope(directEdges);
   const viewerCircleIds = new Set(
     store.socialCircleMembers
       .filter((item) => item.userId === viewer.userId && item.status === "active")
@@ -2367,6 +2463,22 @@ const buildScheduleCandidateConflictPayload = (
   };
 };
 
+const resolveCloudflareEnv = (event: H3Event): Record<string, unknown> => {
+  const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env;
+  return env && typeof env === "object" ? env : {};
+};
+
+const resolveAbsoluteRequestUrl = (event: H3Event, url: string) => {
+  const value = asString(url);
+  if (!value || /^https?:\/\//i.test(value)) {
+    return value;
+  }
+  if (!value.startsWith("/")) {
+    return value;
+  }
+  return `${getRequestURL(event).origin}${value}`;
+};
+
 const extractExamDateFromText = (text: unknown) => {
   const normalized = asString(text);
   if (!/(考试|期末|期中|补考|考后)/.test(normalized)) {
@@ -2391,6 +2503,229 @@ const extractExamDateFromText = (text: unknown) => {
     }
   }
   return "";
+};
+
+const isExamText = (text: unknown) => /(考试|期末|期中|补考|考后)/.test(asString(text));
+
+const resolveFirstWeekFromExpr = (weekExpr: unknown) => {
+  const matched = asString(weekExpr).match(/\d{1,2}/);
+  const week = Number(matched?.[0] || 0);
+  return Number.isFinite(week) && week > 0 ? Math.min(SCHEDULE_TERM_META.maxWeek, week) : 0;
+};
+
+const buildExamCountdowns = (store: NexusStore, user: UserRecord) => {
+  const timezone = getUserReminderTimezone(store, user);
+  const todayKey = toDateTimeParts(new Date(), timezone).dateKey;
+  const eventItems = store.userScheduleEvents
+    .filter((item) => item.userId === user.userId && (item.source === "exam" || isExamText(`${item.title} ${item.description}`)))
+    .map((item) => {
+      const state = buildExamCountdownState(item.examDate, todayKey);
+      return {
+        eventId: item.id,
+        title: item.title,
+        examDate: item.examDate,
+        priorityLabel: item.priorityLabel,
+        daysRemaining: state.daysRemaining,
+        status: state.status,
+        source: item.source,
+      };
+    });
+  const scheduleItems = getEffectiveScheduleEntriesForUser(store, user)
+    .filter((entry) => isExamText(`${entry.courseName} ${entry.teacher} ${entry.classroom}`))
+    .map((entry) => {
+      const week = resolveFirstWeekFromExpr(entry.weekExpr);
+      const examDate = week > 0 ? addDaysToDateKey(SCHEDULE_TERM_META.week1Monday, (week - 1) * 7 + Math.max(0, entry.day - 1)) : "";
+      const state = buildExamCountdownState(examDate, todayKey);
+      return {
+        eventId: `schedule_${entry.id}`,
+        title: entry.courseName,
+        examDate,
+        priorityLabel: "high" as const,
+        daysRemaining: state.daysRemaining,
+        status: state.status,
+        source: "schedule",
+      };
+    });
+  return [...eventItems, ...scheduleItems]
+    .filter((item, index, rows) => rows.findIndex((candidate) => candidate.title === item.title && candidate.examDate === item.examDate) === index)
+    .sort((left, right) => {
+      const leftDays = left.daysRemaining === null ? Number.POSITIVE_INFINITY : left.daysRemaining;
+      const rightDays = right.daysRemaining === null ? Number.POSITIVE_INFINITY : right.daysRemaining;
+      if (leftDays !== rightDays) {
+        return leftDays - rightDays;
+      }
+      return left.title.localeCompare(right.title, "zh-CN");
+    });
+};
+
+const buildSectionRangeLabel = (startSection: number, endSection: number) => {
+  const startSlot = getSectionTimeBySection(startSection);
+  const endSlot = getSectionTimeBySection(endSection);
+  return startSlot && endSlot ? `${startSlot.start}-${endSlot.end}` : `第 ${startSection}-${endSection} 节`;
+};
+
+const isEventInWeek = (event: Pick<UserScheduleEventRecord, "weekExpr" | "parity">, week: number) => {
+  return isScheduleEntryInWeek(
+    {
+      weekExpr: event.weekExpr,
+      parity: event.parity,
+    } as ScheduleEntryRecord,
+    week,
+  );
+};
+
+const buildTodayPriorityItems = (store: NexusStore, user: UserRecord, currentWeek: number, dayNo: number) => {
+  const courseItems = getEffectiveScheduleEntriesForUser(store, user)
+    .filter((entry) => entry.day === dayNo && isScheduleEntryInWeek(entry, currentWeek))
+    .map((entry) => ({
+      id: `course_${entry.id}`,
+      source: "course",
+      title: entry.courseName,
+      subtitle: `${buildSectionRangeLabel(entry.startSection, entry.endSection)} · ${entry.classroom || "教室待定"}`,
+      priorityScore: isExamText(entry.courseName) ? 92 : 50,
+      priorityLabel: isExamText(entry.courseName) ? ("high" as const) : ("normal" as const),
+      startSection: entry.startSection,
+      tags: isExamText(entry.courseName) ? ["考试", "学习"] : ["学习"],
+    }));
+  const userEventItems = store.userScheduleEvents
+    .filter((item) => item.userId === user.userId && item.day === dayNo && isEventInWeek(item, currentWeek))
+    .map((item) => ({
+      id: item.id,
+      source: item.source,
+      title: item.title,
+      subtitle: `${buildSectionRangeLabel(item.startSection, item.endSection)} · ${item.description || "个人日程"}`,
+      priorityScore: item.priorityScore,
+      priorityLabel: item.priorityLabel,
+      startSection: item.startSection,
+      tags: item.tags,
+    }));
+  const activityItems = store.socialActivities
+    .filter((activity) => activity.week === currentWeek && activity.day === dayNo && activity.status !== "cancelled" && activity.status !== "expired")
+    .filter((activity) => {
+      if (activity.createdByUserId === user.userId || activity.participantUserIds.includes(user.userId)) {
+        return true;
+      }
+      return store.socialActivityInvitations.some((invite) => invite.activityId === activity.id && invite.inviteeUserId === user.userId);
+    })
+    .map((activity) => {
+      const invitation = store.socialActivityInvitations.find((invite) => invite.activityId === activity.id && invite.inviteeUserId === user.userId) || null;
+      const isPendingInvite = invitation?.status === "pending";
+      return {
+        id: activity.id,
+        source: "activity",
+        title: activity.title,
+        subtitle: `${buildActivityTimeLabel(activity)} · ${isPendingInvite ? "待响应邀请" : "活动"}`,
+        priorityScore: isPendingInvite ? 72 : 58,
+        priorityLabel: isPendingInvite ? ("high" as const) : ("normal" as const),
+        startSection: activity.startSection,
+        tags: [activity.activityType || "社交"],
+      };
+    });
+  return sortDailyPriorityItems([...courseItems, ...userEventItems, ...activityItems]).slice(0, 8);
+};
+
+type CalendarViewBucketKey = ReturnType<typeof resolveCalendarViewKey>;
+
+const CALENDAR_VIEW_LABELS: Record<CalendarViewBucketKey, string> = {
+  learning: "学习日历",
+  social: "社交日历",
+  personal: "个人日历",
+};
+
+const pushCalendarViewItem = (
+  buckets: Record<CalendarViewBucketKey, Array<Record<string, unknown>>>,
+  item: Record<string, unknown> & { tags?: string[]; source?: string; title?: string },
+) => {
+  const viewKey = resolveCalendarViewKey({
+    tags: item.tags,
+    source: item.source,
+    title: item.title,
+  });
+  buckets[viewKey].push(item);
+};
+
+const buildCalendarViewsPayload = (store: NexusStore, user: UserRecord, week: number) => {
+  const buckets: Record<CalendarViewBucketKey, Array<Record<string, unknown>>> = {
+    learning: [],
+    social: [],
+    personal: [],
+  };
+  getEffectiveScheduleEntriesForUser(store, user)
+    .filter((entry) => isScheduleEntryInWeek(entry, week))
+    .forEach((entry) => {
+      const tags = isExamText(entry.courseName) ? ["学习", "考试"] : ["学习"];
+      pushCalendarViewItem(buckets, {
+        id: `course_${entry.id}`,
+        source: "course",
+        title: entry.courseName,
+        subtitle: `周${SCHEDULE_WEEKDAY_LABELS[entry.day - 1] || entry.day} ${buildSectionRangeLabel(entry.startSection, entry.endSection)}`,
+        day: entry.day,
+        startSection: entry.startSection,
+        endSection: entry.endSection,
+        weekExpr: entry.weekExpr,
+        parity: entry.parity,
+        tags,
+        location: entry.classroom,
+        teacher: entry.teacher,
+      });
+    });
+  store.userScheduleEvents
+    .filter((item) => item.userId === user.userId && isEventInWeek(item, week))
+    .forEach((item) => {
+      pushCalendarViewItem(buckets, {
+        id: item.id,
+        source: item.source,
+        title: item.title,
+        subtitle: `周${SCHEDULE_WEEKDAY_LABELS[item.day - 1] || item.day} ${buildSectionRangeLabel(item.startSection, item.endSection)}`,
+        day: item.day,
+        startSection: item.startSection,
+        endSection: item.endSection,
+        weekExpr: item.weekExpr,
+        parity: item.parity,
+        tags: item.tags,
+        priorityScore: item.priorityScore,
+        priorityLabel: item.priorityLabel,
+        description: item.description,
+      });
+    });
+  store.socialActivities
+    .filter((activity) => activity.week === week && activity.status !== "cancelled" && activity.status !== "expired")
+    .filter((activity) => {
+      if (activity.createdByUserId === user.userId || activity.participantUserIds.includes(user.userId)) {
+        return true;
+      }
+      return store.socialActivityInvitations.some((invite) => invite.activityId === activity.id && invite.inviteeUserId === user.userId);
+    })
+    .forEach((activity) => {
+      pushCalendarViewItem(buckets, {
+        id: activity.id,
+        source: "activity",
+        title: activity.title,
+        subtitle: buildActivityTimeLabel(activity),
+        day: activity.day,
+        startSection: activity.startSection,
+        endSection: activity.endSection,
+        weekExpr: String(activity.week),
+        parity: "all",
+        tags: [activity.activityType || "社交"],
+        status: activity.status,
+      });
+    });
+  return {
+    week,
+    views: (Object.keys(buckets) as CalendarViewBucketKey[]).map((key) => ({
+      key,
+      label: CALENDAR_VIEW_LABELS[key],
+      count: buckets[key].length,
+      items: sortDailyPriorityItems(
+        buckets[key].map((item) => ({
+          ...item,
+          priorityScore: Number(item.priorityScore || (key === "learning" ? 60 : key === "social" ? 50 : 45)),
+          startSection: Number(item.startSection || 99),
+        })),
+      ),
+    })),
+  };
 };
 
 const resolveHeatmapUsers = (
@@ -2631,6 +2966,8 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
     .filter((item) => item.endTs > nowTs)
     .sort((left, right) => left.startTs - right.startTs)[0] || null;
   const tips: string[] = [];
+  const examCountdowns = buildExamCountdowns(store, user);
+  const priorityItems = buildTodayPriorityItems(store, user, currentWeek, dayNo);
   if (sorted.length === 0) {
     tips.push("今日无课，可安排复习或运动");
   } else if (sorted.length >= 4) {
@@ -2673,6 +3010,8 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
         }
       : null,
     tips,
+    examCountdowns: examCountdowns.slice(0, 3),
+    priorityItems,
     serverNowIso: now.toISOString(),
     serverTimezone,
     termMeta: SCHEDULE_TERM_META,
@@ -2932,20 +3271,20 @@ export const handleSocialV1Api = async (event: H3Event) => {
       .map((targetUserId) => store.users.find((item) => item.userId === targetUserId) || null)
       .filter((item): item is UserRecord => Boolean(item))
       .filter((item) => item.studentId !== "")
-      .map((item) => toLegacySocialUser(item, state));
+      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
     const subscribers = store.users
       .filter((candidate) => {
         const set = state.subscriptionTargetsByUserId.get(candidate.userId);
         return Boolean(set && set.has(bindTarget.userId));
       })
       .filter((item) => item.studentId !== "")
-      .map((item) => toLegacySocialUser(item, state));
+      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
     const subscribedStudentIds = new Set(subscriptions.map((item) => item.studentId));
     const candidates = store.users
       .filter((item) => item.studentId !== "")
       .filter((item) => item.userId !== bindTarget.userId)
       .filter((item) => !subscribedStudentIds.has(item.studentId || ""))
-      .map((item) => toLegacySocialUser(item, state));
+      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
     return {
       ok: true,
       me,
@@ -2964,6 +3303,37 @@ export const handleSocialV1Api = async (event: H3Event) => {
         (item) => item.recipientUserId === user.userId && item.status === "unread",
       ).length,
       bound: Boolean(bindTarget.studentId),
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
+  if (method === "GET" && path === "social/users/search") {
+    const { user } = resolveLegacyAuthContext(event);
+    const q = asString(query.q || query.keyword || query.search).toLowerCase();
+    const limit = Math.max(1, Math.min(50, Math.trunc(Number(query.limit || 20))));
+    if (!q) {
+      return { ok: true, items: [], total: 0, stateRevision: getNexusStoreRevision() };
+    }
+    const items = store.users
+      .filter((item) => item.studentId !== "")
+      .filter((item) => {
+        const fields = [
+          item.studentId,
+          item.studentNo,
+          item.name,
+          item.nickname,
+          item.classLabel,
+          resolveMeaningfulUserName(item),
+          resolveUserDisplayLabel(item),
+        ];
+        return fields.some((field) => asString(field).toLowerCase().includes(q));
+      })
+      .slice(0, limit)
+      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
+    return {
+      ok: true,
+      items,
+      total: items.length,
       stateRevision: getNexusStoreRevision(),
     };
   }
@@ -3137,7 +3507,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     const left = ensureValue(findUserByUserId(store, edge.subscriberUserId), 404, "SUBSCRIBER_NOT_FOUND", "订阅人不存在");
     const right = ensureValue(findUserByUserId(store, edge.targetUserId), 404, "TARGET_NOT_FOUND", "被订阅人不存在");
-    const removed = revokeSocialSubscriptionBetweenUsers(store, state, left, right);
+    const removed = revokeSocialSubscriptionBetweenUsers(store, state, left, right, { includeCircle: edge.source === "circle" });
     createSocialNotification(store, {
       type: "subscription_revoked",
       recipientUserId: user.userId === left.userId ? right.userId : left.userId,
@@ -3344,6 +3714,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     member.status = "left";
     member.leftAt = storeHelpers.nowIso();
     member.updatedAt = member.leftAt;
+    const affectedPairs: Array<{ subscriberUserId: string; targetUserId: string }> = [];
     store.socialSubscriptionEdges.forEach((edge) => {
       if (edge.circleId !== circle.id || edge.status !== "active") {
         return;
@@ -3354,11 +3725,14 @@ export const handleSocialV1Api = async (event: H3Event) => {
       edge.status = "revoked";
       edge.revokedAt = storeHelpers.nowIso();
       edge.updatedAt = edge.revokedAt;
-      ensureSet(state.subscriptionTargetsByUserId, edge.subscriberUserId).delete(edge.targetUserId);
-      const targetUser = findUserByUserId(store, edge.targetUserId);
-      if (targetUser) {
-        removeScheduleSubscriptionsByTarget(store, edge.subscriberUserId, targetUser);
+      affectedPairs.push({ subscriberUserId: edge.subscriberUserId, targetUserId: edge.targetUserId });
+    });
+    affectedPairs.forEach((pair) => {
+      const targetUser = findUserByUserId(store, pair.targetUserId);
+      if (!targetUser) {
+        return;
       }
+      syncLegacySubscriptionTarget(store, state, pair.subscriberUserId, targetUser);
     });
     store.socialCircleMembers
       .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
@@ -3481,15 +3855,24 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const participants = activity.participantUserIds
       .map((userId) => findUserByUserId(store, userId))
       .filter((item): item is UserRecord => Boolean(item));
+    const participantNames = participants.map((item) => resolveUserDisplayLabel(item));
+    const statusLabel = activity.status === "confirmed" ? "已确认" : activity.status === "inviting" ? "邀请中" : "待发送";
+    const timeLabel = buildActivityTimeLabel(activity);
+    const posterSvg = buildActivitySnapshotPosterSvg({
+      title: activity.title,
+      statusLabel,
+      timeLabel,
+      participants: participantNames,
+    });
     const card = {
       title: activity.title,
       status: activity.status,
-      statusLabel: activity.status === "confirmed" ? "已确认" : activity.status === "inviting" ? "邀请中" : "待发送",
-      timeLabel: buildActivityTimeLabel(activity),
-      participants: participants.map((item) => resolveUserDisplayLabel(item)),
-      shareText: `「${activity.title}」${buildActivityTimeLabel(activity)}，参与人：${participants
-        .map((item) => resolveUserDisplayLabel(item))
-        .join("、")}`,
+      statusLabel,
+      timeLabel,
+      participants: participantNames,
+      shareText: `「${activity.title}」${timeLabel}，参与人：${participantNames.join("、")}`,
+      posterSvg,
+      posterDataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(posterSvg)}`,
       calendarPath: `/api/v1/social/activities/calendar.ics?activityId=${encodeURIComponent(activity.id)}&token=${encodeURIComponent(activity.calendarToken)}`,
     };
     return {
@@ -3758,6 +4141,215 @@ export const handleSocialV1Api = async (event: H3Event) => {
     };
   }
 
+  if (method === "POST" && path === "ai/attachments") {
+    const { user } = resolveLegacyAuthContext(event);
+    const upload = await persistLegacyMediaUpload(event, store, user, {
+      usage: "other",
+      maxBytes: LEGACY_AI_ATTACHMENT_MAX_BYTES,
+      objectPrefix: "touchx/ai/attachments",
+    });
+    return {
+      ok: true,
+      asset: upload,
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
+  if (method === "POST" && path === "ai/chat") {
+    const { user } = resolveLegacyAuthContext(event);
+    const body = await readJsonBody<{
+      text?: string;
+      message?: string;
+      attachments?: Array<{ type?: string; url?: string; name?: string; text?: string }>;
+    }>(event);
+    const text = asString(body.text || body.message);
+    const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+    if (!text && attachments.length <= 0) {
+      createLegacyError(400, "AI_CHAT_INPUT_REQUIRED", "请输入消息或上传文件");
+    }
+    const config = resolveAiProviderConfig(resolveCloudflareEnv(event));
+    if (!config.enabled) {
+      createLegacyError(503, config.reason, "AI 服务未配置，请设置 TOUCHX_AI_API_KEY 等环境变量");
+    }
+    const attachmentText = attachments
+      .map((item) => {
+        const name = asString(item.name);
+        const type = asString(item.type);
+        const extractedText = asString(item.text);
+        const url = asString(item.url);
+        return [type, name, extractedText, url].filter((value) => value).join(" ");
+      })
+      .filter((value) => value)
+      .join("\n");
+    const imageAttachments = attachments
+      .filter((item) => /image|photo|camera|album/i.test(asString(item.type || item.name || item.url)) && asString(item.url))
+      .map((item) => ({
+        type: "image_url" as const,
+        image_url: {
+          url: resolveAbsoluteRequestUrl(event, asString(item.url)),
+        },
+      }))
+      .filter((item) => item.image_url.url);
+    const userText = [text, attachmentText ? `附件信息：\n${attachmentText}` : ""].filter((value) => value).join("\n\n");
+    const userContent =
+      imageAttachments.length > 0
+        ? [
+            {
+              type: "text" as const,
+              text: userText || "请识别附件中的日程信息。",
+            },
+            ...imageAttachments,
+          ]
+        : userText;
+    let assistantText = "";
+    try {
+      assistantText = await requestAiChatCompletion(config, {
+        useVision: imageAttachments.length > 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是 TouchX 简程的时间助手。请用简洁中文回复，识别用户要创建的日程、活动、冲突问题或空闲查询。不要直接声称已创建，必须提示用户确认。",
+          },
+          {
+            role: "user",
+            content: userContent,
+          },
+        ],
+      });
+    } catch (error) {
+      createLegacyError(502, "AI_PROVIDER_REQUEST_FAILED", error instanceof Error ? error.message : "AI 服务调用失败");
+    }
+    const scheduleCandidates = text
+      ? buildScheduleCandidateDrafts(text).map((candidate) => ({
+          type: "schedule_candidate",
+          candidate: {
+            ...candidate,
+            examDate: extractExamDateFromText(text),
+            ...buildScheduleCandidateConflictPayload(store, user, candidate),
+          },
+        }))
+      : [];
+    return {
+      ok: true,
+      provider: "openai-compatible",
+      message: {
+        role: "assistant",
+        content: assistantText || "已完成识别，请确认下方候选内容。",
+      },
+      cards: scheduleCandidates,
+      stateRevision: getNexusStoreRevision(),
+    };
+  }
+
+  if (method === "POST" && path === "ai/schedule/ocr-preview") {
+    resolveLegacyAuthContext(event);
+    const body = await readJsonBody<{
+      assetUrl?: string;
+      fileName?: string;
+      studentNo?: string;
+      term?: string;
+    }>(event);
+    const assetUrl = asString(body.assetUrl);
+    if (!assetUrl) {
+      createLegacyError(400, "AI_OCR_ASSET_REQUIRED", "请先上传课表图片");
+    }
+    const config = resolveAiProviderConfig(resolveCloudflareEnv(event));
+    if (!config.enabled) {
+      createLegacyError(503, config.reason, "AI 服务未配置，请设置 TOUCHX_AI_API_KEY 等环境变量");
+    }
+    const imageUrl = resolveAbsoluteRequestUrl(event, assetUrl);
+    let assistantText = "";
+    try {
+      assistantText = await requestAiChatCompletion(config, {
+        useVision: true,
+        messages: [
+          {
+            role: "system",
+            content:
+              "你是课表 OCR 结构化助手。只返回 JSON，不要 Markdown。JSON 字段：studentNo、term、name、courses。courses 每项包含 courseName、weekday(1-7)、sections([start,end])、weeks、parity(all/odd/even)、location、teacher。",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: [
+                  "请识别图片中的大学课表，并返回可导入的 JSON。",
+                  body.studentNo ? `已知学号：${asString(body.studentNo)}` : "",
+                  body.term ? `已知学期：${asString(body.term)}` : "",
+                  body.fileName ? `文件名：${asString(body.fileName)}` : "",
+                ]
+                  .filter((value) => value)
+                  .join("\n"),
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl,
+                },
+              },
+            ],
+          },
+        ],
+      });
+    } catch (error) {
+      createLegacyError(502, "AI_PROVIDER_REQUEST_FAILED", error instanceof Error ? error.message : "AI 服务调用失败");
+    }
+    try {
+      const normalized = normalizeAiScheduleOcrPreview(assistantText);
+      return {
+        ok: true,
+        provider: "openai-compatible",
+        assetUrl,
+        rawText: assistantText,
+        studentNo: asString(body.studentNo) || normalized.studentNo,
+        term: asString(body.term) || normalized.term || "2025-2026-2",
+        parsedName: normalized.parsedName,
+        previewEntries: normalized.previewEntries,
+        stateRevision: getNexusStoreRevision(),
+      };
+    } catch (error) {
+      createLegacyError(422, "AI_OCR_PREVIEW_EMPTY", "AI 未识别到可导入课程，请换一张更清晰的课表图片");
+    }
+  }
+
+  if (method === "POST" && path === "ai/schedule/ocr-confirm") {
+    const { user } = resolveLegacyAuthContext(event);
+    const body = await readJsonBody<{
+      studentNo?: string;
+      term?: string;
+      parsedName?: string;
+      rawText?: string;
+      assetUrl?: string;
+      previewEntries?: unknown[];
+    }>(event);
+    const studentNo = asString(body.studentNo || user.studentNo || user.studentId);
+    const previewEntries = Array.isArray(body.previewEntries) ? body.previewEntries : [];
+    try {
+      const result = await confirmScheduleImportPreviewEntries(event, user.userId, {
+        studentNo,
+        term: asString(body.term) || "2025-2026-2",
+        parsedName: asString(body.parsedName || user.name || user.nickname),
+        previewEntries: previewEntries as Parameters<typeof confirmScheduleImportPreviewEntries>[2]["previewEntries"],
+        sourceLabel: "AI/OCR 导入",
+        originalPayload: {
+          source: "ai_ocr",
+          rawText: asString(body.rawText),
+          assetUrl: asString(body.assetUrl),
+        },
+      });
+      return {
+        ok: true,
+        ...result,
+        stateRevision: getNexusStoreRevision(),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "确认导入失败";
+      createLegacyError(400, "AI_OCR_CONFIRM_FAILED", message);
+    }
+  }
+
   if (method === "POST" && path === "ai/schedule/parse") {
     const { user } = resolveLegacyAuthContext(event);
     const body = await readJsonBody<{ text?: string }>(event);
@@ -3828,17 +4420,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "exams/companion") {
     const { user } = resolveLegacyAuthContext(event);
-    const examEvents = store.userScheduleEvents
-      .filter((item) => item.userId === user.userId && (item.source === "exam" || /考试|期末|期中|补考/.test(item.title)))
-      .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+    const countdowns = buildExamCountdowns(store, user);
     return {
       ok: true,
-      countdowns: examEvents.map((item) => ({
-        eventId: item.id,
-        title: item.title,
-        examDate: item.examDate,
-        priorityLabel: item.priorityLabel,
-      })),
+      countdowns,
       studyRoomRecommendations: [
         { label: "图书馆 3F 东区", timeRange: "08:30-10:00", reason: "历史低峰时段，适合早复习" },
         { label: "教学楼 B 区自习室", timeRange: "19:00-21:00", reason: "晚间稳定开放，距离教学区近" },
@@ -3846,6 +4431,16 @@ export const handleSocialV1Api = async (event: H3Event) => {
       precreatedActivities: store.socialActivities
         .filter((item) => item.createdByUserId === user.userId && item.activityType === "exam-after")
         .map((item) => toActivityPayload(store, item, user.userId)),
+    };
+  }
+
+  if (method === "GET" && path === "calendar/views") {
+    const { user } = resolveLegacyAuthContext(event);
+    const week = Math.max(1, Math.min(SCHEDULE_TERM_META.maxWeek, Math.trunc(Number(query.week || resolveCurrentWeekForDate(new Date(), getUserReminderTimezone(store, user))))));
+    return {
+      ok: true,
+      ...buildCalendarViewsPayload(store, user, week),
+      stateRevision: getNexusStoreRevision(),
     };
   }
 
@@ -4030,7 +4625,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (!targetUser) {
       return { ok: true, removed: false, stateRevision: getNexusStoreRevision() };
     }
-    const removed = revokeSocialSubscriptionBetweenUsers(store, state, user, targetUser);
+    const removed = revokeSocialSubscriptionBetweenUsers(store, state, user, targetUser, { includeCircle: false });
     createSocialNotification(store, {
       type: "subscription_revoked",
       recipientUserId: targetUser.userId,

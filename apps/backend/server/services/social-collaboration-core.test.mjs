@@ -30,6 +30,77 @@ test("normalizes collaboration visibility to the supported scopes", async () => 
   assert.equal(core.normalizeVisibilityScope("", "busy_free"), "busy_free");
 });
 
+test("resolves effective visibility from independent direct and circle grants", async () => {
+  const core = await loadCoreModule();
+
+  assert.equal(
+    core.resolveEffectiveVisibilityScope([
+      { visibilityScope: "busy_free", source: "circle", status: "active" },
+      { visibilityScope: "detail", source: "request", status: "active" },
+    ]),
+    "detail",
+  );
+  assert.equal(
+    core.resolveEffectiveVisibilityScope([
+      { visibilityScope: "detail", source: "request", status: "revoked" },
+      { visibilityScope: "busy_free", source: "circle", status: "active" },
+    ]),
+    "busy_free",
+  );
+});
+
+test("keeps block grants stronger than all other visibility grants", async () => {
+  const core = await loadCoreModule();
+
+  assert.equal(
+    core.resolveEffectiveVisibilityScope([
+      { visibilityScope: "detail", source: "request", status: "active" },
+      { visibilityScope: "blocked", source: "legacy", status: "active" },
+      { visibilityScope: "busy_free", source: "circle", status: "active" },
+    ]),
+    "blocked",
+  );
+});
+
+test("summarizes social relation state for search results", async () => {
+  const core = await loadCoreModule();
+
+  assert.deepEqual(
+    core.buildSocialRelationStatus({
+      isSelf: false,
+      outboundPending: true,
+      inboundPending: false,
+      effectiveVisibility: "hidden",
+      activeSources: [],
+    }),
+    {
+      status: "pending_outbound",
+      visibilityScope: "hidden",
+      sources: [],
+      canRequest: false,
+      canUnsubscribe: false,
+      canBlock: true,
+    },
+  );
+  assert.deepEqual(
+    core.buildSocialRelationStatus({
+      isSelf: false,
+      outboundPending: false,
+      inboundPending: false,
+      effectiveVisibility: "detail",
+      activeSources: ["request", "circle"],
+    }),
+    {
+      status: "subscribed",
+      visibilityScope: "detail",
+      sources: ["request", "circle"],
+      canRequest: false,
+      canUnsubscribe: true,
+      canBlock: true,
+    },
+  );
+});
+
 test("keeps social activity status transitions inside the activity state machine", async () => {
   const core = await loadCoreModule();
 
@@ -99,4 +170,57 @@ test("normalizes custom AA split rows and rejects mismatched totals", async () =
       perPerson: [{ userId: "u1", amount: 29 }],
     });
   }, /AA_SPLIT_TOTAL_MISMATCH/);
+});
+
+test("builds exam countdown state from date keys", async () => {
+  const core = await loadCoreModule();
+
+  assert.deepEqual(core.buildExamCountdownState("2026-05-03", "2026-04-28"), {
+    daysRemaining: 5,
+    status: "upcoming",
+  });
+  assert.deepEqual(core.buildExamCountdownState("2026-04-28", "2026-04-28"), {
+    daysRemaining: 0,
+    status: "today",
+  });
+  assert.deepEqual(core.buildExamCountdownState("bad-date", "2026-04-28"), {
+    daysRemaining: null,
+    status: "unknown",
+  });
+});
+
+test("sorts daily priority items by score then time", async () => {
+  const core = await loadCoreModule();
+
+  const items = core.sortDailyPriorityItems([
+    { id: "late", title: "晚课", priorityScore: 60, startSection: 8 },
+    { id: "urgent", title: "DDL", priorityScore: 95, startSection: 9 },
+    { id: "early", title: "早课", priorityScore: 60, startSection: 1 },
+  ]);
+
+  assert.deepEqual(items.map((item) => item.id), ["urgent", "early", "late"]);
+});
+
+test("resolves calendar view keys from tags and sources", async () => {
+  const core = await loadCoreModule();
+
+  assert.equal(core.resolveCalendarViewKey({ tags: ["学习"], source: "ai", title: "复习线代" }), "learning");
+  assert.equal(core.resolveCalendarViewKey({ tags: ["社团"], source: "activity", title: "社团例会" }), "social");
+  assert.equal(core.resolveCalendarViewKey({ tags: ["运动"], source: "manual", title: "跑步" }), "personal");
+  assert.equal(core.resolveCalendarViewKey({ tags: ["考试"], source: "exam", title: "期末考试" }), "learning");
+});
+
+test("builds escaped activity snapshot poster svg", async () => {
+  const core = await loadCoreModule();
+
+  const svg = core.buildActivitySnapshotPosterSvg({
+    title: "复盘 & 聚餐",
+    statusLabel: "已确认",
+    timeLabel: "第 3 周 周五 18:00-20:00",
+    participants: ["张三", "李四"],
+  });
+
+  assert.equal(svg.includes("复盘 &amp; 聚餐"), true);
+  assert.equal(svg.includes("张三、李四"), true);
+  assert.equal(svg.includes("<svg"), true);
 });
