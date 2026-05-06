@@ -239,4 +239,141 @@ PY
   echo "✅ /api/v1/admin/schedule-import/jobs -> ${import_code} (${terminal_status})"
 fi
 
+if [[ "${SMOKE_SOCIAL_P0:-}" == "1" ]] && is_local_base_url; then
+  login_user() {
+    local file="$1"
+    local code="$2"
+    local student_no="$3"
+    local student_id="$4"
+    local nickname="$5"
+    local http_code
+    http_code="$(curl -sS -o "${file}" -w "%{http_code}" \
+      -X POST "${BASE_URL}/api/v1/auth/wechat-login" \
+      -H "content-type: application/json" \
+      -d "{\"code\":\"${code}\",\"studentNo\":\"${student_no}\",\"studentId\":\"${student_id}\",\"nickname\":\"${nickname}\",\"mode\":\"mock\"}")"
+    if [[ "${http_code}" != "200" ]]; then
+      echo "❌ /api/v1/auth/wechat-login expected 200, got ${http_code}" >&2
+      cat "${file}" >&2 || true
+      exit 1
+    fi
+  }
+
+  login_user "/tmp/touchx_social_a_login.json" "smoke-social-a" "2305200101" "caiziling" "SmokeA"
+  login_user "/tmp/touchx_social_b_login.json" "smoke-social-b" "2305200109" "linfeng" "SmokeB"
+
+  social_token_a="$(python - <<'PY'
+import json
+from pathlib import Path
+print(str(json.loads(Path("/tmp/touchx_social_a_login.json").read_text()).get("token") or ""))
+PY
+)"
+  social_token_b="$(python - <<'PY'
+import json
+from pathlib import Path
+print(str(json.loads(Path("/tmp/touchx_social_b_login.json").read_text()).get("token") or ""))
+PY
+)"
+  if [[ -z "${social_token_a}" || -z "${social_token_b}" ]]; then
+    echo "❌ social smoke login token missing" >&2
+    exit 1
+  fi
+
+  search_code="$(curl -sS -o /tmp/touchx_social_search.json -w "%{http_code}" \
+    "${BASE_URL}/api/v1/social/users/search?q=2305200109" \
+    -H "authorization: Bearer ${social_token_a}")"
+  if [[ "${search_code}" != "200" ]]; then
+    echo "❌ /api/v1/social/users/search expected 200, got ${search_code}" >&2
+    cat /tmp/touchx_social_search.json >&2 || true
+    exit 1
+  fi
+
+  request_code="$(curl -sS -o /tmp/touchx_social_request.json -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/social/subscription-requests" \
+    -H "authorization: Bearer ${social_token_a}" \
+    -H "content-type: application/json" \
+    -d '{"targetStudentId":"linfeng","visibilityScope":"busy_free"}')"
+  if [[ "${request_code}" != "200" ]]; then
+    echo "❌ /api/v1/social/subscription-requests expected 200, got ${request_code}" >&2
+    cat /tmp/touchx_social_request.json >&2 || true
+    exit 1
+  fi
+  request_id="$(python - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("/tmp/touchx_social_request.json").read_text())
+request = payload.get("request") or {}
+print(str(request.get("requestId") or ""))
+PY
+)"
+  if [[ -z "${request_id}" ]]; then
+    echo "❌ social smoke requestId missing" >&2
+    cat /tmp/touchx_social_request.json >&2 || true
+    exit 1
+  fi
+
+  notify_code="$(curl -sS -o /tmp/touchx_social_notifications.json -w "%{http_code}" \
+    "${BASE_URL}/api/v1/notifications?limit=5" \
+    -H "authorization: Bearer ${social_token_b}")"
+  if [[ "${notify_code}" != "200" ]]; then
+    echo "❌ /api/v1/notifications expected 200, got ${notify_code}" >&2
+    cat /tmp/touchx_social_notifications.json >&2 || true
+    exit 1
+  fi
+
+  decision_code="$(curl -sS -o /tmp/touchx_social_decision.json -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/social/subscription-requests/${request_id}/decision" \
+    -H "authorization: Bearer ${social_token_b}" \
+    -H "content-type: application/json" \
+    -d '{"decision":"accept","visibilityScope":"detail"}')"
+  if [[ "${decision_code}" != "200" ]]; then
+    echo "❌ subscription decision expected 200, got ${decision_code}" >&2
+    cat /tmp/touchx_social_decision.json >&2 || true
+    exit 1
+  fi
+
+  me_code="$(curl -sS -o /tmp/touchx_social_me.json -w "%{http_code}" \
+    "${BASE_URL}/api/v1/social/me" \
+    -H "authorization: Bearer ${social_token_a}")"
+  if [[ "${me_code}" != "200" ]]; then
+    echo "❌ /api/v1/social/me expected 200, got ${me_code}" >&2
+    cat /tmp/touchx_social_me.json >&2 || true
+    exit 1
+  fi
+  social_sub_count="$(python - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("/tmp/touchx_social_me.json").read_text())
+print(len(payload.get("subscriptions") or []))
+PY
+)"
+  if [[ "${social_sub_count}" -lt 1 ]]; then
+    echo "❌ social smoke subscription was not visible after acceptance" >&2
+    cat /tmp/touchx_social_me.json >&2 || true
+    exit 1
+  fi
+
+  activity_code="$(curl -sS -o /tmp/touchx_social_activity.json -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/social/activities" \
+    -H "authorization: Bearer ${social_token_a}" \
+    -H "content-type: application/json" \
+    -d '{"title":"Smoke 学习组局","activityType":"study","week":1,"day":1,"startSection":1,"endSection":1,"participantStudentIds":["linfeng"],"sendNow":true}')"
+  if [[ "${activity_code}" != "200" ]]; then
+    echo "❌ /api/v1/social/activities expected 200, got ${activity_code}" >&2
+    cat /tmp/touchx_social_activity.json >&2 || true
+    exit 1
+  fi
+
+  remove_code="$(curl -sS -o /tmp/touchx_social_remove.json -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/social/subscribe/remove" \
+    -H "authorization: Bearer ${social_token_a}" \
+    -H "content-type: application/json" \
+    -d '{"targetStudentId":"linfeng"}')"
+  if [[ "${remove_code}" != "200" ]]; then
+    echo "❌ /api/v1/social/subscribe/remove expected 200, got ${remove_code}" >&2
+    cat /tmp/touchx_social_remove.json >&2 || true
+    exit 1
+  fi
+  echo "✅ social P0 flow -> request/accept/activity/remove"
+fi
+
 echo "Smoke checks passed."

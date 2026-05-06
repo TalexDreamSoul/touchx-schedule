@@ -101,6 +101,17 @@ test("summarizes social relation state for search results", async () => {
   );
 });
 
+test("allows social access only for self or active visible subscriptions", async () => {
+  const core = await loadCoreModule();
+
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "self", visibilityScope: "detail" } }), true);
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "subscribed", visibilityScope: "busy_free" } }), true);
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "subscribed", visibilityScope: "detail" } }), true);
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "subscribed", visibilityScope: "hidden" } }), false);
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "blocked", visibilityScope: "blocked" } }), false);
+  assert.equal(core.canUseSocialAccess({ relationStatus: { status: "pending_outbound", visibilityScope: "hidden" } }), false);
+});
+
 test("keeps social activity status transitions inside the activity state machine", async () => {
   const core = await loadCoreModule();
 
