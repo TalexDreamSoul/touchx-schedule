@@ -11,6 +11,7 @@
     <profile-actions-section
       :is-authed="isAuthed"
       :is-current-user-admin="isCurrentUserAdmin"
+      :unread-notification-count="unreadNotificationCount"
       :open-profile-account-page="openProfileAccountPage"
       :open-profile-subscribe-page="openProfileSubscribePage"
       :open-profile-activities-page="openProfileActivitiesPage"
@@ -35,6 +36,7 @@ defineProps<{
   profileAvatarUrl: string;
   authStatusLabel: string;
   isCurrentUserAdmin: boolean;
+  unreadNotificationCount: number;
   showAuthDialog: boolean;
   openAuthModal: () => void;
   openProfileAccountPage: () => void;

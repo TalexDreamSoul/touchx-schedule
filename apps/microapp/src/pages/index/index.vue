@@ -96,7 +96,7 @@ import { useBackendApi } from "@/composables/useBackendApi";
 import { useScheduleCellStyles } from "@/composables/useScheduleCellStyles";
 import { useScheduleViewport } from "@/composables/useScheduleViewport";
 import { useScheduleWeekSwipe } from "@/composables/useScheduleWeekSwipe";
-import { buildRegisteredUsersFromDashboard, useSocialDashboard } from "@/composables/useSocialDashboard";
+import { buildRegisteredUsersFromDashboard, canUseSocialAccess, useSocialDashboard } from "@/composables/useSocialDashboard";
 import AuthAuthorizeDialog from "@/components/AuthAuthorizeDialog.vue";
 import GlobalBackground from "@/components/GlobalBackground.vue";
 import IndexBottomNav from "./components/IndexBottomNav.vue";
@@ -2813,7 +2813,13 @@ const createActivityFromFreeCell = (week: number, day: number, section: number) 
     uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
     return;
   }
-  const participantStudentIds = includedStudentIds.value.filter((item) => item !== activeStudentId.value);
+  const accessibleStudentIds = new Set(
+    (socialDashboard.value?.subscriptions || [])
+      .filter((item) => canUseSocialAccess(item))
+      .map((item) => item.studentId)
+      .filter((item) => item),
+  );
+  const participantStudentIds = includedStudentIds.value.filter((item) => item !== activeStudentId.value && accessibleStudentIds.has(item));
   if (participantStudentIds.length <= 0) {
     uni.showToast({ title: "请先选择组局对象", icon: "none", duration: 1600 });
     return;
@@ -3073,6 +3079,7 @@ const profileDisplayProps = computed(() => ({
 const profileActionsProps = computed(() => ({
   isAuthed: isAuthed.value,
   isCurrentUserAdmin: isCurrentUserAdmin.value,
+  unreadNotificationCount: Number(socialDashboard.value?.unreadNotificationCount || 0),
   openProfileAccountPage,
   openProfileSubscribePage,
   openProfileActivitiesPage,

@@ -281,6 +281,7 @@ interface SocialSubscribeMutationResponse {
   subscribed?: boolean;
   pending?: boolean;
   removed?: boolean;
+  stillVisibleViaCircle?: boolean;
   stateRevision?: number;
 }
 
@@ -773,7 +774,11 @@ const unsubscribe = async (studentId: string) => {
     const mutationRevision = Number(payload.stateRevision || 0);
     applySubscriptionOptimisticPatch(normalizedStudentId, false, mutationRevision);
     await refreshDashboard();
-    uni.showToast({ title: "已取消", icon: "none", duration: 1200 });
+    uni.showToast({
+      title: payload.stillVisibleViaCircle ? "已取消直接订阅，圈子仍可见" : "已取消",
+      icon: "none",
+      duration: 1600,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "取消失败";
     uni.showToast({ title: message, icon: "none", duration: 1800 });

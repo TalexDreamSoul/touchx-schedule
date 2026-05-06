@@ -26,6 +26,13 @@ export interface SocialUserItem {
   };
 }
 
+export const canUseSocialAccess = (item?: SocialUserItem | null) => {
+  const relation = item?.relationStatus;
+  const status = relation?.status || "none";
+  const visibility = relation?.visibilityScope || item?.visibilityScope || "hidden";
+  return status === "self" || (status === "subscribed" && (visibility === "busy_free" || visibility === "detail"));
+};
+
 export interface SocialSubscriptionRequestItem {
   requestId: string;
   status: "pending" | "accepted" | "rejected" | "cancelled";

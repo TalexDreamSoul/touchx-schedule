@@ -11,10 +11,15 @@
       </view>
 
       <view class="profile-nav-item" @click="openProfileSubscribePage">
-        <view class="profile-nav-icon profile-nav-icon-subscribe">铃</view>
+        <view class="profile-nav-icon profile-nav-icon-subscribe">
+          铃
+          <view v-if="unreadNotificationCount > 0" class="profile-nav-badge">{{ unreadNotificationCount > 99 ? "99+" : unreadNotificationCount }}</view>
+        </view>
         <view class="profile-nav-main">
           <view class="profile-nav-title">通知与订阅</view>
-          <view class="profile-nav-sub">随机码订阅、机器人绑定、订阅列表管理</view>
+          <view class="profile-nav-sub">
+            {{ unreadNotificationCount > 0 ? `${unreadNotificationCount} 条未读通知` : "搜索同学、订阅请求、圈子管理" }}
+          </view>
         </view>
         <view class="profile-nav-arrow">›</view>
       </view>
@@ -94,6 +99,7 @@
 defineProps<{
   isAuthed: boolean;
   isCurrentUserAdmin: boolean;
+  unreadNotificationCount: number;
   openProfileAccountPage: () => void;
   openProfileSubscribePage: () => void;
   openProfileActivitiesPage: () => void;
@@ -139,6 +145,7 @@ defineProps<{
 }
 
 .profile-nav-icon {
+  position: relative;
   width: 58rpx;
   height: 58rpx;
   border-radius: 16rpx;
@@ -149,6 +156,24 @@ defineProps<{
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+}
+
+.profile-nav-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -10rpx;
+  min-width: 28rpx;
+  height: 28rpx;
+  padding: 0 6rpx;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  color: #ffffff;
+  background: #ef4444;
+  font-size: 16rpx;
+  line-height: 1;
 }
 
 .profile-nav-icon-account {

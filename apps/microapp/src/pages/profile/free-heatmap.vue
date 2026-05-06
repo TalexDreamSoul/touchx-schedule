@@ -51,7 +51,14 @@ import {
 
 interface SocialMeResponse {
   me?: { studentId?: string };
-  subscriptions?: Array<{ studentId: string }>;
+  subscriptions?: Array<{
+    studentId: string;
+    relationStatus?: {
+      status?: string;
+      visibilityScope?: string;
+    };
+    visibilityScope?: string;
+  }>;
   circles?: Array<{ circleId: string; name: string; memberCount?: number }>;
 }
 
@@ -121,7 +128,14 @@ const loadHeatmap = async () => {
       selectedScope.value = "subscriptions";
       selectedCircleId.value = "";
     }
-    const studentIds = (social.subscriptions || []).map((item) => item.studentId).filter((item) => item);
+    const studentIds = (social.subscriptions || [])
+      .filter((item) => {
+        const status = item.relationStatus?.status || "none";
+        const visibilityScope = item.relationStatus?.visibilityScope || item.visibilityScope || "hidden";
+        return status === "subscribed" && (visibilityScope === "busy_free" || visibilityScope === "detail");
+      })
+      .map((item) => item.studentId)
+      .filter((item) => item);
     const params: Record<string, string> = {
       week: String(Math.max(1, Number(week.value || 1))),
     };
