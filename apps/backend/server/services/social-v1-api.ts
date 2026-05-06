@@ -58,6 +58,7 @@ import {
   buildScheduleCandidateDrafts,
   buildScheduleIntelligence,
   buildSocialRelationStatus,
+  canUseSocialAccess,
   normalizeVisibilityScope,
   pickStrongerVisibilityScope,
   resolveCalendarViewKey,
@@ -1400,6 +1401,15 @@ const resolveBoundTargetUser = (
   return store.users.find((item) => item.userId === targetUserId) || null;
 };
 
+const resolveSocialActorUser = (store: NexusStore, state: LegacyCompatState, accountUser: UserRecord) => {
+  return resolveBoundTargetUser(store, state, accountUser) || accountUser;
+};
+
+const resolveNotificationRecipientUserIds = (store: NexusStore, state: LegacyCompatState, accountUser: UserRecord) => {
+  const actor = resolveSocialActorUser(store, state, accountUser);
+  return Array.from(new Set([accountUser.userId, actor.userId].filter((item) => item)));
+};
+
 const findUserByStudentId = (store: NexusStore, studentId: string) => {
   const normalized = asString(studentId);
   if (!normalized) {
@@ -2226,6 +2236,21 @@ const toSubscriptionRequestPayload = (store: NexusStore, state: LegacyCompatStat
   };
 };
 
+const hasCircleAccessBetweenUsers = (store: NexusStore, leftUserId: string, rightUserId: string) => {
+  const activeByUserId = new Map<string, Set<string>>();
+  store.socialCircleMembers
+    .filter((item) => item.status === "active")
+    .forEach((item) => {
+      if (!activeByUserId.has(item.userId)) {
+        activeByUserId.set(item.userId, new Set<string>());
+      }
+      activeByUserId.get(item.userId)?.add(item.circleId);
+    });
+  const leftCircleIds = activeByUserId.get(leftUserId) || new Set<string>();
+  const rightCircleIds = activeByUserId.get(rightUserId) || new Set<string>();
+  return Array.from(leftCircleIds).some((circleId) => rightCircleIds.has(circleId));
+};
+
 const toCirclePayload = (store: NexusStore, item: SocialCircleRecord) => {
   const members = store.socialCircleMembers.filter((member) => member.circleId === item.id && member.status === "active");
   const owner = findUserByUserId(store, item.ownerUserId);
@@ -2772,6 +2797,24 @@ const resolveHeatmapUsers = (
     .slice(0, 40);
 };
 
+const resolveAuthorizedParticipantUsers = (
+  store: NexusStore,
+  actor: UserRecord,
+  studentIds: unknown,
+) => {
+  return normalizeStudentIdList(studentIds)
+    .map((studentId) => findUserByStudentId(store, studentId))
+    .filter((item): item is UserRecord => Boolean(item))
+    .filter((target) => {
+      if (target.userId === actor.userId) {
+        return true;
+      }
+      return canUseSocialAccess({
+        relationStatus: buildSocialRelationStatusPayload(store, actor, target),
+      });
+    });
+};
+
 const buildFreeHeatmapPayload = (store: NexusStore, users: UserRecord[], week: number) => {
   const cells = SCHEDULE_SECTION_TIMES.flatMap((slot) => {
     return Array.from({ length: 7 }, (_, dayIndex) => {
@@ -3230,9 +3273,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "notifications") {
     const { user } = resolveLegacyAuthContext(event);
+    const recipientUserIds = new Set(resolveNotificationRecipientUserIds(store, state, user));
     const limit = Math.max(1, Math.min(100, Number(query.limit || 50)));
     const items = store.socialNotifications
-      .filter((item) => item.recipientUserId === user.userId)
+      .filter((item) => recipientUserIds.has(item.recipientUserId))
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
       .slice(0, limit)
       .map((item) => toSocialNotificationPayload(store, item));
@@ -3247,9 +3291,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const notificationReadMatch = path.match(/^notifications\/([^/]+)\/read$/);
   if (method === "POST" && notificationReadMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const recipientUserIds = new Set(resolveNotificationRecipientUserIds(store, state, user));
     const notificationId = decodeURIComponent(notificationReadMatch[1]);
     const notification = ensureValue(
-      store.socialNotifications.find((item) => item.id === notificationId && item.recipientUserId === user.userId) || null,
+      store.socialNotifications.find((item) => item.id === notificationId && recipientUserIds.has(item.recipientUserId)) || null,
       404,
       "NOTIFICATION_NOT_FOUND",
       "通知不存在",
@@ -3261,30 +3306,31 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/me") {
     const { user } = resolveLegacyAuthContext(event);
-    const bindTarget = resolveBoundTargetUser(store, state, user) || user;
+    const bindTarget = resolveSocialActorUser(store, state, user);
+    const recipientUserIds = new Set(resolveNotificationRecipientUserIds(store, state, user));
     const me = toLegacySocialUser(bindTarget, state, {
       accountUser: user,
       randomCodeOwnerUserId: bindTarget.userId,
     });
-    const targets = state.subscriptionTargetsByUserId.get(user.userId) || new Set<string>();
+    const targets = state.subscriptionTargetsByUserId.get(bindTarget.userId) || new Set<string>();
     const subscriptions = Array.from(targets.values())
       .map((targetUserId) => store.users.find((item) => item.userId === targetUserId) || null)
       .filter((item): item is UserRecord => Boolean(item))
       .filter((item) => item.studentId !== "")
-      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
+      .map((item) => toLegacySocialUserWithRelation(store, state, bindTarget, item));
     const subscribers = store.users
       .filter((candidate) => {
         const set = state.subscriptionTargetsByUserId.get(candidate.userId);
         return Boolean(set && set.has(bindTarget.userId));
       })
       .filter((item) => item.studentId !== "")
-      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
+      .map((item) => toLegacySocialUserWithRelation(store, state, bindTarget, item));
     const subscribedStudentIds = new Set(subscriptions.map((item) => item.studentId));
     const candidates = store.users
       .filter((item) => item.studentId !== "")
       .filter((item) => item.userId !== bindTarget.userId)
       .filter((item) => !subscribedStudentIds.has(item.studentId || ""))
-      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
+      .map((item) => toLegacySocialUserWithRelation(store, state, bindTarget, item));
     return {
       ok: true,
       me,
@@ -3292,15 +3338,15 @@ export const handleSocialV1Api = async (event: H3Event) => {
       subscribers,
       candidates,
       subscriptionRequests: store.socialSubscriptionRequests
-        .filter((item) => item.requesterUserId === user.userId || item.targetUserId === bindTarget.userId)
+        .filter((item) => item.requesterUserId === bindTarget.userId || item.targetUserId === bindTarget.userId)
         .map((item) => toSubscriptionRequestPayload(store, state, item)),
       circles: store.socialCircleMembers
-        .filter((item) => item.userId === user.userId && item.status === "active")
+        .filter((item) => item.userId === bindTarget.userId && item.status === "active")
         .map((item) => store.socialCircles.find((circle) => circle.id === item.circleId) || null)
         .filter((item): item is SocialCircleRecord => Boolean(item))
         .map((item) => toCirclePayload(store, item)),
       unreadNotificationCount: store.socialNotifications.filter(
-        (item) => item.recipientUserId === user.userId && item.status === "unread",
+        (item) => recipientUserIds.has(item.recipientUserId) && item.status === "unread",
       ).length,
       bound: Boolean(bindTarget.studentId),
       stateRevision: getNexusStoreRevision(),
@@ -3309,6 +3355,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/users/search") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const q = asString(query.q || query.keyword || query.search).toLowerCase();
     const limit = Math.max(1, Math.min(50, Math.trunc(Number(query.limit || 20))));
     if (!q) {
@@ -3329,7 +3376,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
         return fields.some((field) => asString(field).toLowerCase().includes(q));
       })
       .slice(0, limit)
-      .map((item) => toLegacySocialUserWithRelation(store, state, user, item));
+      .map((item) => toLegacySocialUserWithRelation(store, state, actor, item));
     return {
       ok: true,
       items,
@@ -3340,9 +3387,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/subscription-requests") {
     const { user } = resolveLegacyAuthContext(event);
-    const bindTarget = resolveBoundTargetUser(store, state, user) || user;
+    const bindTarget = resolveSocialActorUser(store, state, user);
     const items = store.socialSubscriptionRequests
-      .filter((item) => item.requesterUserId === user.userId || item.targetUserId === bindTarget.userId)
+      .filter((item) => item.requesterUserId === bindTarget.userId || item.targetUserId === bindTarget.userId)
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
       .map((item) => toSubscriptionRequestPayload(store, state, item));
     return { ok: true, items, stateRevision: getNexusStoreRevision() };
@@ -3350,6 +3397,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/subscription-requests") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{
       targetStudentId?: string;
       target_student_id?: string;
@@ -3366,11 +3414,11 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "SUBSCRIBE_TARGET_NOT_FOUND",
       "目标课表不存在",
     );
-    if (targetUser.userId === user.userId) {
+    if (targetUser.userId === actor.userId) {
       createLegacyError(400, "SUBSCRIBE_SELF_NOT_ALLOWED", "不能订阅自己");
     }
     const visibilityScope = normalizeVisibilityScope(body.visibilityScope || body.visibility_scope, "busy_free");
-    const activeEdge = findActiveSocialEdge(store, user.userId, targetUser.userId);
+    const activeEdge = findActiveSocialEdge(store, actor.userId, targetUser.userId);
     if (activeEdge) {
       return {
         ok: true,
@@ -3380,13 +3428,13 @@ export const handleSocialV1Api = async (event: H3Event) => {
       };
     }
     const existing = store.socialSubscriptionRequests.find((item) => {
-      return item.requesterUserId === user.userId && item.targetUserId === targetUser.userId && item.status === "pending";
+      return item.requesterUserId === actor.userId && item.targetUserId === targetUser.userId && item.status === "pending";
     });
     const request =
       existing ||
       ({
         id: storeHelpers.createId("sub_req"),
-        requesterUserId: user.userId,
+        requesterUserId: actor.userId,
         targetUserId: targetUser.userId,
         requestedVisibility: visibilityScope,
         status: "pending",
@@ -3400,9 +3448,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
       createSocialNotification(store, {
         type: "subscription_request",
         recipientUserId: targetUser.userId,
-        actorUserId: user.userId,
+        actorUserId: actor.userId,
         title: "新的订阅请求",
-        body: `${resolveUserDisplayLabel(user)} 想查看你的日程空闲状态`,
+        body: `${resolveUserDisplayLabel(actor)} 想查看你的日程空闲状态`,
         payload: { requestId: request.id, visibilityScope },
       });
     }
@@ -3417,6 +3465,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const subscriptionRequestDecisionMatch = path.match(/^social\/subscription-requests\/([^/]+)\/decision$/);
   if (method === "POST" && subscriptionRequestDecisionMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const requestId = decodeURIComponent(subscriptionRequestDecisionMatch[1]);
     const request = ensureValue(
       store.socialSubscriptionRequests.find((item) => item.id === requestId) || null,
@@ -3424,7 +3473,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "SUBSCRIPTION_REQUEST_NOT_FOUND",
       "订阅请求不存在",
     );
-    if (request.targetUserId !== user.userId && !isAdminRole(user)) {
+    if (request.targetUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "SUBSCRIPTION_REQUEST_FORBIDDEN", "仅被请求人可处理订阅请求");
     }
     if (request.status !== "pending") {
@@ -3495,6 +3544,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const socialSubscriptionDeleteMatch = path.match(/^social\/subscriptions\/([^/]+)$/);
   if (method === "DELETE" && socialSubscriptionDeleteMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const subscriptionId = decodeURIComponent(socialSubscriptionDeleteMatch[1]);
     const edge = ensureValue(
       store.socialSubscriptionEdges.find((item) => item.id === subscriptionId && item.status === "active") || null,
@@ -3502,7 +3552,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "SUBSCRIPTION_NOT_FOUND",
       "订阅关系不存在",
     );
-    if (edge.subscriberUserId !== user.userId && edge.targetUserId !== user.userId && !isAdminRole(user)) {
+    if (edge.subscriberUserId !== actor.userId && edge.targetUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "SUBSCRIPTION_DELETE_FORBIDDEN", "无权解除该订阅关系");
     }
     const left = ensureValue(findUserByUserId(store, edge.subscriberUserId), 404, "SUBSCRIBER_NOT_FOUND", "订阅人不存在");
@@ -3510,10 +3560,10 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const removed = revokeSocialSubscriptionBetweenUsers(store, state, left, right, { includeCircle: edge.source === "circle" });
     createSocialNotification(store, {
       type: "subscription_revoked",
-      recipientUserId: user.userId === left.userId ? right.userId : left.userId,
-      actorUserId: user.userId,
+      recipientUserId: actor.userId === left.userId ? right.userId : left.userId,
+      actorUserId: actor.userId,
       title: "订阅关系已解除",
-      body: `${resolveUserDisplayLabel(user)} 解除了订阅关系`,
+      body: `${resolveUserDisplayLabel(actor)} 解除了订阅关系`,
       payload: { subscriptionId },
     });
     return { ok: true, removed, stateRevision: getNexusStoreRevision() };
@@ -3521,6 +3571,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/subscriptions/block") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{ targetStudentId?: string; target_student_id?: string }>(event);
     const targetStudentId = asString(body.targetStudentId || body.target_student_id);
     if (!targetStudentId) {
@@ -3532,16 +3583,16 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "BLOCK_TARGET_NOT_FOUND",
       "目标用户不存在",
     );
-    if (targetUser.userId === user.userId) {
+    if (targetUser.userId === actor.userId) {
       createLegacyError(400, "BLOCK_SELF_NOT_ALLOWED", "不能屏蔽自己");
     }
-    const edges = blockSocialSubscriptionBetweenUsers(store, state, user, targetUser);
+    const edges = blockSocialSubscriptionBetweenUsers(store, state, actor, targetUser);
     createSocialNotification(store, {
       type: "subscription_revoked",
       recipientUserId: targetUser.userId,
-      actorUserId: user.userId,
+      actorUserId: actor.userId,
       title: "订阅可见性已变更",
-      body: `${resolveUserDisplayLabel(user)} 已将订阅可见性设为不可见`,
+      body: `${resolveUserDisplayLabel(actor)} 已将订阅可见性设为不可见`,
       payload: { targetStudentId, visibilityScope: "blocked" },
     });
     return {
@@ -3554,8 +3605,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/circles") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const circles = store.socialCircleMembers
-      .filter((item) => item.userId === user.userId && item.status === "active")
+      .filter((item) => item.userId === actor.userId && item.status === "active")
       .map((item) => store.socialCircles.find((circle) => circle.id === item.circleId) || null)
       .filter((item): item is SocialCircleRecord => Boolean(item))
       .map((item) => toCirclePayload(store, item));
@@ -3564,6 +3616,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/circles/join-preview") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const inviteToken = asString(query.token || query.inviteToken || query.invite_token);
     if (!inviteToken) {
       createLegacyError(400, "CIRCLE_INVITE_TOKEN_REQUIRED", "邀请 token 不能为空");
@@ -3574,7 +3627,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "CIRCLE_NOT_FOUND",
       "圈子不存在或已停用",
     );
-    const member = store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === user.userId) || null;
+    const member = store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === actor.userId) || null;
     return {
       ok: true,
       circle: toCirclePayload(store, circle),
@@ -3587,6 +3640,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/circles") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{ name?: string; circleType?: "class" | "club" | "custom"; circle_type?: "class" | "club" | "custom" }>(event);
     const name = asString(body.name);
     if (!name) {
@@ -3597,7 +3651,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       id: storeHelpers.createId("circle"),
       name,
       circleType: circleType === "class" || circleType === "club" ? circleType : "custom",
-      ownerUserId: user.userId,
+      ownerUserId: actor.userId,
       inviteToken: storeHelpers.generateShareToken(),
       status: "active",
       createdAt: storeHelpers.nowIso(),
@@ -3606,7 +3660,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const member: SocialCircleMemberRecord = {
       id: storeHelpers.createId("circle_member"),
       circleId: circle.id,
-      userId: user.userId,
+      userId: actor.userId,
       role: "owner",
       visibilityScope: "detail",
       status: "active",
@@ -3622,6 +3676,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const circleJoinMatch = path.match(/^social\/circles\/([^/]+)\/join$/);
   if (method === "POST" && circleJoinMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const circleKey = decodeURIComponent(circleJoinMatch[1]);
     const body = await readJsonBody<{ inviteToken?: string; invite_token?: string; visibilityScope?: string; visibility_scope?: string }>(event);
     const inviteToken = asString(body.inviteToken || body.invite_token || circleKey);
@@ -3638,7 +3693,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       createLegacyError(400, "CIRCLE_INVITE_INVALID", "邀请链接无效");
     }
     const visibilityScope = normalizeVisibilityScope(body.visibilityScope || body.visibility_scope, "busy_free");
-    let member = store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === user.userId) || null;
+    let member = store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === actor.userId) || null;
     if (member) {
       member.status = "active";
       member.leftAt = "";
@@ -3648,7 +3703,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       member = {
         id: storeHelpers.createId("circle_member"),
         circleId: circle.id,
-        userId: user.userId,
+        userId: actor.userId,
         role: "member",
         visibilityScope,
         status: "active",
@@ -3659,14 +3714,14 @@ export const handleSocialV1Api = async (event: H3Event) => {
       store.socialCircleMembers.push(member);
     }
     store.socialCircleMembers
-      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
+      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== actor.userId)
       .forEach((item) => {
         const targetUser = findUserByUserId(store, item.userId);
         if (!targetUser) {
           return;
         }
         upsertSocialSubscriptionEdge(store, state, {
-          subscriberUserId: user.userId,
+          subscriberUserId: actor.userId,
           targetUser,
           visibilityScope: item.visibilityScope,
           source: "circle",
@@ -3674,21 +3729,21 @@ export const handleSocialV1Api = async (event: H3Event) => {
         });
         upsertSocialSubscriptionEdge(store, state, {
           subscriberUserId: targetUser.userId,
-          targetUser: user,
+          targetUser: actor,
           visibilityScope,
           source: "circle",
           circleId: circle.id,
         });
       });
     store.socialCircleMembers
-      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
+      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== actor.userId)
       .forEach((item) => {
         createSocialNotification(store, {
           type: "circle_joined",
           recipientUserId: item.userId,
-          actorUserId: user.userId,
+          actorUserId: actor.userId,
           title: "圈子有新成员加入",
-          body: `${resolveUserDisplayLabel(user)} 加入了 ${circle.name}`,
+          body: `${resolveUserDisplayLabel(actor)} 加入了 ${circle.name}`,
           payload: { circleId: circle.id },
         });
       });
@@ -3698,6 +3753,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const circleLeaveMatch = path.match(/^social\/circles\/([^/]+)\/leave$/);
   if (method === "POST" && circleLeaveMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const circleId = decodeURIComponent(circleLeaveMatch[1]);
     const circle = ensureValue(
       store.socialCircles.find((item) => item.id === circleId || item.inviteToken === circleId) || null,
@@ -3706,7 +3762,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "圈子不存在",
     );
     const member = ensureValue(
-      store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === user.userId && item.status === "active") || null,
+      store.socialCircleMembers.find((item) => item.circleId === circle.id && item.userId === actor.userId && item.status === "active") || null,
       404,
       "CIRCLE_MEMBER_NOT_FOUND",
       "你尚未加入该圈子",
@@ -3719,7 +3775,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       if (edge.circleId !== circle.id || edge.status !== "active") {
         return;
       }
-      if (edge.subscriberUserId !== user.userId && edge.targetUserId !== user.userId) {
+      if (edge.subscriberUserId !== actor.userId && edge.targetUserId !== actor.userId) {
         return;
       }
       edge.status = "revoked";
@@ -3735,14 +3791,14 @@ export const handleSocialV1Api = async (event: H3Event) => {
       syncLegacySubscriptionTarget(store, state, pair.subscriberUserId, targetUser);
     });
     store.socialCircleMembers
-      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== user.userId)
+      .filter((item) => item.circleId === circle.id && item.status === "active" && item.userId !== actor.userId)
       .forEach((item) => {
         createSocialNotification(store, {
           type: "circle_left",
           recipientUserId: item.userId,
-          actorUserId: user.userId,
+          actorUserId: actor.userId,
           title: "圈子成员已退出",
-          body: `${resolveUserDisplayLabel(user)} 已退出 ${circle.name}`,
+          body: `${resolveUserDisplayLabel(actor)} 已退出 ${circle.name}`,
           payload: { circleId: circle.id },
         });
       });
@@ -3751,8 +3807,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/free-heatmap") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const week = Math.max(1, Math.min(SCHEDULE_TERM_META.maxWeek, Math.trunc(Number(query.week || 1))));
-    const users = resolveHeatmapUsers(store, user, query);
+    const users = resolveHeatmapUsers(store, actor, query);
     return {
       ok: true,
       heatmap: buildFreeHeatmapPayload(store, users, week),
@@ -3762,6 +3819,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/activities/predict") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{
       activityType?: string;
       activity_type?: string;
@@ -3771,10 +3829,8 @@ export const handleSocialV1Api = async (event: H3Event) => {
       participantStudentIds?: string[];
       participant_student_ids?: string[];
     }>(event);
-    const participantUsers = normalizeStudentIdList(body.participantStudentIds || body.participant_student_ids)
-      .map((studentId) => findUserByStudentId(store, studentId))
-      .filter((item): item is UserRecord => Boolean(item));
-    const participantUserIds = Array.from(new Set([user.userId, ...participantUsers.map((item) => item.userId)]));
+    const participantUsers = resolveAuthorizedParticipantUsers(store, actor, body.participantStudentIds || body.participant_student_ids);
+    const participantUserIds = Array.from(new Set([actor.userId, ...participantUsers.map((item) => item.userId)]));
     const prediction = estimateActivitySuccess(store, {
       activityType: asString(body.activityType || body.activity_type) || "study",
       day: Math.max(1, Math.min(7, Math.trunc(Number(body.day || 1)))),
@@ -3812,10 +3868,11 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "social/activities") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const items = store.socialActivities
-      .filter((item) => item.createdByUserId === user.userId || item.participantUserIds.includes(user.userId))
+      .filter((item) => item.createdByUserId === actor.userId || item.participantUserIds.includes(actor.userId))
       .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
-      .map((item) => toActivityPayload(store, item, user.userId));
+      .map((item) => toActivityPayload(store, item, actor.userId));
     return { ok: true, items, stateRevision: getNexusStoreRevision() };
   }
 
@@ -3830,7 +3887,8 @@ export const handleSocialV1Api = async (event: H3Event) => {
     );
     if (calendarToken !== activity.calendarToken) {
       const { user } = resolveLegacyAuthContext(event);
-      if (activity.createdByUserId !== user.userId && !activity.participantUserIds.includes(user.userId) && !isAdminRole(user)) {
+      const actor = resolveSocialActorUser(store, state, user);
+      if (activity.createdByUserId !== actor.userId && !activity.participantUserIds.includes(actor.userId) && !isAdminRole(user)) {
         createLegacyError(403, "ACTIVITY_FORBIDDEN", "无权导出该活动");
       }
     }
@@ -3842,6 +3900,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const activitySnapshotMatch = path.match(/^social\/activities\/([^/]+)\/snapshot$/);
   if (method === "GET" && activitySnapshotMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const activityId = decodeURIComponent(activitySnapshotMatch[1]);
     const activity = ensureValue(
       store.socialActivities.find((item) => item.id === activityId) || null,
@@ -3849,7 +3908,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "ACTIVITY_NOT_FOUND",
       "活动不存在",
     );
-    if (activity.createdByUserId !== user.userId && !activity.participantUserIds.includes(user.userId) && !isAdminRole(user)) {
+    if (activity.createdByUserId !== actor.userId && !activity.participantUserIds.includes(actor.userId) && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_FORBIDDEN", "无权查看该活动");
     }
     const participants = activity.participantUserIds
@@ -3885,6 +3944,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const activitySplitMatch = path.match(/^social\/activities\/([^/]+)\/splits$/);
   if (method === "POST" && activitySplitMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const activityId = decodeURIComponent(activitySplitMatch[1]);
     const activity = ensureValue(
       store.socialActivities.find((item) => item.id === activityId) || null,
@@ -3892,7 +3952,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "ACTIVITY_NOT_FOUND",
       "活动不存在",
     );
-    if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
+    if (activity.createdByUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_SPLIT_FORBIDDEN", "仅发起人可编辑分摊");
     }
     const body = await readJsonBody<{
@@ -3932,7 +3992,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     return {
       ok: true,
       split,
-      activity: toActivityPayload(store, activity, user.userId),
+      activity: toActivityPayload(store, activity, actor.userId),
       stateRevision: getNexusStoreRevision(),
     };
   }
@@ -3940,6 +4000,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const activityCancelMatch = path.match(/^social\/activities\/([^/]+)\/cancel$/);
   if (method === "POST" && activityCancelMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const activityId = decodeURIComponent(activityCancelMatch[1]);
     const activity = ensureValue(
       store.socialActivities.find((item) => item.id === activityId) || null,
@@ -3947,7 +4008,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "ACTIVITY_NOT_FOUND",
       "活动不存在",
     );
-    if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
+    if (activity.createdByUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_CANCEL_FORBIDDEN", "仅发起人可取消活动");
     }
     const previousStatus = activity.status;
@@ -3955,13 +4016,13 @@ export const handleSocialV1Api = async (event: H3Event) => {
     activity.updatedAt = storeHelpers.nowIso();
     if (previousStatus !== activity.status) {
       activity.participantUserIds.forEach((recipientUserId) => {
-        if (recipientUserId === user.userId) {
+        if (recipientUserId === actor.userId) {
           return;
         }
         createSocialNotification(store, {
           type: "activity_cancelled",
           recipientUserId,
-          actorUserId: user.userId,
+          actorUserId: actor.userId,
           title: "组局已取消",
           body: `「${activity.title}」已被发起人取消`,
           payload: { activityId: activity.id },
@@ -3970,7 +4031,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     return {
       ok: true,
-      activity: toActivityPayload(store, activity, user.userId),
+      activity: toActivityPayload(store, activity, actor.userId),
       stateRevision: getNexusStoreRevision(),
     };
   }
@@ -3978,6 +4039,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
   const activityExpireMatch = path.match(/^social\/activities\/([^/]+)\/expire$/);
   if (method === "POST" && activityExpireMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const activityId = decodeURIComponent(activityExpireMatch[1]);
     const activity = ensureValue(
       store.socialActivities.find((item) => item.id === activityId) || null,
@@ -3985,7 +4047,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "ACTIVITY_NOT_FOUND",
       "活动不存在",
     );
-    if (activity.createdByUserId !== user.userId && !isAdminRole(user)) {
+    if (activity.createdByUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_EXPIRE_FORBIDDEN", "仅发起人可过期活动");
     }
     const previousStatus = activity.status;
@@ -3996,7 +4058,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
         createSocialNotification(store, {
           type: "activity_expired",
           recipientUserId,
-          actorUserId: user.userId,
+          actorUserId: actor.userId,
           title: "组局已过期",
           body: `「${activity.title}」已过期，无法继续响应`,
           payload: { activityId: activity.id },
@@ -4005,13 +4067,14 @@ export const handleSocialV1Api = async (event: H3Event) => {
     }
     return {
       ok: true,
-      activity: toActivityPayload(store, activity, user.userId),
+      activity: toActivityPayload(store, activity, actor.userId),
       stateRevision: getNexusStoreRevision(),
     };
   }
 
   if (method === "POST" && path === "social/activities") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{
       title?: string;
       activityType?: string;
@@ -4033,17 +4096,15 @@ export const handleSocialV1Api = async (event: H3Event) => {
     const day = Math.max(1, Math.min(7, Math.trunc(Number(body.day || 1))));
     const startSection = Math.max(1, Math.trunc(Number(body.startSection || body.start_section || 1)));
     const endSection = Math.max(startSection, Math.trunc(Number(body.endSection || body.end_section || startSection)));
-    const participantUsers = normalizeStudentIdList(body.participantStudentIds || body.participant_student_ids)
-      .map((studentId) => findUserByStudentId(store, studentId))
-      .filter((item): item is UserRecord => Boolean(item));
-    const participantUserIds = Array.from(new Set([user.userId, ...participantUsers.map((item) => item.userId)]));
+    const participantUsers = resolveAuthorizedParticipantUsers(store, actor, body.participantStudentIds || body.participant_student_ids);
+    const participantUserIds = Array.from(new Set([actor.userId, ...participantUsers.map((item) => item.userId)]));
     const status = body.sendNow === false ? "draft" : resolveNextActivityStatus("draft", "send");
     const activity: SocialActivityRecord = {
       id: storeHelpers.createId("activity"),
       title,
       activityType,
       status,
-      createdByUserId: user.userId,
+      createdByUserId: actor.userId,
       participantUserIds,
       week,
       day,
@@ -4059,7 +4120,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       const invitation: SocialActivityInvitationRecord = {
         id: storeHelpers.createId("activity_invite"),
         activityId: activity.id,
-        inviterUserId: user.userId,
+        inviterUserId: actor.userId,
         inviteeUserId: targetUser.userId,
         status: "pending",
         createdAt: storeHelpers.nowIso(),
@@ -4070,18 +4131,19 @@ export const handleSocialV1Api = async (event: H3Event) => {
       createSocialNotification(store, {
         type: "activity_invite",
         recipientUserId: targetUser.userId,
-        actorUserId: user.userId,
+        actorUserId: actor.userId,
         title: "新的组局邀请",
-        body: `${resolveUserDisplayLabel(user)} 邀请你参加「${title}」`,
+        body: `${resolveUserDisplayLabel(actor)} 邀请你参加「${title}」`,
         payload: { activityId: activity.id, invitationId: invitation.id },
       });
     });
-    return { ok: true, activity: toActivityPayload(store, activity, user.userId), stateRevision: getNexusStoreRevision() };
+    return { ok: true, activity: toActivityPayload(store, activity, actor.userId), stateRevision: getNexusStoreRevision() };
   }
 
   const activityInvitationRespondMatch = path.match(/^social\/activities\/([^/]+)\/invitations\/([^/]+)\/respond$/);
   if (method === "POST" && activityInvitationRespondMatch) {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const activityId = decodeURIComponent(activityInvitationRespondMatch[1]);
     const invitationId = decodeURIComponent(activityInvitationRespondMatch[2]);
     const activity = ensureValue(
@@ -4096,7 +4158,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "ACTIVITY_INVITATION_NOT_FOUND",
       "活动邀请不存在",
     );
-    if (invitation.inviteeUserId !== user.userId && !isAdminRole(user)) {
+    if (invitation.inviteeUserId !== actor.userId && !isAdminRole(user)) {
       createLegacyError(403, "ACTIVITY_INVITATION_FORBIDDEN", "无权处理该活动邀请");
     }
     if (activity.status === "cancelled" || activity.status === "expired") {
@@ -4112,9 +4174,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
       createSocialNotification(store, {
         type: "activity_invite",
         recipientUserId: activity.createdByUserId,
-        actorUserId: user.userId,
+        actorUserId: actor.userId,
         title: "组局邀请已拒绝",
-        body: `${resolveUserDisplayLabel(user)} 拒绝了「${activity.title}」`,
+        body: `${resolveUserDisplayLabel(actor)} 拒绝了「${activity.title}」`,
         payload: { activityId: activity.id, invitationId: invitation.id, status: "declined" },
       });
     }
@@ -4126,7 +4188,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
         createSocialNotification(store, {
           type: "activity_confirmed",
           recipientUserId,
-          actorUserId: user.userId,
+          actorUserId: actor.userId,
           title: "组局已确认",
           body: `「${activity.title}」已确认，可导出日历`,
           payload: { activityId: activity.id },
@@ -4136,7 +4198,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
     return {
       ok: true,
       invitation,
-      activity: toActivityPayload(store, activity, user.userId),
+      activity: toActivityPayload(store, activity, actor.userId),
       stateRevision: getNexusStoreRevision(),
     };
   }
@@ -4420,7 +4482,8 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "GET" && path === "exams/companion") {
     const { user } = resolveLegacyAuthContext(event);
-    const countdowns = buildExamCountdowns(store, user);
+    const actor = resolveSocialActorUser(store, state, user);
+    const countdowns = buildExamCountdowns(store, actor);
     return {
       ok: true,
       countdowns,
@@ -4429,17 +4492,18 @@ export const handleSocialV1Api = async (event: H3Event) => {
         { label: "教学楼 B 区自习室", timeRange: "19:00-21:00", reason: "晚间稳定开放，距离教学区近" },
       ],
       precreatedActivities: store.socialActivities
-        .filter((item) => item.createdByUserId === user.userId && item.activityType === "exam-after")
-        .map((item) => toActivityPayload(store, item, user.userId)),
+        .filter((item) => item.createdByUserId === actor.userId && item.activityType === "exam-after")
+        .map((item) => toActivityPayload(store, item, actor.userId)),
     };
   }
 
   if (method === "GET" && path === "calendar/views") {
     const { user } = resolveLegacyAuthContext(event);
-    const week = Math.max(1, Math.min(SCHEDULE_TERM_META.maxWeek, Math.trunc(Number(query.week || resolveCurrentWeekForDate(new Date(), getUserReminderTimezone(store, user))))));
+    const actor = resolveSocialActorUser(store, state, user);
+    const week = Math.max(1, Math.min(SCHEDULE_TERM_META.maxWeek, Math.trunc(Number(query.week || resolveCurrentWeekForDate(new Date(), getUserReminderTimezone(store, actor))))));
     return {
       ok: true,
-      ...buildCalendarViewsPayload(store, user, week),
+      ...buildCalendarViewsPayload(store, actor, week),
       stateRevision: getNexusStoreRevision(),
     };
   }
@@ -4554,6 +4618,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/subscribe") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{ targetStudentId?: string; target_student_id?: string; visibilityScope?: string; visibility_scope?: string }>(event);
     const targetStudentId = asString(body.targetStudentId || body.target_student_id);
     if (!targetStudentId) {
@@ -4565,13 +4630,13 @@ export const handleSocialV1Api = async (event: H3Event) => {
       "SUBSCRIBE_TARGET_NOT_FOUND",
       "目标课表不存在",
     );
-    if (targetUser.userId === user.userId) {
+    if (targetUser.userId === actor.userId) {
       createLegacyError(400, "SUBSCRIBE_SELF_NOT_ALLOWED", "不能订阅自己");
     }
     const visibilityScope = normalizeVisibilityScope(body.visibilityScope || body.visibility_scope, "busy_free");
     if (isAdminRole(user)) {
       upsertSocialSubscriptionEdge(store, state, {
-        subscriberUserId: user.userId,
+        subscriberUserId: actor.userId,
         targetUser,
         visibilityScope: "detail",
         source: "legacy",
@@ -4579,13 +4644,13 @@ export const handleSocialV1Api = async (event: H3Event) => {
       return { ok: true, subscribed: true, visibilityScope: "detail", stateRevision: getNexusStoreRevision() };
     }
     const existing = store.socialSubscriptionRequests.find((item) => {
-      return item.requesterUserId === user.userId && item.targetUserId === targetUser.userId && item.status === "pending";
+      return item.requesterUserId === actor.userId && item.targetUserId === targetUser.userId && item.status === "pending";
     });
     const request =
       existing ||
       ({
         id: storeHelpers.createId("sub_req"),
-        requesterUserId: user.userId,
+        requesterUserId: actor.userId,
         targetUserId: targetUser.userId,
         requestedVisibility: visibilityScope,
         status: "pending",
@@ -4599,9 +4664,9 @@ export const handleSocialV1Api = async (event: H3Event) => {
       createSocialNotification(store, {
         type: "subscription_request",
         recipientUserId: targetUser.userId,
-        actorUserId: user.userId,
+        actorUserId: actor.userId,
         title: "新的订阅请求",
-        body: `${resolveUserDisplayLabel(user)} 想查看你的日程空闲状态`,
+        body: `${resolveUserDisplayLabel(actor)} 想查看你的日程空闲状态`,
         payload: { requestId: request.id, visibilityScope },
       });
     }
@@ -4616,6 +4681,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "social/subscribe/remove") {
     const { user } = resolveLegacyAuthContext(event);
+    const actor = resolveSocialActorUser(store, state, user);
     const body = await readJsonBody<{ targetStudentId?: string; target_student_id?: string }>(event);
     const targetStudentId = asString(body.targetStudentId || body.target_student_id);
     if (!targetStudentId) {
@@ -4625,16 +4691,19 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (!targetUser) {
       return { ok: true, removed: false, stateRevision: getNexusStoreRevision() };
     }
-    const removed = revokeSocialSubscriptionBetweenUsers(store, state, user, targetUser, { includeCircle: false });
-    createSocialNotification(store, {
-      type: "subscription_revoked",
-      recipientUserId: targetUser.userId,
-      actorUserId: user.userId,
-      title: "订阅关系已解除",
-      body: `${resolveUserDisplayLabel(user)} 解除了订阅关系`,
-      payload: { targetStudentId },
-    });
-    return { ok: true, removed, stateRevision: getNexusStoreRevision() };
+    const removed = revokeSocialSubscriptionBetweenUsers(store, state, actor, targetUser, { includeCircle: false });
+    const stillVisibleViaCircle = hasCircleAccessBetweenUsers(store, actor.userId, targetUser.userId);
+    if (removed) {
+      createSocialNotification(store, {
+        type: "subscription_revoked",
+        recipientUserId: targetUser.userId,
+        actorUserId: actor.userId,
+        title: "订阅关系已解除",
+        body: `${resolveUserDisplayLabel(actor)} 解除了订阅关系`,
+        payload: { targetStudentId },
+      });
+    }
+    return { ok: true, removed, stillVisibleViaCircle, stateRevision: getNexusStoreRevision() };
   }
 
   if (method === "POST" && path === "social/random-code") {

@@ -83,6 +83,15 @@ export interface SocialRelationStatusInput {
   activeSources: string[];
 }
 
+export interface SocialAccessRelationLike {
+  status?: unknown;
+  visibilityScope?: unknown;
+  relationStatus?: {
+    status?: unknown;
+    visibilityScope?: unknown;
+  };
+}
+
 export const normalizeVisibilityScope = (
   value: unknown,
   fallback: SocialVisibilityScope = "busy_free",
@@ -155,6 +164,15 @@ export const buildSocialRelationStatus = (input: SocialRelationStatusInput) => {
     canUnsubscribe: status === "subscribed" && sources.some((source) => source !== "circle"),
     canBlock: status !== "self" && status !== "blocked",
   };
+};
+
+export const canUseSocialAccess = (value: SocialAccessRelationLike | null | undefined) => {
+  if (!value) {
+    return false;
+  }
+  const relationStatus = String(value.relationStatus?.status || value.status || "").trim();
+  const visibilityScope = normalizeVisibilityScope(value.relationStatus?.visibilityScope || value.visibilityScope, "hidden");
+  return relationStatus === "self" || (relationStatus === "subscribed" && (visibilityScope === "busy_free" || visibilityScope === "detail"));
 };
 
 export const resolveNextActivityStatus = (
