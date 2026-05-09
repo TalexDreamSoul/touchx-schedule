@@ -162,9 +162,13 @@ const DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE: Record<string, string> = {
   "2026-05-03": "休",
   "2026-05-04": "休",
   "2026-05-05": "休",
+  "2026-05-09": "补",
   "2026-06-19": "休",
   "2026-06-20": "休",
   "2026-06-21": "休",
+};
+const DEFAULT_TERM_MAKEUP_SOURCE_DATE_BY_DATE: Record<string, string> = {
+  "2026-05-09": "2026-05-05",
 };
 const RUNTIME_BACKEND_DEFAULT_MODE = resolveBackendRuntimeDefaultMode();
 const DEFAULT_BACKEND_BASE_URL = RUNTIME_BACKEND_DEFAULT_MODE === "local" ? LOCAL_BACKEND_BASE_URL : ONLINE_BACKEND_BASE_URL;
@@ -177,6 +181,7 @@ const scheduleCacheAt = ref(0);
 const runtimeTermWeek1Monday = ref(DEFAULT_TERM_WEEK1_MONDAY);
 const runtimeTermMaxWeek = ref(DEFAULT_TERM_MAX_WEEK);
 const runtimeHolidayLabelByDate = ref<Record<string, string>>({ ...DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE });
+const runtimeMakeupSourceDateByDate = ref<Record<string, string>>({ ...DEFAULT_TERM_MAKEUP_SOURCE_DATE_BY_DATE });
 const runtimeSectionTimes = ref<SectionTime[]>([...localSectionTimes]);
 const runtimeWeekdayLabels = ref<string[]>([...localWeekdayLabels]);
 
@@ -369,6 +374,11 @@ interface BackendSchedulePayload {
     date?: string;
     label?: string;
   }>;
+  makeupDays?: Array<{
+    date?: string;
+    sourceDate?: string;
+    label?: string;
+  }>;
   sectionTimes?: Array<{
     section: number;
     start: string;
@@ -385,6 +395,7 @@ interface BackendSchedulePayload {
 interface BackendSingleSchedulePayload {
   term?: BackendSchedulePayload["term"];
   holidays?: BackendSchedulePayload["holidays"];
+  makeupDays?: BackendSchedulePayload["makeupDays"];
   sectionTimes?: BackendSchedulePayload["sectionTimes"];
   weekdayLabels?: string[];
   student?: StudentSchedule;
@@ -890,6 +901,34 @@ const buildWeekDisplayCourses = (week: number) => {
   );
 };
 
+const buildDayDisplayCourses = (week: number, day: number) => {
+  const merged: DisplayCourse[] = [];
+  for (const schedule of includedSchedules.value) {
+    const courses = getWeekCourses(schedule, week).filter((course) => course.day === day);
+    for (const course of courses) {
+      merged.push({ ...course, ownerId: schedule.id, ownerName: formatScheduleOwnerName(schedule) });
+    }
+  }
+
+  return merged.sort((a, b) => a.startSection - b.startSection || a.endSection - b.endSection || a.ownerName.localeCompare(b.ownerName));
+};
+
+const buildCalendarDayDisplayCourses = (week: number, day: number) => {
+  const dateKey = getDateKeyForWeekDay(week, day);
+  const sourceDateKey = runtimeMakeupSourceDateByDate.value[dateKey];
+  if (!sourceDateKey) {
+    return buildDayDisplayCourses(week, day);
+  }
+  const sourceDate = parseDate(sourceDateKey);
+  const sourceWeek = resolveWeekByDate(sourceDate);
+  const sourceDay = resolveWeekday(sourceDate);
+  return buildDayDisplayCourses(sourceWeek, sourceDay).map((course) => ({ ...course, day }));
+};
+
+const buildCalendarWeekDisplayCourses = (week: number) => {
+  return Array.from({ length: 7 }, (_, index) => index + 1).flatMap((day) => buildCalendarDayDisplayCourses(week, day));
+};
+
 const buildWeekCellMap = (courses: DisplayCourse[]) => {
   const map: Record<string, DisplayCourse[]> = {};
   for (const course of courses) {
@@ -905,7 +944,7 @@ const buildWeekCellMap = (courses: DisplayCourse[]) => {
 };
 
 const selectedWeekCourses = computed<DisplayCourse[]>(() => buildWeekDisplayCourses(selectedWeek.value));
-const selectedWeekCellMap = computed(() => buildWeekCellMap(selectedWeekCourses.value));
+const selectedWeekCellMap = computed(() => buildWeekCellMap(buildCalendarWeekDisplayCourses(selectedWeek.value)));
 
 const allTermCellMap = computed(() => {
   const map: Record<string, DisplayCourse[]> = {};
@@ -1048,7 +1087,7 @@ const scheduleWeekCellMaps = computed(() => {
   const map: Record<number, Record<string, DisplayCourse[]>> = {};
   const uniqueWeeks = Array.from(new Set([schedulePanelWeeks.value.prev, schedulePanelWeeks.value.current, schedulePanelWeeks.value.next]));
   for (const week of uniqueWeeks) {
-    map[week] = buildWeekCellMap(buildWeekDisplayCourses(week));
+    map[week] = buildWeekCellMap(buildCalendarWeekDisplayCourses(week));
   }
   return map;
 });
@@ -1078,7 +1117,7 @@ const nextUpcomingCourse = computed(() => {
     return null;
   }
 
-  const courses = selectedWeekCourses.value.filter((course) => course.day === todayWeekday.value);
+  const courses = buildDayDisplayCourses(todayInfo.value.week, todayInfo.value.weekday);
   if (courses.length === 0) {
     return null;
   }
@@ -1115,29 +1154,20 @@ const nextUpcomingCourse = computed(() => {
 
 const todayInfo = computed(() => {
   const now = new Date(minuteTickNow.value);
-  const week = resolveWeekByDate(now);
-  const weekday = resolveWeekday(now);
+  const classDate = resolveClassDate(now);
+  const week = resolveWeekByDate(classDate);
+  const weekday = resolveWeekday(classDate);
   return {
     week,
     weekday,
     weekdayLabel: weekdayLabels.value[weekday - 1],
     dateLabel: formatMonthDay(now),
+    isMakeupDay: toDateKey(classDate) !== toDateKey(now),
   };
 });
 
 const todayCourses = computed<DisplayCourse[]>(() => {
-  const week = todayInfo.value.week;
-  const weekday = todayInfo.value.weekday;
-  const merged: DisplayCourse[] = [];
-
-  for (const schedule of includedSchedules.value) {
-    const courses = getWeekCourses(schedule, week).filter((course) => course.day === weekday);
-    for (const course of courses) {
-      merged.push({ ...course, ownerId: schedule.id, ownerName: formatScheduleOwnerName(schedule) });
-    }
-  }
-
-  return merged.sort((a, b) => a.startSection - b.startSection || a.endSection - b.endSection || a.ownerName.localeCompare(b.ownerName));
+  return buildDayDisplayCourses(todayInfo.value.week, todayInfo.value.weekday);
 });
 
 const getCourseStartEndTs = (course: DisplayCourse) => {
@@ -1518,10 +1548,33 @@ const normalizeScheduleHolidayLabelByDate = (value: unknown) => {
   return { ...DEFAULT_TERM_HOLIDAY_LABEL_BY_DATE };
 };
 
+const normalizeScheduleMakeupSourceDateByDate = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return { ...DEFAULT_TERM_MAKEUP_SOURCE_DATE_BY_DATE };
+  }
+  const nextMap: Record<string, string> = {};
+  value.forEach((item) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+    const row = item as { date?: string; sourceDate?: string };
+    const date = String(row.date || "").trim();
+    const sourceDate = String(row.sourceDate || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{4}-\d{2}-\d{2}$/.test(sourceDate)) {
+      nextMap[date] = sourceDate;
+    }
+  });
+  if (Object.keys(nextMap).length > 0) {
+    return nextMap;
+  }
+  return { ...DEFAULT_TERM_MAKEUP_SOURCE_DATE_BY_DATE };
+};
+
 const syncWeekValues = () => {
   const now = new Date(minuteTickNow.value);
-  currentWeek.value = resolveWeekByDate(now);
-  todayWeekday.value = resolveWeekday(now);
+  const classDate = resolveClassDate(now);
+  currentWeek.value = resolveWeekByDate(classDate);
+  todayWeekday.value = resolveWeekday(classDate);
   if (selectedWeek.value > termMaxWeek.value) {
     selectedWeek.value = termMaxWeek.value;
   }
@@ -1542,6 +1595,7 @@ const updateServerOffset = (serverNowIso?: string) => {
   }
   serverOffsetMs.value = parsed - Date.now();
   minuteTickNow.value = resolveServerNowTs();
+  syncWeekValues();
 };
 
 const refreshMinuteTickNow = () => {
@@ -1572,6 +1626,7 @@ const applyRuntimeScheduleMeta = (payload?: BackendSchedulePayload) => {
   runtimeTermWeek1Monday.value = normalizeScheduleWeek1Monday(termMeta?.week1Monday);
   runtimeTermMaxWeek.value = normalizeScheduleMaxWeek(termMeta?.maxWeek);
   runtimeHolidayLabelByDate.value = normalizeScheduleHolidayLabelByDate(payload?.holidays);
+  runtimeMakeupSourceDateByDate.value = normalizeScheduleMakeupSourceDateByDate(payload?.makeupDays);
   runtimeSectionTimes.value = normalizeScheduleSectionTimes(payload?.sectionTimes);
   runtimeWeekdayLabels.value = normalizeScheduleWeekdayLabels(payload?.weekdayLabels);
   updateServerOffset(payload?.serverNowIso);
@@ -2976,12 +3031,20 @@ const toDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const getScheduleDayBadgeText = (week: number, day: number) => {
+const getDateKeyForWeekDay = (week: number, day: number) => {
   const safeWeek = Math.max(1, Number(week || 1));
   const safeDay = Math.max(1, Math.min(7, Number(day || 1)));
   const base = parseDate(termWeek1Monday.value);
-  const targetDate = addDays(base, (safeWeek - 1) * 7 + (safeDay - 1));
-  const dateKey = toDateKey(targetDate);
+  return toDateKey(addDays(base, (safeWeek - 1) * 7 + (safeDay - 1)));
+};
+
+const resolveClassDate = (date: Date) => {
+  const sourceDateKey = runtimeMakeupSourceDateByDate.value[toDateKey(date)];
+  return sourceDateKey ? parseDate(sourceDateKey) : date;
+};
+
+const getScheduleDayBadgeText = (week: number, day: number) => {
+  const dateKey = getDateKeyForWeekDay(week, day);
   return runtimeHolidayLabelByDate.value[dateKey] || "";
 };
 

@@ -229,8 +229,10 @@ const semesterElapsed = computed(() => {
 
 interface TodayInfoLike {
   week: number;
+  weekday: number;
   weekdayLabel: string;
   dateLabel: string;
+  isMakeupDay?: boolean;
 }
 
 interface DepartureReminderLike {
@@ -404,7 +406,7 @@ const pendingCourseItems = computed<PendingCourseItem[]>(() => {
 });
 
 const fridayEarlyNoticeText = computed(() => {
-  if (props.todayInfo.weekdayLabel !== "周五") {
+  if (props.todayInfo.weekday !== 5) {
     return "";
   }
   const hasTwoThirtyCourse = props.todayCourses.some((course) => {
