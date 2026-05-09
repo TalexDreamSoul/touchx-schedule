@@ -104,8 +104,9 @@
           "day": 1,
           "startSection": 3,
           "endSection": 4,
-          "weekExpr": "1-8",
+          "weekExpr": "1-5",
           "classroom": "1-505",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
@@ -127,6 +128,7 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "1-306",
+          "teacher": "郭剑",
           "teachingClasses": "软件工程23(5)"
         },
         {
@@ -159,6 +161,7 @@
           "endSection": 10,
           "weekExpr": "1-4",
           "classroom": "4-505",
+          "teacher": "谢春花",
           "teachingClasses": "软件工程23(5);软件工程23(6);物联网工程23(1);英语23(4)"
         },
         {
@@ -169,6 +172,7 @@
           "endSection": 4,
           "weekExpr": "1-8",
           "classroom": "2-501",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5)"
         },
         {
@@ -184,6 +188,50 @@
         },
         {
           "id": "czl-10",
+          "name": "形势与政策-6",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "8",
+          "classroom": "2-301",
+          "teacher": "张晓勇",
+          "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-11",
+          "name": "游戏建模",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "10",
+          "classroom": "1-302B",
+          "teacher": "左桢",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-12",
+          "name": "C++程序设计",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "11",
+          "classroom": "10-503",
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-13",
+          "name": "人工智能导论",
+          "day": 4,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "8",
+          "classroom": "10-512",
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-14",
           "name": "C++程序设计",
           "day": 4,
           "startSection": 3,
@@ -194,17 +242,18 @@
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "czl-11",
+          "id": "czl-15",
           "name": "游戏建模",
           "day": 4,
           "startSection": 5,
           "endSection": 6,
           "weekExpr": "1-4",
           "classroom": "1-505",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "czl-12",
+          "id": "czl-16",
           "name": "人工智能导论",
           "day": 4,
           "startSection": 5,
@@ -215,7 +264,18 @@
           "teachingClasses": "软件工程23(5)"
         },
         {
-          "id": "czl-13",
+          "id": "czl-17",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 8,
+          "weekExpr": "17",
+          "classroom": "10-504",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-18",
           "name": "C++程序设计",
           "day": 4,
           "startSection": 7,
@@ -226,36 +286,70 @@
           "teachingClasses": "软件工程23(5)"
         },
         {
-          "id": "czl-14",
+          "id": "czl-19",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "5",
+          "classroom": "1-303",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-20",
           "name": "形势与政策-6",
           "day": 5,
           "startSection": 1,
           "endSection": 2,
-          "weekExpr": "6-12",
-          "parity": "even",
+          "weekExpr": "8-12",
           "classroom": "2-301",
+          "parity": "even",
           "teacher": "张晓勇",
           "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "czl-15",
+          "id": "czl-21",
           "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
           "day": 5,
           "startSection": 3,
           "endSection": 4,
-          "weekExpr": "1-16",
+          "weekExpr": "1",
           "classroom": "4-406",
           "teacher": "未春凤",
           "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "czl-16",
+          "id": "czl-22",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "2-5",
+          "classroom": "1-302B",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-23",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "11-16",
+          "classroom": "10-504",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "czl-24",
           "name": "游戏运营管理",
           "day": 5,
           "startSection": 5,
           "endSection": 7,
-          "weekExpr": "9-16",
+          "weekExpr": "9-11",
           "classroom": "10-301",
+          "parity": "odd",
           "teacher": "盛腾",
           "teachingClasses": "软件工程23(5)"
         }
@@ -377,7 +471,7 @@
           "day": 1,
           "startSection": 1,
           "endSection": 2,
-          "weekExpr": "1-17",
+          "weekExpr": "1-5",
           "classroom": "10-511",
           "teacher": "王站东",
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
@@ -395,50 +489,73 @@
         },
         {
           "id": "tzx-03",
+          "name": "信息安全工程",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "9-11",
+          "classroom": "10-305",
+          "parity": "odd",
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-04",
           "name": "web 应用开发-II",
           "day": 1,
           "startSection": 5,
           "endSection": 7,
-          "weekExpr": "1-8",
+          "weekExpr": "1-3",
           "classroom": "IT实训工作坊(I)",
           "teacher": "刘国芳",
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-04",
-          "name": "信息安全工程",
+          "id": "tzx-05",
+          "name": "web 应用开发-II",
           "day": 1,
           "startSection": 5,
-          "endSection": 6,
-          "weekExpr": "9-16",
-          "classroom": "10-305",
-          "teacher": "张毅",
-          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+          "endSection": 7,
+          "weekExpr": "4",
+          "classroom": "10-304",
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-05",
+          "id": "tzx-06",
           "name": "信息安全工程",
           "day": 1,
           "startSection": 9,
           "endSection": 10,
-          "weekExpr": "1-16",
+          "weekExpr": "1-9",
           "classroom": "5-509",
           "teacher": "张毅",
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
         },
         {
-          "id": "tzx-06",
+          "id": "tzx-07",
           "name": "网站实现、维护和管理",
           "day": 2,
           "startSection": 2,
           "endSection": 4,
-          "weekExpr": "9-16",
+          "weekExpr": "9-10",
           "classroom": "IT实训工作坊(I)",
           "teacher": "段鹏",
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-07",
+          "id": "tzx-08",
+          "name": "网站实现、维护和管理",
+          "day": 2,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "11-16",
+          "classroom": "10-412",
+          "teacher": "段鹏",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-09",
           "name": "人工智能导论",
           "day": 2,
           "startSection": 5,
@@ -449,7 +566,18 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-08",
+          "id": "tzx-10",
+          "name": "并行与分布式计算",
+          "day": 3,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "3",
+          "classroom": "4-402",
+          "teacher": "王站东",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-11",
           "name": "并行与分布式计算",
           "day": 3,
           "startSection": 3,
@@ -460,7 +588,18 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-09",
+          "id": "tzx-12",
+          "name": "IT 领域社会与职业问题",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "10",
+          "classroom": "10-501",
+          "teacher": "蒋琦",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-13",
           "name": "大学生职业发展与就业指导-2",
           "day": 3,
           "startSection": 9,
@@ -471,29 +610,51 @@
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-10",
+          "id": "tzx-14",
           "name": "软件质量保证与测试",
           "day": 3,
           "startSection": 9,
           "endSection": 11,
-          "weekExpr": "9-16",
+          "weekExpr": "9",
           "classroom": "IT实训工作坊(Ⅱ)",
           "teacher": "薛丽莹",
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-11",
+          "id": "tzx-15",
+          "name": "软件质量保证与测试",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 11,
+          "weekExpr": "10-16",
+          "classroom": "10-307",
+          "teacher": "薛丽莹",
+          "teachingClasses": "计算机科学与技术23(3)"
+        },
+        {
+          "id": "tzx-16",
           "name": "web 应用开发-II",
           "day": 4,
-          "startSection": 2,
-          "endSection": 4,
-          "weekExpr": "1-8",
+          "startSection": 1,
+          "endSection": 3,
+          "weekExpr": "7",
           "classroom": "IT实训工作坊(I)",
           "teacher": "刘国芳",
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-12",
+          "id": "tzx-17",
+          "name": "web 应用开发-II",
+          "day": 4,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "1-6",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-18",
           "name": "网站实现、维护和管理",
           "day": 4,
           "startSection": 2,
@@ -504,7 +665,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-13",
+          "id": "tzx-19",
           "name": "软件质量保证与测试",
           "day": 4,
           "startSection": 5,
@@ -515,19 +676,53 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-14",
+          "id": "tzx-20",
           "name": "形势与政策-6",
           "day": 4,
           "startSection": 9,
           "endSection": 10,
-          "weekExpr": "7-13",
+          "weekExpr": "8-10",
+          "classroom": "学术报告厅1",
+          "parity": "even",
+          "teacher": "张琪",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);物联网工程23(3)"
+        },
+        {
+          "id": "tzx-21",
+          "name": "形势与政策-6",
+          "day": 4,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "11-13",
           "classroom": "7-401",
           "parity": "odd",
           "teacher": "张琪",
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);物联网工程23(3)"
         },
         {
-          "id": "tzx-15",
+          "id": "tzx-22",
+          "name": "web 应用开发-II",
+          "day": 5,
+          "startSection": 4,
+          "endSection": 6,
+          "weekExpr": "10",
+          "classroom": "10-309",
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3)"
+        },
+        {
+          "id": "tzx-23",
+          "name": "人工智能导论",
+          "day": 5,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "7-8",
+          "classroom": "10-511",
+          "teacher": "付春龍",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-24",
           "name": "IT 领域社会与职业问题",
           "day": 5,
           "startSection": 7,
@@ -535,6 +730,39 @@
           "weekExpr": "1-16",
           "classroom": "5-202",
           "teacher": "蒋琦",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-25",
+          "name": "并行与分布式计算",
+          "day": 5,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "10",
+          "classroom": "5-302",
+          "teacher": "王站东",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-26",
+          "name": "信息安全工程",
+          "day": 7,
+          "startSection": 10,
+          "endSection": 11,
+          "weekExpr": "11",
+          "classroom": "5-509",
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
+        },
+        {
+          "id": "tzx-27",
+          "name": "信息安全工程",
+          "day": 7,
+          "startSection": 10,
+          "endSection": 11,
+          "weekExpr": "12",
+          "classroom": "10-305",
+          "teacher": "张毅",
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         }
       ]
@@ -560,8 +788,9 @@
           "day": 1,
           "startSection": 3,
           "endSection": 4,
-          "weekExpr": "1-8",
+          "weekExpr": "1-5",
           "classroom": "1-505",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
@@ -583,6 +812,7 @@
           "endSection": 4,
           "weekExpr": "9-16",
           "classroom": "1-306",
+          "teacher": "郭剑",
           "teachingClasses": "软件工程23(5)"
         },
         {
@@ -615,6 +845,7 @@
           "endSection": 10,
           "weekExpr": "1-4",
           "classroom": "4-505",
+          "teacher": "谢春花",
           "teachingClasses": "软件工程23(5);软件工程23(6);物联网工程23(1);英语23(4)"
         },
         {
@@ -625,6 +856,7 @@
           "endSection": 4,
           "weekExpr": "1-8",
           "classroom": "2-501",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5)"
         },
         {
@@ -640,6 +872,50 @@
         },
         {
           "id": "wxy-10",
+          "name": "形势与政策-6",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "8",
+          "classroom": "2-301",
+          "teacher": "张晓勇",
+          "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-11",
+          "name": "游戏建模",
+          "day": 3,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "10",
+          "classroom": "1-302B",
+          "teacher": "左桢",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-12",
+          "name": "C++程序设计",
+          "day": 3,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "11",
+          "classroom": "10-503",
+          "teacher": "游洪跃",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-13",
+          "name": "人工智能导论",
+          "day": 4,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "8",
+          "classroom": "10-512",
+          "teacher": "郑莉萍",
+          "teachingClasses": "软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-14",
           "name": "C++程序设计",
           "day": 4,
           "startSection": 3,
@@ -650,17 +926,18 @@
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "wxy-11",
+          "id": "wxy-15",
           "name": "游戏建模",
           "day": 4,
           "startSection": 5,
           "endSection": 6,
           "weekExpr": "1-4",
           "classroom": "1-505",
+          "teacher": "左桢",
           "teachingClasses": "软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "wxy-12",
+          "id": "wxy-16",
           "name": "人工智能导论",
           "day": 4,
           "startSection": 5,
@@ -671,7 +948,18 @@
           "teachingClasses": "软件工程23(5)"
         },
         {
-          "id": "wxy-13",
+          "id": "wxy-17",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 4,
+          "startSection": 5,
+          "endSection": 8,
+          "weekExpr": "17",
+          "classroom": "10-504",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-18",
           "name": "C++程序设计",
           "day": 4,
           "startSection": 7,
@@ -682,36 +970,70 @@
           "teachingClasses": "软件工程23(5)"
         },
         {
-          "id": "wxy-14",
+          "id": "wxy-19",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "5",
+          "classroom": "1-303",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-20",
           "name": "形势与政策-6",
           "day": 5,
           "startSection": 1,
           "endSection": 2,
-          "weekExpr": "6-12",
-          "parity": "even",
+          "weekExpr": "8-12",
           "classroom": "2-301",
+          "parity": "even",
           "teacher": "张晓勇",
           "teachingClasses": "人工智能23(3);软件工程23(1);软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "wxy-15",
+          "id": "wxy-21",
           "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
           "day": 5,
           "startSection": 3,
           "endSection": 4,
-          "weekExpr": "1-16",
+          "weekExpr": "1",
           "classroom": "4-406",
           "teacher": "未春凤",
           "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
         },
         {
-          "id": "wxy-16",
+          "id": "wxy-22",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "2-5",
+          "classroom": "1-302B",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-23",
+          "name": "软硬件安装、配置、升级和网络支持(Linux 操作环境)",
+          "day": 5,
+          "startSection": 3,
+          "endSection": 4,
+          "weekExpr": "11-16",
+          "classroom": "10-504",
+          "teacher": "未春凤",
+          "teachingClasses": "软件工程23(1);软件工程23(2);软件工程23(3);软件工程23(4);软件工程23(5);软件工程23(6)"
+        },
+        {
+          "id": "wxy-24",
           "name": "游戏运营管理",
           "day": 5,
           "startSection": 5,
           "endSection": 7,
-          "weekExpr": "9-16",
+          "weekExpr": "9-11",
           "classroom": "10-301",
+          "parity": "odd",
           "teacher": "盛腾",
           "teachingClasses": "软件工程23(5)"
         }
