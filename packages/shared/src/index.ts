@@ -39,9 +39,13 @@ export const DEFAULT_SCHEDULE_TERM_HOLIDAYS = [
   { date: "2026-05-03", label: "休" },
   { date: "2026-05-04", label: "休" },
   { date: "2026-05-05", label: "休" },
+  { date: "2026-05-09", label: "补" },
   { date: "2026-06-19", label: "休" },
   { date: "2026-06-20", label: "休" },
   { date: "2026-06-21", label: "休" },
+] as const;
+export const DEFAULT_SCHEDULE_TERM_MAKEUP_DAYS = [
+  { date: "2026-05-09", sourceDate: "2026-05-05", label: "补" },
 ] as const;
 export const DEFAULT_SCHEDULE_WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"] as const;
 export const DEFAULT_SCHEDULE_SECTION_TIMES = [
@@ -73,6 +77,7 @@ export type SocialActivityInvitationStatus = (typeof SOCIAL_ACTIVITY_INVITATION_
 export type SocialNotificationType = (typeof SOCIAL_NOTIFICATION_TYPES)[number];
 export type SocialNotificationStatus = (typeof SOCIAL_NOTIFICATION_STATUSES)[number];
 export type ScheduleTermHoliday = (typeof DEFAULT_SCHEDULE_TERM_HOLIDAYS)[number];
+export type ScheduleTermMakeupDay = (typeof DEFAULT_SCHEDULE_TERM_MAKEUP_DAYS)[number];
 
 export interface StudentIdentity {
   userId: string;

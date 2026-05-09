@@ -1,6 +1,7 @@
 import {
   DEFAULT_SCHEDULE_SECTION_TIMES,
   DEFAULT_SCHEDULE_TERM_HOLIDAYS,
+  DEFAULT_SCHEDULE_TERM_MAKEUP_DAYS,
   DEFAULT_SCHEDULE_TERM_META,
   DEFAULT_SCHEDULE_TERM_TIMEZONE,
   DEFAULT_SCHEDULE_WEEKDAY_LABELS,
@@ -23,6 +24,7 @@ export interface ScheduleCalendarEntry extends ScheduleEntryRecord {
 export const SCHEDULE_SECTION_TIMES = DEFAULT_SCHEDULE_SECTION_TIMES.map((item) => ({ ...item }));
 export const SCHEDULE_TERM_META = { ...DEFAULT_SCHEDULE_TERM_META };
 export const SCHEDULE_TERM_HOLIDAYS = DEFAULT_SCHEDULE_TERM_HOLIDAYS.map((item) => ({ ...item }));
+export const SCHEDULE_TERM_MAKEUP_DAYS = DEFAULT_SCHEDULE_TERM_MAKEUP_DAYS.map((item) => ({ ...item }));
 export const SCHEDULE_WEEKDAY_LABELS = [...DEFAULT_SCHEDULE_WEEKDAY_LABELS];
 export const SCHEDULE_DEFAULT_TIMEZONE: string = DEFAULT_SCHEDULE_TERM_TIMEZONE;
 
@@ -97,6 +99,11 @@ export const compareDateKeys = (left: string, right: string) => {
   return diffDays;
 };
 
+export const resolveScheduleClassDateKey = (dateKey: string) => {
+  const makeupDay = SCHEDULE_TERM_MAKEUP_DAYS.find((item) => item.date === dateKey);
+  return makeupDay?.sourceDate || dateKey;
+};
+
 export const resolveCurrentWeekForDate = (date: Date, timeZone: string = SCHEDULE_DEFAULT_TIMEZONE) => {
   const baseParsed = parseDateKey(SCHEDULE_TERM_META.week1Monday);
   const targetParts = toDateTimeParts(date, timeZone);
@@ -107,6 +114,37 @@ export const resolveCurrentWeekForDate = (date: Date, timeZone: string = SCHEDUL
     return 1;
   }
   return Math.min(SCHEDULE_TERM_META.maxWeek, Math.floor(diffDays / 7) + 1);
+};
+
+export const resolveWeekForDateKey = (dateKey: string) => {
+  const baseParsed = parseDateKey(SCHEDULE_TERM_META.week1Monday);
+  const targetParsed = parseDateKey(dateKey);
+  const baseDate = new Date(baseParsed.year, baseParsed.month - 1, baseParsed.day);
+  const targetDate = new Date(targetParsed.year, targetParsed.month - 1, targetParsed.day);
+  const diffDays = Math.floor((targetDate.getTime() - baseDate.getTime()) / dayMs);
+  if (diffDays < 0) {
+    return 1;
+  }
+  return Math.min(SCHEDULE_TERM_META.maxWeek, Math.floor(diffDays / 7) + 1);
+};
+
+export const resolveWeekdayForDateKey = (dateKey: string) => {
+  const parsed = parseDateKey(dateKey);
+  const value = new Date(parsed.year, parsed.month - 1, parsed.day).getDay();
+  return value === 0 ? 7 : value;
+};
+
+export const resolveScheduleClassDateContext = (date: Date, timeZone: string = SCHEDULE_DEFAULT_TIMEZONE) => {
+  const nowParts = toDateTimeParts(date, timeZone);
+  const classDateKey = resolveScheduleClassDateKey(nowParts.dateKey);
+  return {
+    nowParts,
+    calendarDateKey: nowParts.dateKey,
+    classDateKey,
+    isMakeupDay: classDateKey !== nowParts.dateKey,
+    currentWeek: resolveWeekForDateKey(classDateKey),
+    weekday: resolveWeekdayForDateKey(classDateKey),
+  };
 };
 
 export const isScheduleEntryInWeek = (entry: Pick<ScheduleEntryRecord, "weekExpr" | "parity">, week: number) => {

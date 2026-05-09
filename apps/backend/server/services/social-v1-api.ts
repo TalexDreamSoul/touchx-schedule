@@ -41,13 +41,14 @@ import {
   getSectionTimeBySection,
   getUserReminderTimezone,
   isScheduleEntryInWeek,
+  resolveScheduleClassDateContext,
   resolveCurrentWeekForDate,
   SCHEDULE_DEFAULT_TIMEZONE,
   SCHEDULE_SECTION_TIMES,
   SCHEDULE_TERM_HOLIDAYS,
+  SCHEDULE_TERM_MAKEUP_DAYS,
   SCHEDULE_TERM_META,
   SCHEDULE_WEEKDAY_LABELS,
-  toAcademicWeekDay,
   toDateTimeParts,
   zonedDateTimeToUtc,
 } from "./schedule-calendar";
@@ -2958,7 +2959,8 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
   const user = findUserByStudentId(store, studentId) || store.users[0] || null;
   const serverNow = new Date();
   const serverTimezone = user ? getUserReminderTimezone(store, user) : SCHEDULE_DEFAULT_TIMEZONE;
-  const currentWeek = resolveCurrentWeekForDate(serverNow, serverTimezone);
+  const dateContext = resolveScheduleClassDateContext(serverNow, serverTimezone);
+  const currentWeek = dateContext.currentWeek;
   if (!user) {
     return {
       studentId: "",
@@ -2976,8 +2978,8 @@ const toTodayBriefPayload = (store: NexusStore, studentId: string) => {
     };
   }
   const now = serverNow;
-  const nowParts = toDateTimeParts(now, serverTimezone);
-  const dayNo = toAcademicWeekDay(now, serverTimezone);
+  const nowParts = dateContext.nowParts;
+  const dayNo = dateContext.weekday;
   const dayLabel = `周${SCHEDULE_WEEKDAY_LABELS[dayNo - 1] || "一"}`;
   const entries = getEffectiveScheduleEntriesForUser(store, user).filter((item) => {
     return item.day === dayNo && isScheduleEntryInWeek(item, currentWeek);
@@ -5610,6 +5612,7 @@ export const handleSocialV1Api = async (event: H3Event) => {
       sectionTimes: SCHEDULE_SECTION_TIMES,
       weekdayLabels: SCHEDULE_WEEKDAY_LABELS,
       holidays: SCHEDULE_TERM_HOLIDAYS,
+      makeupDays: SCHEDULE_TERM_MAKEUP_DAYS,
       visibilityScope,
       student: studentPayload,
       serverNowIso: serverNow.toISOString(),

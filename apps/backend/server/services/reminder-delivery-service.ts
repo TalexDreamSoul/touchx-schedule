@@ -8,9 +8,8 @@ import {
   SCHEDULE_WEEKDAY_LABELS,
   getUserReminderTimezone,
   isScheduleEntryInWeek,
-  resolveCurrentWeekForDate,
+  resolveScheduleClassDateContext,
   SCHEDULE_DEFAULT_TIMEZONE,
-  toAcademicWeekDay,
   toDateTimeParts,
   zonedDateTimeToUtc,
 } from "./schedule-calendar";
@@ -233,12 +232,12 @@ const sanitizeReminderWindows = (user: UserRecord) => {
 };
 
 const resolveScheduleDateContext = (date: Date, timeZone: string) => {
-  const parts = toDateTimeParts(date, timeZone);
+  const classDateContext = resolveScheduleClassDateContext(date, timeZone);
   return {
     timeZone,
-    nowParts: parts,
-    currentWeek: resolveCurrentWeekForDate(date, timeZone),
-    weekday: toAcademicWeekDay(date, timeZone),
+    nowParts: classDateContext.nowParts,
+    currentWeek: classDateContext.currentWeek,
+    weekday: classDateContext.weekday,
   };
 };
 
@@ -266,8 +265,9 @@ const buildNextDayDigestCandidates = (store: NexusStore, now: Date) => {
     const context = resolveScheduleDateContext(now, userTimezone);
     const targetDateKey = addDaysToDateKey(context.nowParts.dateKey, 1);
     const targetDate = zonedDateTimeToUtc(targetDateKey, "12:00", userTimezone);
-    const targetWeek = resolveCurrentWeekForDate(targetDate, userTimezone);
-    const targetDay = toAcademicWeekDay(targetDate, userTimezone);
+    const targetContext = resolveScheduleClassDateContext(targetDate, userTimezone);
+    const targetWeek = targetContext.currentWeek;
+    const targetDay = targetContext.weekday;
     const entries = getEffectiveScheduleEntriesForUser(store, user)
       .filter((entry) => entry.day === targetDay && isScheduleEntryInWeek(entry, targetWeek))
       .sort((left, right) => left.startSection - right.startSection || left.endSection - right.endSection);
