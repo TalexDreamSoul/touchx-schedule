@@ -149,7 +149,10 @@ const STORAGE_AUTH_TOKEN_KEY = "touchx_v2_auth_token";
 const STORAGE_AUTH_EXPIRES_AT_KEY = "touchx_v2_auth_expires_at";
 const STORAGE_AUTH_USER_KEY = "touchx_v2_auth_user";
 const STORAGE_AUTH_MODE_KEY = "touchx_v2_auth_mode";
+const STORAGE_SCHEDULE_CACHE_TIME_KEY = "touchx_v2_schedule_cache_at";
 const STORAGE_SCHEDULE_CACHE_SOURCE_KEY = "touchx_v2_schedule_cache_source";
+const STORAGE_SCHEDULE_CACHE_SNAPSHOT_KEY = "touchx_v2_schedule_cache_snapshot";
+const SCHEDULE_CACHE_SNAPSHOT_VERSION = 1;
 const MAX_COMPARE_OWNERS = 7;
 const DEFAULT_TERM_WEEK1_MONDAY = localTermMeta.week1Monday;
 const DEFAULT_TERM_MAX_WEEK = localTermMeta.maxWeek;
@@ -394,12 +397,31 @@ interface BackendSchedulePayload {
 
 interface BackendSingleSchedulePayload {
   term?: BackendSchedulePayload["term"];
+  termMeta?: BackendSchedulePayload["termMeta"];
   holidays?: BackendSchedulePayload["holidays"];
   makeupDays?: BackendSchedulePayload["makeupDays"];
   sectionTimes?: BackendSchedulePayload["sectionTimes"];
   weekdayLabels?: string[];
+  serverNowIso?: string;
+  serverTimezone?: string;
   student?: StudentSchedule;
   generatedAt?: number;
+}
+
+interface ScheduleCacheSnapshot {
+  version: number;
+  cachedAt: number;
+  backendBaseUrl: string;
+  ownerStudentId?: string;
+  ownerStudentNo?: string;
+  activeStudentId: string;
+  includedStudentIds: string[];
+  termMeta?: BackendSchedulePayload["termMeta"];
+  holidays?: BackendSchedulePayload["holidays"];
+  makeupDays?: BackendSchedulePayload["makeupDays"];
+  sectionTimes?: BackendSchedulePayload["sectionTimes"];
+  weekdayLabels?: string[];
+  students: StudentSchedule[];
 }
 
 interface BackendThemeImagesResponse {
@@ -801,6 +823,7 @@ const clearAuthSession = () => {
   uni.removeStorageSync(STORAGE_AUTH_EXPIRES_AT_KEY);
   uni.removeStorageSync(STORAGE_AUTH_USER_KEY);
   uni.removeStorageSync(STORAGE_AUTH_MODE_KEY);
+  clearScheduleCacheSnapshot();
   clearRuntimeScheduleData();
 };
 
@@ -1462,6 +1485,13 @@ const normalizeSingleStudentSchedulePayload = (payload: BackendSingleSchedulePay
   return rows[0] || null;
 };
 
+const normalizeCachedStudentSchedules = (raw: unknown) => {
+  if (!Array.isArray(raw)) {
+    return [] as StudentSchedule[];
+  }
+  return normalizeStudentSchedulePayload({ students: raw as StudentSchedule[] });
+};
+
 const normalizeScheduleWeek1Monday = (value: unknown) => {
   const text = String(value || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
@@ -1570,6 +1600,49 @@ const normalizeScheduleMakeupSourceDateByDate = (value: unknown) => {
   return { ...DEFAULT_TERM_MAKEUP_SOURCE_DATE_BY_DATE };
 };
 
+const readScheduleCacheSnapshot = (): ScheduleCacheSnapshot | null => {
+  const raw = uni.getStorageSync(STORAGE_SCHEDULE_CACHE_SNAPSHOT_KEY);
+  let parsed: unknown = null;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      parsed = null;
+    }
+  } else if (raw && typeof raw === "object") {
+    parsed = raw;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  const data = parsed as Partial<ScheduleCacheSnapshot>;
+  if (Number(data.version || 0) !== SCHEDULE_CACHE_SNAPSHOT_VERSION) {
+    return null;
+  }
+  const cachedAt = Number(data.cachedAt || 0);
+  const students = normalizeCachedStudentSchedules(data.students);
+  if (!Number.isFinite(cachedAt) || cachedAt <= 0 || students.length <= 0) {
+    return null;
+  }
+  return {
+    version: SCHEDULE_CACHE_SNAPSHOT_VERSION,
+    cachedAt,
+    backendBaseUrl: String(data.backendBaseUrl || "").trim(),
+    ownerStudentId: String(data.ownerStudentId || "").trim(),
+    ownerStudentNo: String(data.ownerStudentNo || "").trim(),
+    activeStudentId: String(data.activeStudentId || "").trim(),
+    includedStudentIds: Array.isArray(data.includedStudentIds)
+      ? data.includedStudentIds.map((item) => String(item || "").trim()).filter((item) => item)
+      : [],
+    termMeta: data.termMeta,
+    holidays: data.holidays,
+    makeupDays: data.makeupDays,
+    sectionTimes: data.sectionTimes,
+    weekdayLabels: data.weekdayLabels,
+    students,
+  };
+};
+
 const syncWeekValues = () => {
   const now = new Date(minuteTickNow.value);
   const classDate = resolveClassDate(now);
@@ -1633,6 +1706,46 @@ const applyRuntimeScheduleMeta = (payload?: BackendSchedulePayload) => {
   syncWeekValues();
 };
 
+const buildCurrentScheduleCachePayload = (cacheAt: number): ScheduleCacheSnapshot => {
+  return {
+    version: SCHEDULE_CACHE_SNAPSHOT_VERSION,
+    cachedAt: cacheAt,
+    backendBaseUrl: backendBaseUrl.value,
+    ownerStudentId: authUser.value?.studentId || "",
+    ownerStudentNo: authUser.value?.studentNo || "",
+    activeStudentId: activeStudentId.value,
+    includedStudentIds: [...includedStudentIds.value],
+    termMeta: {
+      week1Monday: runtimeTermWeek1Monday.value,
+      maxWeek: runtimeTermMaxWeek.value,
+    },
+    holidays: Object.entries(runtimeHolidayLabelByDate.value).map(([date, label]) => ({ date, label })),
+    makeupDays: Object.entries(runtimeMakeupSourceDateByDate.value).map(([date, sourceDate]) => ({ date, sourceDate, label: "补" })),
+    sectionTimes: runtimeSectionTimes.value.map((item) => ({ ...item })),
+    weekdayLabels: [...runtimeWeekdayLabels.value],
+    students: runtimeStudentSchedules.value.map((student) => ({
+      ...student,
+      courses: student.courses.map((course) => ({ ...course })),
+    })),
+  };
+};
+
+const persistScheduleCacheSnapshot = (cacheAt = Date.now()) => {
+  if (!authUser.value || runtimeStudentSchedules.value.length <= 0) {
+    return;
+  }
+  const snapshot = buildCurrentScheduleCachePayload(cacheAt);
+  uni.setStorageSync(STORAGE_SCHEDULE_CACHE_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  uni.setStorageSync(STORAGE_SCHEDULE_CACHE_TIME_KEY, cacheAt);
+  uni.setStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY, "backend");
+};
+
+const clearScheduleCacheSnapshot = () => {
+  uni.removeStorageSync(STORAGE_SCHEDULE_CACHE_SNAPSHOT_KEY);
+  uni.removeStorageSync(STORAGE_SCHEDULE_CACHE_TIME_KEY);
+  uni.removeStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY);
+};
+
 const sortRuntimeScheduleRows = (rows: StudentSchedule[]) => {
   const order = new Map(loginCandidates.value.map((item, index) => [item.studentId, index]));
   return [...rows].sort((left, right) => {
@@ -1657,6 +1770,73 @@ const applyRuntimeStudentSchedules = (rows: StudentSchedule[], source: ScheduleD
     return;
   }
   showUserPicker.value = false;
+};
+
+const canUseScheduleCacheSnapshot = (snapshot: ScheduleCacheSnapshot) => {
+  const snapshotOwnerStudentId = String(snapshot.ownerStudentId || "").trim();
+  const snapshotOwnerStudentNo = String(snapshot.ownerStudentNo || "").trim();
+  const currentStudentId = String(authUser.value?.studentId || "").trim();
+  const currentStudentNo = String(authUser.value?.studentNo || "").trim();
+  if (snapshot.backendBaseUrl && snapshot.backendBaseUrl !== backendBaseUrl.value) {
+    return false;
+  }
+  if (snapshotOwnerStudentId && currentStudentId && snapshotOwnerStudentId !== currentStudentId) {
+    return false;
+  }
+  if (snapshotOwnerStudentNo && currentStudentNo && snapshotOwnerStudentNo !== currentStudentNo) {
+    return false;
+  }
+  return Boolean(snapshotOwnerStudentId || snapshotOwnerStudentNo || currentStudentId || currentStudentNo);
+};
+
+const restoreScheduleCacheSnapshot = (options?: { preserveCurrentSelection?: boolean }) => {
+  if (!isAuthed.value) {
+    return false;
+  }
+  const snapshot = readScheduleCacheSnapshot();
+  if (!snapshot || !canUseScheduleCacheSnapshot(snapshot)) {
+    return false;
+  }
+  applyRuntimeScheduleMeta({
+    termMeta: snapshot.termMeta,
+    holidays: snapshot.holidays,
+    makeupDays: snapshot.makeupDays,
+    sectionTimes: snapshot.sectionTimes,
+    weekdayLabels: snapshot.weekdayLabels,
+  });
+  const currentActiveStudentId = activeStudentId.value.trim();
+  const canPreserveActiveStudent = Boolean(
+    options?.preserveCurrentSelection &&
+      currentActiveStudentId &&
+      snapshot.students.some((student) => student.id === currentActiveStudentId),
+  );
+  if (!canPreserveActiveStudent) {
+    activeStudentId.value = snapshot.activeStudentId;
+  }
+  const snapshotActiveStudentId = activeStudentId.value || snapshot.activeStudentId;
+  const cachedStudentIds = new Set(snapshot.students.map((student) => student.id));
+  const preservedIncludedIds = includedStudentIds.value.filter((studentId) => cachedStudentIds.has(studentId));
+  const snapshotIncludedIds = snapshot.includedStudentIds.length > 0
+    ? snapshot.includedStudentIds
+    : snapshotActiveStudentId
+      ? [snapshotActiveStudentId]
+      : [];
+  if (options?.preserveCurrentSelection && preservedIncludedIds.length > 0) {
+    setIncludedIds(preservedIncludedIds);
+  } else {
+    setIncludedIds(snapshotIncludedIds);
+  }
+  if (snapshotActiveStudentId) {
+    uni.setStorageSync(STORAGE_SELECTED_STUDENT_KEY, snapshotActiveStudentId);
+  }
+  applyRuntimeStudentSchedules(snapshot.students, "cache", snapshot.cachedAt);
+  scheduleFetchStateByStudentId.value = snapshot.students.reduce<Record<string, ScheduleFetchState>>((acc, student) => {
+    if (Array.isArray(student.courses) && student.courses.length > 0) {
+      acc[student.id] = "ready";
+    }
+    return acc;
+  }, {});
+  return true;
 };
 
 const mergeRuntimeScheduleCandidates = (users: SocialUserItem[]) => {
@@ -1741,7 +1921,7 @@ const loadScheduleForStudent = async (studentId: string) => {
       nextRows.push(row);
     }
     applyRuntimeStudentSchedules(nextRows, "backend", cacheAt);
-    uni.setStorageSync(STORAGE_SCHEDULE_CACHE_SOURCE_KEY, "backend");
+    persistScheduleCacheSnapshot(cacheAt);
     return true;
   } catch (error) {
     return false;
@@ -1821,7 +2001,9 @@ const includeStatusByStudentId = computed<Record<string, string>>(() => {
 
 const refreshScheduleData = async () => {
   if (!isAuthed.value || backendProbeStatus.value !== "online") {
-    clearRuntimeScheduleData();
+    if (!restoreScheduleCacheSnapshot({ preserveCurrentSelection: true })) {
+      clearRuntimeScheduleData();
+    }
     return false;
   }
   if (!activeStudentId.value) {
@@ -1932,14 +2114,24 @@ const refreshSocialDashboard = async (options?: { skipActiveScheduleLoad?: boole
     );
     await applyDashboardStateToView(response, previousIncludedIds, options);
   } catch (error) {
+    const restoredScheduleCache = restoreScheduleCacheSnapshot({ preserveCurrentSelection: true });
     if (hydrateDashboardFromStorage(backendBaseUrl.value) && socialDashboard.value) {
       authStatusHint.value = "网络异常，已使用本地缓存";
-      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, options).catch(() => {});
+      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, {
+        ...options,
+        skipActiveScheduleLoad: restoredScheduleCache || options?.skipActiveScheduleLoad,
+      }).catch(() => {});
       return;
     }
     if (socialDashboard.value) {
       authStatusHint.value = "网络异常，已使用本地缓存";
-      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, options).catch(() => {});
+      await applyDashboardStateToView(socialDashboard.value, previousIncludedIds, {
+        ...options,
+        skipActiveScheduleLoad: restoredScheduleCache || options?.skipActiveScheduleLoad,
+      }).catch(() => {});
+      return;
+    }
+    if (restoredScheduleCache) {
       return;
     }
     practiceCourseKeys.value = [];
@@ -2217,10 +2409,14 @@ const refreshCurrentTabData = async (tab: TabKey) => {
     const backendReady = backendProbeStatus.value === "online" ? true : await runBackendProbe();
     if (!backendReady) {
       todayFoodCampaigns.value = [];
+      const restoredScheduleCache = restoreScheduleCacheSnapshot({ preserveCurrentSelection: true });
       const cachedDashboard = socialDashboard.value || (hydrateDashboardFromStorage(backendBaseUrl.value) ? socialDashboard.value : null);
       if (isAuthed.value && cachedDashboard) {
         authStatusHint.value = "离线状态，已使用本地缓存";
-        await applyDashboardStateToView(cachedDashboard, [...includedStudentIds.value]).catch(() => {});
+        await applyDashboardStateToView(cachedDashboard, [...includedStudentIds.value], { skipActiveScheduleLoad: restoredScheduleCache }).catch(() => {});
+      }
+      if (restoredScheduleCache) {
+        authStatusHint.value = "离线状态，已使用本地缓存";
       }
       return;
     }
@@ -2266,10 +2462,15 @@ onMounted(() => {
   void runBackendProbe().then(async (ok) => {
     if (!ok) {
       if (isAuthed.value) {
+        const restoredScheduleCache = restoreScheduleCacheSnapshot({ preserveCurrentSelection: true });
         const cachedDashboard = socialDashboard.value || (hydrateDashboardFromStorage(backendBaseUrl.value) ? socialDashboard.value : null);
         if (cachedDashboard) {
           authStatusHint.value = "离线状态，已使用本地缓存";
-          await applyDashboardStateToView(cachedDashboard, [...includedStudentIds.value]).catch(() => {});
+          await applyDashboardStateToView(cachedDashboard, [...includedStudentIds.value], { skipActiveScheduleLoad: restoredScheduleCache }).catch(() => {});
+          return;
+        }
+        if (restoredScheduleCache) {
+          authStatusHint.value = "离线状态，已使用本地缓存";
           return;
         }
       }
