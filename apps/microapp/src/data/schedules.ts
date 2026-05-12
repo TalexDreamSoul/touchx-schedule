@@ -67,7 +67,6 @@ const aliasStudentConfigs = [
   { id: "linfeng", name: "林峰", copyFromId: "caiziling" },
   { id: "panxiaofeng", name: "潘晓锋", copyFromId: "caiziling" },
   { id: "liuxinrong", name: "刘欣荣", copyFromId: "caiziling" },
-  { id: "wuxinyu", name: "伍鑫宇", copyFromId: "caiziling" },
 ] as const;
 
 const aliasStudentSchedules: StudentSchedule[] = aliasStudentConfigs
