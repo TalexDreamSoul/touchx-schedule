@@ -5,6 +5,7 @@ import {
   addDaysToDateKey,
   getEffectiveScheduleEntriesForUser,
   getSectionTimeBySection,
+  SCHEDULE_TERM_HOLIDAYS,
   SCHEDULE_WEEKDAY_LABELS,
   getUserReminderTimezone,
   isScheduleEntryInWeek,
@@ -231,6 +232,22 @@ const sanitizeReminderWindows = (user: UserRecord) => {
   return Array.from(new Set(windows.filter((item) => Number.isFinite(item) && item > 0))).sort((left, right) => right - left);
 };
 
+export const isDayBeforeScheduleHoliday = (dateKey: string) => {
+  const nextDateKey = addDaysToDateKey(dateKey, 1);
+  return SCHEDULE_TERM_HOLIDAYS.some((item) => item.date === nextDateKey && item.label === "休");
+};
+
+const resolvePreClassReminderWindows = (
+  baseWindows: number[],
+  contextDateKey: string,
+  startSlot: ReturnType<typeof getSectionTimeBySection>,
+) => {
+  if (startSlot?.part === "下午" && isDayBeforeScheduleHoliday(contextDateKey)) {
+    return [60];
+  }
+  return baseWindows;
+};
+
 const resolveScheduleDateContext = (date: Date, timeZone: string) => {
   const classDateContext = resolveScheduleClassDateContext(date, timeZone);
   return {
@@ -333,7 +350,8 @@ const buildPreClassReminderCandidates = (store: NexusStore, now: Date) => {
       if (courseEnd.getTime() <= now.getTime()) {
         continue;
       }
-      for (const windowMinutes of reminderWindows) {
+      const effectiveWindows = resolvePreClassReminderWindows(reminderWindows, context.nowParts.dateKey, startSlot);
+      for (const windowMinutes of effectiveWindows) {
         const dueAtDate = new Date(courseStart.getTime() - windowMinutes * 60 * 1000);
         const dueAtTs = dueAtDate.getTime();
         if (dueAtTs < bucketStart || dueAtTs >= bucketEnd) {
