@@ -101,6 +101,24 @@ def looks_like_title(text: str) -> bool:
     return bool(re.search(r"[A-Za-z\u4e00-\u9fff\+]", text))
 
 
+def parse_week_segments(detail_blob: str) -> list[dict[str, str]]:
+    if not detail_blob:
+        return []
+    head = detail_blob.split("/", 1)[0]
+    head = re.sub(r"^\(\d+-\d+节\)", "", head).strip()
+    segments: list[dict[str, str]] = []
+    for match in re.finditer(r"(\d{1,2}(?:-\d{1,2})?)周(?:\((单|双)\))?", head):
+        week_expr = match.group(1).strip()
+        parity_text = match.group(2) or ""
+        segment = {"weekExpr": week_expr}
+        if parity_text == "单":
+            segment["parity"] = "odd"
+        elif parity_text == "双":
+            segment["parity"] = "even"
+        segments.append(segment)
+    return segments
+
+
 def extract_tokens(pdf_path: Path) -> list[dict[str, Any]]:
     content = pdf_path.read_bytes()
     tokens: list[dict[str, Any]] = []
@@ -155,7 +173,7 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
         by_day[day].append(token)
 
     courses: list[dict[str, Any]] = []
-    detail_pattern = re.compile(r"^\((\d+)-(\d+)节\)([^/]*?)周(?:\((单|双)\))?")
+    detail_pattern = re.compile(r"^\((\d+)-(\d+)节\)([^/]*?周(?:\((?:单|双)\))?(?:,[^/]*?周(?:\((?:单|双)\))?)*)")
 
     for day in range(1, 8):
         day_tokens = sorted(by_day[day], key=lambda item: item["order"])
@@ -189,31 +207,31 @@ def parse_schedule(pdf_path: Path) -> dict[str, Any]:
                     break
                 next_index += 1
 
-            parity_map = {"单": "odd", "双": "even"}
-            course = {
+            base_course = {
                 "name": title,
                 "day": day,
                 "startSection": int(detail_match.group(1)),
                 "endSection": int(detail_match.group(2)),
-                "weekExpr": detail_match.group(3).strip(),
             }
-            parity = parity_map.get(detail_match.group(4) or "")
-            if parity:
-                course["parity"] = parity
 
             classroom_match = re.search(r"场地:([^/]+)", detail_blob)
             if classroom_match:
-                course["classroom"] = classroom_match.group(1).strip()
+                base_course["classroom"] = classroom_match.group(1).strip()
 
             teacher_match = re.search(r"教师:([^/]+)", detail_blob)
             if teacher_match:
-                course["teacher"] = teacher_match.group(1).strip()
+                base_course["teacher"] = teacher_match.group(1).strip()
 
             teaching_classes_match = re.search(r"教学班组成:([^/]+)", detail_blob)
             if teaching_classes_match:
-                course["teachingClasses"] = teaching_classes_match.group(1).strip()
+                base_course["teachingClasses"] = teaching_classes_match.group(1).strip()
 
-            courses.append(course)
+            for segment in parse_week_segments(detail_blob):
+                course = dict(base_course)
+                course["weekExpr"] = segment["weekExpr"]
+                if segment.get("parity"):
+                    course["parity"] = segment["parity"]
+                courses.append(course)
             index = next_index
 
     return {

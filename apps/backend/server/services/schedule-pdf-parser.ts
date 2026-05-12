@@ -163,6 +163,28 @@ const looksLikeTitle = (text: string) => {
   return /[A-Za-z\u4e00-\u9fff+]/.test(text);
 };
 
+const parseWeekSegments = (detailText: string) => {
+  const head = detailText
+    .split("/", 1)[0]
+    .replace(/^\(\d+-\d+节\)/, "")
+    .trim();
+  const segments: Array<{ weekExpr: string; parity?: ParsedScheduleCourse["parity"] }> = [];
+  for (const match of head.matchAll(/(\d{1,2}(?:-\d{1,2})?)周(?:\((单|双)\))?/g)) {
+    const segment: { weekExpr: string; parity?: ParsedScheduleCourse["parity"] } = {
+      weekExpr: String(match[1] || "").trim(),
+    };
+    if (match[2] === "单") {
+      segment.parity = "odd";
+    } else if (match[2] === "双") {
+      segment.parity = "even";
+    }
+    if (segment.weekExpr) {
+      segments.push(segment);
+    }
+  }
+  return segments;
+};
+
 const decodeLatin1 = (value: string) => {
   return Uint8Array.from(Buffer.from(value, "latin1"));
 };
@@ -251,7 +273,7 @@ export const parseSchedulePdf = (pdfBytes: Uint8Array): ParsedSchedulePdf => {
   }
 
   const courses: ParsedScheduleCourse[] = [];
-  const detailPattern = /^\((\d+)-(\d+)节\)([^/]*?)周(?:\((单|双)\))?/;
+  const detailPattern = /^\((\d+)-(\d+)节\)([^/]*?周(?:\((?:单|双)\))?(?:,[^/]*?周(?:\((?:单|双)\))?)*)/;
   for (let day = 1; day <= 7; day += 1) {
     const dayTokens = [...(byDay.get(day) || [])].sort((left, right) => left.order - right.order);
     const titleLines: string[] = [];
@@ -286,31 +308,31 @@ export const parseSchedulePdf = (pdfBytes: Uint8Array): ParsedSchedulePdf => {
         }
         nextIndex += 1;
       }
-      const course: ParsedScheduleCourse = {
+      const baseCourse: Omit<ParsedScheduleCourse, "weekExpr" | "parity"> = {
         name: title,
         day,
         startSection: Number(detail[1]) || 0,
         endSection: Number(detail[2]) || 0,
-        weekExpr: String(detail[3] || "").trim(),
       };
-      if (detail[4] === "单") {
-        course.parity = "odd";
-      } else if (detail[4] === "双") {
-        course.parity = "even";
-      }
       const classroom = /场地:([^/]+)/.exec(detailBlob);
       if (classroom) {
-        course.classroom = String(classroom[1] || "").trim();
+        baseCourse.classroom = String(classroom[1] || "").trim();
       }
       const teacher = /教师:([^/]+)/.exec(detailBlob);
       if (teacher) {
-        course.teacher = String(teacher[1] || "").trim();
+        baseCourse.teacher = String(teacher[1] || "").trim();
       }
       const teachingClasses = /教学班组成:([^/]+)/.exec(detailBlob);
       if (teachingClasses) {
-        course.teachingClasses = String(teachingClasses[1] || "").trim();
+        baseCourse.teachingClasses = String(teachingClasses[1] || "").trim();
       }
-      courses.push(course);
+      for (const segment of parseWeekSegments(detailBlob)) {
+        courses.push({
+          ...baseCourse,
+          weekExpr: segment.weekExpr,
+          parity: segment.parity,
+        });
+      }
       index = nextIndex;
     }
   }

@@ -478,6 +478,17 @@
         },
         {
           "id": "tzx-02",
+          "name": "并行与分布式计算",
+          "day": 1,
+          "startSection": 1,
+          "endSection": 2,
+          "weekExpr": "7-17",
+          "classroom": "10-511",
+          "teacher": "王站东",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-03",
           "name": "人工智能导论",
           "day": 1,
           "startSection": 3,
@@ -488,19 +499,30 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-03",
+          "id": "tzx-04",
           "name": "信息安全工程",
           "day": 1,
           "startSection": 5,
           "endSection": 6,
           "weekExpr": "9-11",
-          "classroom": "10-305",
           "parity": "odd",
+          "classroom": "10-305",
           "teacher": "张毅",
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-04",
+          "id": "tzx-05",
+          "name": "信息安全工程",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 6,
+          "weekExpr": "12-16",
+          "classroom": "10-305",
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-06",
           "name": "web 应用开发-II",
           "day": 1,
           "startSection": 5,
@@ -511,7 +533,18 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-05",
+          "id": "tzx-07",
+          "name": "web 应用开发-II",
+          "day": 1,
+          "startSection": 5,
+          "endSection": 7,
+          "weekExpr": "5-8",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3)"
+        },
+        {
+          "id": "tzx-08",
           "name": "web 应用开发-II",
           "day": 1,
           "startSection": 5,
@@ -522,7 +555,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-06",
+          "id": "tzx-09",
           "name": "信息安全工程",
           "day": 1,
           "startSection": 9,
@@ -533,7 +566,18 @@
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
         },
         {
-          "id": "tzx-07",
+          "id": "tzx-10",
+          "name": "信息安全工程",
+          "day": 1,
+          "startSection": 9,
+          "endSection": 10,
+          "weekExpr": "11-16",
+          "classroom": "5-509",
+          "teacher": "张毅",
+          "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
+        },
+        {
+          "id": "tzx-11",
           "name": "网站实现、维护和管理",
           "day": 2,
           "startSection": 2,
@@ -544,7 +588,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-08",
+          "id": "tzx-12",
           "name": "网站实现、维护和管理",
           "day": 2,
           "startSection": 2,
@@ -555,7 +599,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-09",
+          "id": "tzx-13",
           "name": "人工智能导论",
           "day": 2,
           "startSection": 5,
@@ -566,7 +610,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-10",
+          "id": "tzx-14",
           "name": "并行与分布式计算",
           "day": 3,
           "startSection": 1,
@@ -577,7 +621,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-11",
+          "id": "tzx-15",
           "name": "并行与分布式计算",
           "day": 3,
           "startSection": 3,
@@ -588,7 +632,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-12",
+          "id": "tzx-16",
           "name": "IT 领域社会与职业问题",
           "day": 3,
           "startSection": 5,
@@ -599,7 +643,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-13",
+          "id": "tzx-17",
           "name": "大学生职业发展与就业指导-2",
           "day": 3,
           "startSection": 9,
@@ -610,7 +654,7 @@
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-14",
+          "id": "tzx-18",
           "name": "软件质量保证与测试",
           "day": 3,
           "startSection": 9,
@@ -621,7 +665,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-15",
+          "id": "tzx-19",
           "name": "软件质量保证与测试",
           "day": 3,
           "startSection": 9,
@@ -632,7 +676,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-16",
+          "id": "tzx-20",
           "name": "web 应用开发-II",
           "day": 4,
           "startSection": 1,
@@ -643,7 +687,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-17",
+          "id": "tzx-21",
           "name": "web 应用开发-II",
           "day": 4,
           "startSection": 2,
@@ -654,7 +698,18 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-18",
+          "id": "tzx-22",
+          "name": "web 应用开发-II",
+          "day": 4,
+          "startSection": 2,
+          "endSection": 4,
+          "weekExpr": "8",
+          "classroom": "IT实训工作坊(I)",
+          "teacher": "刘国芳",
+          "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
+        },
+        {
+          "id": "tzx-23",
           "name": "网站实现、维护和管理",
           "day": 4,
           "startSection": 2,
@@ -665,7 +720,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-19",
+          "id": "tzx-24",
           "name": "软件质量保证与测试",
           "day": 4,
           "startSection": 5,
@@ -676,31 +731,31 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-20",
+          "id": "tzx-25",
           "name": "形势与政策-6",
           "day": 4,
           "startSection": 9,
           "endSection": 10,
           "weekExpr": "8-10",
-          "classroom": "学术报告厅1",
           "parity": "even",
+          "classroom": "学术报告厅1",
           "teacher": "张琪",
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);物联网工程23(3)"
         },
         {
-          "id": "tzx-21",
+          "id": "tzx-26",
           "name": "形势与政策-6",
           "day": 4,
           "startSection": 9,
           "endSection": 10,
           "weekExpr": "11-13",
-          "classroom": "7-401",
           "parity": "odd",
+          "classroom": "7-401",
           "teacher": "张琪",
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);物联网工程23(3)"
         },
         {
-          "id": "tzx-22",
+          "id": "tzx-27",
           "name": "web 应用开发-II",
           "day": 5,
           "startSection": 4,
@@ -711,7 +766,7 @@
           "teachingClasses": "计算机科学与技术23(3)"
         },
         {
-          "id": "tzx-23",
+          "id": "tzx-28",
           "name": "人工智能导论",
           "day": 5,
           "startSection": 5,
@@ -722,7 +777,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-24",
+          "id": "tzx-29",
           "name": "IT 领域社会与职业问题",
           "day": 5,
           "startSection": 7,
@@ -733,7 +788,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-25",
+          "id": "tzx-30",
           "name": "并行与分布式计算",
           "day": 5,
           "startSection": 9,
@@ -744,7 +799,7 @@
           "teachingClasses": "计算机科学与技术23(3);计算机科学与技术23(4)"
         },
         {
-          "id": "tzx-26",
+          "id": "tzx-31",
           "name": "信息安全工程",
           "day": 7,
           "startSection": 10,
@@ -755,7 +810,7 @@
           "teachingClasses": "计算机科学与技术23(1);计算机科学与技术23(2);计算机科学与技术23(3);计算机科学与技术23(4);计算机科学与技术23(5)"
         },
         {
-          "id": "tzx-27",
+          "id": "tzx-32",
           "name": "信息安全工程",
           "day": 7,
           "startSection": 10,
