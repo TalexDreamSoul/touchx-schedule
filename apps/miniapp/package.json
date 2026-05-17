@@ -1,0 +1,30 @@
+{
+  "name": "@touchx/miniapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:weapp": "taro build --type weapp --watch",
+    "build:weapp": "taro build --type weapp",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@touchx/shared": "workspace:*",
+    "@touchx/calendar-core": "workspace:*",
+    "@touchx/api-client": "workspace:*",
+    "@touchx/ui-tokens": "workspace:*",
+    "@tarojs/components": "^4.0.9",
+    "@tarojs/helper": "^4.0.9",
+    "@tarojs/plugin-framework-react": "^4.0.9",
+    "@tarojs/plugin-platform-weapp": "^4.0.9",
+    "@tarojs/react": "^4.0.9",
+    "@tarojs/runtime": "^4.0.9",
+    "@tarojs/taro": "^4.0.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tarojs/cli": "^4.0.9",
+    "typescript": "^5.9.3"
+  }
+}
