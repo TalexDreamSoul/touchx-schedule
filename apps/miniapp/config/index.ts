@@ -12,8 +12,14 @@ export default defineConfig(async () => ({
   sourceRoot: "src",
   outputRoot: "dist",
   framework: "react",
-  compiler: "vite",
+  compiler: {
+    type: "vite",
+    vitePlugins: [],
+  },
   mini: {
+    optimizeMainPackage: {
+      enable: false,
+    },
     postcss: {
       pxtransform: {
         enable: true,
