@@ -1,0 +1,68 @@
+name: Deploy Backend to wlcb1
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-wlcb1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy on wlcb1
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.WLCB1_HOST }}
+          username: ${{ secrets.WLCB1_USER || 'root' }}
+          key: ${{ secrets.WLCB1_SSH_KEY }}
+          port: ${{ secrets.WLCB1_PORT || '22' }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            APP_DIR="/opt/deploy/touchx-schedule"
+            REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$(dirname "$APP_DIR")"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            git fetch --all --prune
+            git checkout main
+            git reset --hard "${{ github.sha }}"
+            corepack pnpm@10.23.0 install --frozen-lockfile --ignore-scripts --prefer-offline
+            corepack pnpm@10.23.0 --filter @touchx/backend type-check
+            NITRO_PRESET=node-server corepack pnpm@10.23.0 --filter @touchx/backend build
+            cat >/etc/systemd/system/touchx-schedule-backend.service <<'EOF'
+            [Unit]
+            Description=TouchX Schedule Backend
+            After=network.target
+
+            [Service]
+            Type=simple
+            WorkingDirectory=/opt/deploy/touchx-schedule/apps/backend
+            Environment=NODE_ENV=production
+            Environment=HOST=127.0.0.1
+            Environment=PORT=39986
+            ExecStart=/usr/bin/node .output/server/index.mjs
+            Restart=always
+            RestartSec=5
+            StandardOutput=journal
+            StandardError=journal
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            systemctl daemon-reload
+            systemctl enable touchx-schedule-backend.service
+            systemctl restart touchx-schedule-backend.service
+            sleep 2
+            curl -fsS http://127.0.0.1:39986/health
