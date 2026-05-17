@@ -226,6 +226,21 @@
           </section>
         </template>
 
+        <template v-else-if="activeModuleKey === 'calendar-sources'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>日程源 CMS 已迁移</h2>
+              <div class="panel-tags">
+                <span class="panel-tag">React 化</span>
+                <span class="panel-tag">CalendarSource</span>
+              </div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('calendar-sources')">打开新版日程源</button>
+            </div>
+          </section>
+        </template>
+
         <template v-else-if="activeModuleKey === 'schedules'">
           <section class="panel">
             <header class="panel-head">
@@ -1182,6 +1197,78 @@
           </section>
         </template>
 
+        <template v-else-if="activeModuleKey === 'personal-events'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>个人事项已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">Todo / PersonalEvent</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('personal-events')">打开个人事项</button>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'reminder-rules'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>提醒规则已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">ReminderRule</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('reminder-rules')">打开提醒规则</button>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'reminder-candidates'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>提醒候选已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">ReminderCandidate</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('reminder-candidates')">打开提醒候选</button>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'notification-channels'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>通知通道已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">ClawDBot / Feishu</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('notification-channels')">打开通知通道</button>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'imports'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>导入中心已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">ImportJob</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('imports')">打开导入中心</button>
+            </div>
+          </section>
+        </template>
+
+        <template v-else-if="activeModuleKey === 'react-roadmap'">
+          <section class="panel">
+            <header class="panel-head">
+              <h2>React Roadmap 已拆分到新版 CMS</h2>
+              <div class="panel-tags"><span class="panel-tag">RN / Taro / CMS</span></div>
+            </header>
+            <div class="panel-toolbar">
+              <button class="btn primary" type="button" @click="jumpToModule('react-roadmap')">打开 Roadmap</button>
+            </div>
+          </section>
+        </template>
+
         <template v-else-if="activeModuleKey === 'settings'">
           <section class="panel">
             <header class="panel-head">
@@ -2002,8 +2089,15 @@ const modules: ModuleOption[] = [
   { key: "overview", label: "总览", hint: "关键指标与入口聚合", group: "core" },
   { key: "users", label: "用户", hint: "账号、角色与提醒配置", group: "core" },
   { key: "classes", label: "班级", hint: "班级生命周期与成员管理", group: "core" },
+  { key: "calendar-sources", label: "日程源", hint: "CalendarSource 新 CMS", group: "business" },
   { key: "schedules", label: "课表", hint: "发布、订阅、补丁与冲突", group: "business" },
   { key: "schedule-import", label: "课表导入", hint: "PDF 异步导入任务", group: "business" },
+  { key: "personal-events", label: "个人事项", hint: "Todo 与个人日程", group: "business" },
+  { key: "reminder-rules", label: "提醒规则", hint: "ReminderRule 策略配置", group: "business" },
+  { key: "reminder-candidates", label: "提醒候选", hint: "候选生成与投递入队", group: "business" },
+  { key: "imports", label: "导入中心", hint: "ImportJob 候选事件审核流", group: "business" },
+  { key: "notification-channels", label: "通知通道", hint: "ClawDBot / 飞书配置", group: "system" },
+  { key: "react-roadmap", label: "React Roadmap", hint: "全量 React 迁移路线", group: "system" },
   { key: "foods", label: "食物", hint: "食物库、热量与价格曲线", group: "business" },
   { key: "heart-open-word-bank", label: "心口难开词库", hint: "词语与惩罚管理", group: "business" },
   { key: "campaigns", label: "竞选", hint: "匿名投票与活动运营", group: "business" },
@@ -2235,6 +2329,8 @@ const activeModuleStats = computed(() => {
         `班级 ${classesData.value.length}`,
         `成员面板 ${classMembersData.value?.item?.classId ? "已加载" : "未加载"}`,
       ];
+    case "calendar-sources":
+      return ["新 CMS", "CalendarSource", "React 化入口"];
     case "schedules":
       return [
         `课表 ${schedulesData.value.length}`,
@@ -2273,6 +2369,18 @@ const activeModuleStats = computed(() => {
       return [`学号 ${previewForm.studentNo || "未填写"}`, `活动 ${previewForm.campaignId || "自动"}`];
     case "audit":
       return [`日志 ${auditItems.value.length}`];
+    case "personal-events":
+      return ["Todo", "PersonalEvent", "有效日程"];
+    case "reminder-rules":
+      return ["ReminderRule", "策略", "模板"];
+    case "reminder-candidates":
+      return ["Candidate", "Delivery", "入队"];
+    case "notification-channels":
+      return ["ClawDBot", "Feishu", "待接入"];
+    case "imports":
+      return ["ImportJob", "CandidateEvent", "审核流"];
+    case "react-roadmap":
+      return ["CMS React", "Taro React", "React Native"];
     case "settings":
       return [`健康项 ${Object.keys(settingsData.health || {}).length}`, `接口元信息 已加载`];
     default:
@@ -4325,8 +4433,29 @@ const moduleLoaders: Record<string, () => Promise<void>> = {
   overview: loadOverview,
   users: loadUsers,
   classes: loadClasses,
+  "calendar-sources": async () => {
+    await navigateTo("/nexus/calendar-sources", { replace: true });
+  },
   schedules: loadSchedules,
   "schedule-import": loadScheduleImportModule,
+  "personal-events": async () => {
+    await navigateTo("/nexus/personal-events", { replace: true });
+  },
+  "reminder-rules": async () => {
+    await navigateTo("/nexus/reminder-rules", { replace: true });
+  },
+  "reminder-candidates": async () => {
+    await navigateTo("/nexus/reminder-candidates", { replace: true });
+  },
+  imports: async () => {
+    await navigateTo("/nexus/imports", { replace: true });
+  },
+  "notification-channels": async () => {
+    await navigateTo("/nexus/notification-channels", { replace: true });
+  },
+  "react-roadmap": async () => {
+    await navigateTo("/nexus/react-roadmap", { replace: true });
+  },
   foods: loadFoods,
   "heart-open-word-bank": loadHeartOpenWordBank,
   campaigns: loadCampaigns,
