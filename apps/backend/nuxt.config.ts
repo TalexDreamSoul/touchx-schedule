@@ -1,3 +1,6 @@
+const nitroPreset = process.env.NITRO_PRESET || "cloudflare_module";
+const isCloudflarePreset = nitroPreset.includes("cloudflare");
+
 export default defineNuxtConfig({
   compatibilityDate: "2026-03-06",
   dir: {
@@ -37,11 +40,15 @@ export default defineNuxtConfig({
     enabled: false,
   },
   nitro: {
-    preset: "cloudflare_module",
-    cloudflare: {
-      deployConfig: true,
-      nodeCompat: true,
-    },
+    preset: nitroPreset,
+    ...(isCloudflarePreset
+      ? {
+          cloudflare: {
+            deployConfig: true,
+            nodeCompat: true,
+          },
+        }
+      : {}),
   },
   runtimeConfig: {
     adminLoginPassword: process.env.NEXUS_ADMIN_LOGIN_PASSWORD || "",
