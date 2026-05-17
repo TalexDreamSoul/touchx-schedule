@@ -18,6 +18,11 @@
   },
   "dependencies": {
     "@touchx/shared": "workspace:*",
+    "@touchx/calendar-core": "workspace:*",
+    "@touchx/api-client": "workspace:*",
+    "@touchx/notification-core": "workspace:*",
+    "@touchx/import-core": "workspace:*",
+    "@touchx/ui-tokens": "workspace:*",
     "ufo": "^1.6.1"
   },
   "devDependencies": {
