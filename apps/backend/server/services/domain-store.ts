@@ -3,10 +3,16 @@ import type {
   ClassRole,
   FollowMode,
   LocationGrid,
+  ImportCandidateEvent,
+  ImportJob,
+  NotificationChannel,
+  NotificationDelivery,
+  ReminderRule,
   ScheduleConflict,
   SchedulePatch,
   ScheduleSubscription,
   SmartSuggestionItem,
+  UserNotificationBinding,
   SocialActivityInvitationStatus,
   SocialActivityStatus,
   SocialCircleMemberRole,
@@ -416,6 +422,12 @@ export interface NexusStore {
   mediaAssets: MediaAssetRecord[];
   botTemplates: BotTemplateRecord[];
   botJobs: BotJobRecord[];
+  notificationChannels: NotificationChannel[];
+  notificationDeliveries: NotificationDelivery[];
+  reminderRules: ReminderRule[];
+  userNotificationBindings: UserNotificationBinding[];
+  importJobs: ImportJob[];
+  importCandidateEvents: ImportCandidateEvent[];
   auditLogs: AuditLogRecord[];
   partyGameRooms: PartyGameRoomRecord[];
   partyGameMembers: PartyGameMemberRecord[];
@@ -875,6 +887,59 @@ const upgradeBotTemplates = (store: NexusStore) => {
       return;
     }
     store.botTemplates.push(item);
+  });
+};
+
+const createDefaultNotificationChannels = (createdAt: string): NotificationChannel[] => {
+  return [
+    {
+      id: "notification_channel_wechat_clawdbot",
+      type: "wechat_clawdbot",
+      name: "微信 ClawDBot",
+      enabled: false,
+      config: {},
+      createdAt,
+      updatedAt: createdAt,
+    },
+    {
+      id: "notification_channel_feishu",
+      type: "feishu",
+      name: "飞书",
+      enabled: false,
+      config: {},
+      createdAt,
+      updatedAt: createdAt,
+    },
+  ];
+};
+
+const upgradeImportCollections = (store: NexusStore) => {
+  if (!Array.isArray(store.importJobs)) {
+    store.importJobs = [];
+  }
+  if (!Array.isArray(store.importCandidateEvents)) {
+    store.importCandidateEvents = [];
+  }
+};
+
+const upgradeNotificationCollections = (store: NexusStore) => {
+  if (!Array.isArray(store.notificationChannels)) {
+    store.notificationChannels = [];
+  }
+  if (!Array.isArray(store.notificationDeliveries)) {
+    store.notificationDeliveries = [];
+  }
+  if (!Array.isArray(store.reminderRules)) {
+    store.reminderRules = [];
+  }
+  if (!Array.isArray(store.userNotificationBindings)) {
+    store.userNotificationBindings = [];
+  }
+  const existingTypes = new Set(store.notificationChannels.map((item) => item.type));
+  createDefaultNotificationChannels(nowIso()).forEach((item) => {
+    if (!existingTypes.has(item.type)) {
+      store.notificationChannels.push(item);
+    }
   });
 };
 
@@ -1365,6 +1430,12 @@ const buildStoreFromLegacyNormalized = (): NexusStore | null => {
     ],
     botTemplates: buildDefaultBotTemplates(createdAt),
     botJobs: [],
+    notificationChannels: createDefaultNotificationChannels(createdAt),
+    notificationDeliveries: [],
+    reminderRules: [],
+    userNotificationBindings: [],
+    importJobs: [],
+    importCandidateEvents: [],
     auditLogs: [],
     partyGameRooms: [],
     partyGameMembers: [],
@@ -1723,6 +1794,12 @@ const bootstrapStore = (): NexusStore => {
     ],
     botTemplates: buildDefaultBotTemplates(createdAt),
     botJobs: [],
+    notificationChannels: createDefaultNotificationChannels(createdAt),
+    notificationDeliveries: [],
+    reminderRules: [],
+    userNotificationBindings: [],
+    importJobs: [],
+    importCandidateEvents: [],
     auditLogs: [],
     partyGameRooms: [],
     partyGameMembers: [],
@@ -1763,6 +1840,8 @@ export const getNexusStore = () => {
     normalizeCampaignOptions(scoped.store);
     upgradeHeartOpenWordBank(scoped.store);
     upgradeBotTemplates(scoped.store);
+    upgradeNotificationCollections(scoped.store);
+    upgradeImportCollections(scoped.store);
     upgradeSocialCollaborationCollections(scoped.store);
     return scoped.store;
   }
@@ -1775,6 +1854,8 @@ export const getNexusStore = () => {
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeBotTemplates(store);
+  upgradeNotificationCollections(store);
+  upgradeImportCollections(store);
   upgradeSocialCollaborationCollections(store);
   return store;
 };
@@ -1786,6 +1867,8 @@ export const resetNexusStore = () => {
     normalizeCampaignOptions(nextStore);
     upgradeHeartOpenWordBank(nextStore);
     upgradeBotTemplates(nextStore);
+    upgradeNotificationCollections(nextStore);
+    upgradeImportCollections(nextStore);
     upgradeSocialCollaborationCollections(nextStore);
     scoped.store = nextStore;
     return scoped.store;
@@ -1797,6 +1880,8 @@ export const resetNexusStore = () => {
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeBotTemplates(store);
+  upgradeNotificationCollections(store);
+  upgradeImportCollections(store);
   upgradeSocialCollaborationCollections(store);
   return store;
 };

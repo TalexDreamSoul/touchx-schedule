@@ -2,6 +2,7 @@ import { getHeader, getMethod, getQuery, getRequestURL, H3Event, setHeader, setR
 import type {
   ClassRole,
   DistanceLevel,
+  NotificationChannelType,
   ScheduleConflict,
   SchedulePatch,
   ScheduleSubscription,
@@ -34,6 +35,7 @@ import {
   type ScheduleRecord,
   type ScheduleVersionRecord,
   type UserRecord,
+  type UserScheduleEventRecord,
 } from "./domain-store";
 import { buildSmartSuggestions } from "./suggestion-engine";
 import {
@@ -67,6 +69,28 @@ import {
   runReminderHeartbeat,
 } from "./reminder-delivery-service";
 import { clampNumber, estimateFoodCaloriesKcal, normalizeCaloriesKcal, resolveExerciseEquivalentMinutes } from "./food-utils";
+import { buildEffectiveCalendarForUser } from "../modules/calendar/effective-calendar-service";
+import { getCalendarSourceDetail, listCalendarSources } from "../modules/calendar/calendar-source-service";
+import { toAdminCalendarSourcePayload, toCalendarSourceVersion } from "../modules/calendar/calendar-adapter";
+import { listUserCalendarSubscriptions, subscribeCalendarSource } from "../modules/calendar/calendar-subscription-service";
+import {
+  createNotificationTestDelivery,
+  listNotificationChannels,
+  upsertNotificationChannel,
+} from "../modules/notification/notification-channel-service";
+import { dispatchPendingNotificationDeliveries } from "../modules/notification/notification-delivery-service";
+import { deleteReminderRule, listReminderRules, upsertReminderRule } from "../modules/notification/reminder-rule-service";
+import { enqueueReminderCandidatesForUser, listReminderCandidatesForUser } from "../modules/notification/reminder-candidate-service";
+import {
+  commitImportCandidateToCalendarSource,
+  commitImportCandidateToPersonalEvent,
+  createCandidatesFromScheduleImportPreview,
+  createImportCandidateEvent,
+  createManualImportJob,
+  listImportCandidates,
+  listImportJobsWithCandidates,
+  updateImportCandidateStatus,
+} from "../modules/import/import-candidate-service";
 
 const asString = (value: unknown) => String(value || "").trim();
 
@@ -981,7 +1005,7 @@ const isSocialCompatPath = (path: string) => {
     path.startsWith("notifications") ||
     path.startsWith("ai/") ||
     path.startsWith("exams/") ||
-    path.startsWith("calendar/") ||
+    path === "calendar/views" ||
     path.startsWith("schedule-import/corrections") ||
     path.startsWith("admin/food-candidates") ||
     path === "auth/wechat-login" ||
@@ -1351,6 +1375,474 @@ export const handleV1Api = async (event: H3Event) => {
       needInit: !authState.initialized,
       bootstrapStudentNo: authState.bootstrapStudentNo,
     });
+  }
+
+  if (method === "GET" && path === "calendar/sources") {
+    const items = listCalendarSources(store);
+    return ok(items);
+  }
+
+  const calendarSourcePublishVersionMatch = path.match(/^admin\/calendar\/sources\/([^/]+)\/versions\/(\d+)\/publish$/);
+  if (method === "POST" && calendarSourcePublishVersionMatch) {
+    const { user } = requireAdmin(event);
+    const sourceId = decodeURIComponent(calendarSourcePublishVersionMatch[1]);
+    const versionNo = Number(calendarSourcePublishVersionMatch[2]);
+    const scheduleId = sourceId.replace(/^schedule:/, "");
+    const schedule = store.schedules.find((item) => item.id === scheduleId) || null;
+    if (!schedule) {
+      return toApiError(404, "CALENDAR_SOURCE_NOT_FOUND", "日程源不存在");
+    }
+    const version = store.scheduleVersions.find((item) => item.scheduleId === scheduleId && item.versionNo === versionNo) || null;
+    if (!version) {
+      return toApiError(404, "CALENDAR_SOURCE_VERSION_NOT_FOUND", "日程源版本不存在");
+    }
+    version.status = "published";
+    schedule.publishedVersionNo = versionNo;
+    schedule.updatedAt = storeHelpers.nowIso();
+    onSchedulePublished(schedule, versionNo);
+    appendAudit("calendar_source_version_publish", user.userId, { sourceId, scheduleId, versionNo });
+    return ok({ item: toAdminCalendarSourcePayload(store, schedule), version: toCalendarSourceVersion(version) });
+  }
+
+  const calendarSourceDetailMatch = path.match(/^calendar\/sources\/([^/]+)$/);
+  if (method === "GET" && calendarSourceDetailMatch) {
+    const sourceId = decodeURIComponent(calendarSourceDetailMatch[1]);
+    const detail = getCalendarSourceDetail(store, sourceId);
+    if (!detail) {
+      return toApiError(404, "CALENDAR_SOURCE_NOT_FOUND", "日程源不存在");
+    }
+    return ok(detail);
+  }
+
+  if (method === "GET" && path === "calendar/me/subscriptions") {
+    const { user } = requireUser(event);
+    return ok(listUserCalendarSubscriptions(store, user));
+  }
+
+  if (method === "GET" && path === "calendar/me/personal-events") {
+    const { user } = requireUser(event);
+    const includeArchived = asString(query.includeArchived).toLowerCase() === "true" || asString(query.include_archived) === "1";
+    const items = store.userScheduleEvents
+      .filter((item) => item.userId === user.userId)
+      .filter((item) => includeArchived || !(item.tags || []).includes("archived"))
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return ok({ items, total: items.length });
+  }
+
+  if (method === "POST" && path === "calendar/me/personal-events") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{
+      title?: string;
+      description?: string;
+      eventType?: string;
+      date?: string;
+      weekday?: number;
+      day?: number;
+      weekExpr?: string;
+      startSection?: number;
+      endSection?: number;
+      tags?: string[];
+      priority?: "low" | "normal" | "high";
+    }>(event);
+    const title = asString(body.title);
+    if (!title) {
+      return toApiError(400, "PERSONAL_EVENT_TITLE_REQUIRED", "个人事项标题不能为空");
+    }
+    const now = storeHelpers.nowIso();
+    const eventRecord: UserScheduleEventRecord = {
+      id: storeHelpers.createId("user_event"),
+      userId: user.userId,
+      title,
+      description: asString(body.description),
+      source: body.eventType === "exam" ? "exam" : body.eventType === "activity" ? "activity" : "manual",
+      day: Math.max(1, Math.min(7, Math.trunc(Number(body.weekday || body.day || 1)))),
+      startSection: Math.max(1, Math.trunc(Number(body.startSection || 1))),
+      endSection: Math.max(1, Math.trunc(Number(body.endSection || body.startSection || 1))),
+      weekExpr: asString(body.weekExpr) || "1-25",
+      parity: "all",
+      tags: Array.isArray(body.tags) ? body.tags.map((item) => asString(item)).filter(Boolean) : ["个人"],
+      priorityScore: body.priority === "high" ? 80 : body.priority === "low" ? 30 : 50,
+      priorityLabel: body.priority === "high" || body.priority === "low" ? body.priority : "normal",
+      examDate: asString(body.date),
+      createdAt: now,
+      updatedAt: now,
+    };
+    eventRecord.endSection = Math.max(eventRecord.startSection, eventRecord.endSection);
+    store.userScheduleEvents.push(eventRecord);
+    appendAudit("personal_event_create", user.userId, { eventId: eventRecord.id, title: eventRecord.title });
+    return ok({ item: eventRecord });
+  }
+
+  const personalEventUpdateMatch = path.match(/^calendar\/me\/personal-events\/([^/]+)$/);
+  if ((method === "POST" || method === "PATCH") && personalEventUpdateMatch) {
+    const { user } = requireUser(event);
+    const eventId = decodeURIComponent(personalEventUpdateMatch[1]);
+    const item = store.userScheduleEvents.find((eventItem) => eventItem.id === eventId && eventItem.userId === user.userId) || null;
+    if (!item) {
+      return toApiError(404, "PERSONAL_EVENT_NOT_FOUND", "个人事项不存在");
+    }
+    const body = await readJsonBody<{
+      title?: string;
+      description?: string;
+      eventType?: string;
+      date?: string;
+      weekday?: number;
+      day?: number;
+      weekExpr?: string;
+      startSection?: number;
+      endSection?: number;
+      tags?: string[];
+      priority?: "low" | "normal" | "high";
+    }>(event);
+    if (Object.prototype.hasOwnProperty.call(body, "title")) {
+      const title = asString(body.title);
+      if (!title) {
+        return toApiError(400, "PERSONAL_EVENT_TITLE_REQUIRED", "个人事项标题不能为空");
+      }
+      item.title = title;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "description")) {
+      item.description = asString(body.description);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "eventType")) {
+      item.source = body.eventType === "exam" ? "exam" : body.eventType === "activity" ? "activity" : "manual";
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "weekday") || Object.prototype.hasOwnProperty.call(body, "day")) {
+      item.day = Math.max(1, Math.min(7, Math.trunc(Number(body.weekday || body.day || item.day || 1))));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "startSection")) {
+      item.startSection = Math.max(1, Math.trunc(Number(body.startSection || item.startSection || 1)));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "endSection")) {
+      item.endSection = Math.max(item.startSection, Math.trunc(Number(body.endSection || item.endSection || item.startSection || 1)));
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "weekExpr")) {
+      item.weekExpr = asString(body.weekExpr) || item.weekExpr;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "date")) {
+      item.examDate = asString(body.date);
+    }
+    if (Array.isArray(body.tags)) {
+      item.tags = body.tags.map((tag) => asString(tag)).filter(Boolean);
+    }
+    if (body.priority === "high" || body.priority === "normal" || body.priority === "low") {
+      item.priorityLabel = body.priority;
+      item.priorityScore = body.priority === "high" ? 80 : body.priority === "low" ? 30 : 50;
+    }
+    item.updatedAt = storeHelpers.nowIso();
+    appendAudit("personal_event_update", user.userId, { eventId });
+    return ok({ item });
+  }
+
+  const personalEventDeleteMatch = path.match(/^calendar\/me\/personal-events\/([^/]+)\/delete$/);
+  if (method === "POST" && personalEventDeleteMatch) {
+    const { user } = requireUser(event);
+    const eventId = decodeURIComponent(personalEventDeleteMatch[1]);
+    const item = store.userScheduleEvents.find((eventItem) => eventItem.id === eventId && eventItem.userId === user.userId) || null;
+    if (!item) {
+      return toApiError(404, "PERSONAL_EVENT_NOT_FOUND", "个人事项不存在");
+    }
+    item.tags = Array.from(new Set([...(item.tags || []).filter((tag) => tag !== "done"), "archived"]));
+    item.updatedAt = storeHelpers.nowIso();
+    appendAudit("personal_event_archive", user.userId, { eventId });
+    return ok({ item });
+  }
+
+  const personalEventDoneMatch = path.match(/^calendar\/me\/personal-events\/([^/]+)\/done$/);
+  if (method === "POST" && personalEventDoneMatch) {
+    const { user } = requireUser(event);
+    const eventId = decodeURIComponent(personalEventDoneMatch[1]);
+    const item = store.userScheduleEvents.find((eventItem) => eventItem.id === eventId && eventItem.userId === user.userId) || null;
+    if (!item) {
+      return toApiError(404, "PERSONAL_EVENT_NOT_FOUND", "个人事项不存在");
+    }
+    item.tags = Array.from(new Set([...(item.tags || []), "done"]));
+    item.updatedAt = storeHelpers.nowIso();
+    appendAudit("personal_event_done", user.userId, { eventId });
+    return ok({ item });
+  }
+
+  if (method === "GET" && path === "calendar/me/reminder-candidates") {
+    const { user } = requireUser(event);
+    const result = listReminderCandidatesForUser(store, user, {
+      week: Number(query.week || 0) || undefined,
+      date: asString(query.date),
+    });
+    return ok(result);
+  }
+
+  if (method === "POST" && path === "calendar/me/reminder-candidates/enqueue") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{ week?: number; date?: string; limit?: number }>(event);
+    const result = enqueueReminderCandidatesForUser(store, user, {
+      week: body.week,
+      date: asString(body.date),
+      limit: body.limit,
+    });
+    appendAudit("reminder_candidates_enqueue", user.userId, { count: result.total, candidateTotal: result.candidateTotal });
+    return ok(result);
+  }
+
+  if (method === "GET" && path === "calendar/me/effective") {
+    const { user } = requireUser(event);
+    const result = buildEffectiveCalendarForUser(store, user, {
+      week: Number(query.week || 0) || undefined,
+      date: asString(query.date),
+      includeHidden: asString(query.includeHidden).toLowerCase() === "true" || asString(query.include_hidden) === "1",
+    });
+    return ok(result);
+  }
+
+  const calendarSourceSubscribeMatch = path.match(/^calendar\/sources\/([^/]+)\/subscribe$/);
+  if (method === "POST" && calendarSourceSubscribeMatch) {
+    const { user } = requireUser(event);
+    const sourceId = decodeURIComponent(calendarSourceSubscribeMatch[1]);
+    const result = subscribeCalendarSource(store, user, sourceId);
+    if (!result) {
+      return toApiError(404, "CALENDAR_SOURCE_NOT_FOUND", "日程源不存在");
+    }
+    if (result === "not_published") {
+      return toApiError(400, "CALENDAR_SOURCE_NOT_PUBLISHED", "日程源尚未发布，暂不可订阅");
+    }
+    appendAudit("calendar_source_subscribe", user.userId, { sourceId, subscriptionId: result.subscription.id });
+    return ok(result);
+  }
+
+  if (method === "GET" && path === "admin/notification-channels") {
+    requireAdmin(event);
+    return ok(listNotificationChannels(store));
+  }
+
+  if (method === "POST" && path === "admin/notification-channels") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{
+      id?: string;
+      type?: NotificationChannelType;
+      name?: string;
+      enabled?: boolean;
+      config?: Record<string, unknown>;
+    }>(event);
+    const channel = upsertNotificationChannel(store, {
+      id: asString(body.id),
+      type: body.type as NotificationChannelType,
+      name: body.name,
+      enabled: body.enabled,
+      config: body.config,
+    });
+    if (!channel) {
+      return toApiError(400, "NOTIFICATION_CHANNEL_TYPE_INVALID", "通知通道类型不合法");
+    }
+    appendAudit("notification_channel_upsert", user.userId, { channelId: channel.id, type: channel.type, enabled: channel.enabled });
+    return ok({ item: channel });
+  }
+
+  const notificationChannelTestMatch = path.match(/^admin\/notification-channels\/([^/]+)\/test$/);
+  if (method === "POST" && notificationChannelTestMatch) {
+    const { user } = requireAdmin(event);
+    const channelType = decodeURIComponent(notificationChannelTestMatch[1]) as NotificationChannelType;
+    const body = await readJsonBody<{ title?: string; body?: string }>(event);
+    const delivery = await createNotificationTestDelivery(store, {
+      userId: user.userId,
+      channelType,
+      title: body.title,
+      body: body.body,
+    });
+    if (!delivery) {
+      return toApiError(404, "NOTIFICATION_CHANNEL_NOT_FOUND", "通知通道不存在");
+    }
+    appendAudit("notification_channel_test", user.userId, { channelType, deliveryId: delivery.id, status: delivery.status });
+    return ok({ delivery });
+  }
+
+  if (method === "GET" && path === "admin/notification-deliveries") {
+    requireAdmin(event);
+    const { limit, offset } = parsePagination(query as Record<string, unknown>);
+    const items = store.notificationDeliveries.slice(offset, offset + limit);
+    return ok({ items, total: store.notificationDeliveries.length, limit, offset });
+  }
+
+  if (method === "GET" && path === "admin/reminder-rules") {
+    requireAdmin(event);
+    return ok(listReminderRules(store));
+  }
+
+  if (method === "POST" && path === "admin/reminder-rules") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{
+      id?: string;
+      targetType?: "subscription" | "source_event" | "personal_event" | "global";
+      targetId?: string;
+      enabled?: boolean;
+      offsetMinutes?: number;
+      templateKey?: string;
+      channelStrategy?: "both" | "primary_then_fallback" | "primary_only";
+      quietHoursRespect?: boolean;
+    }>(event);
+    const rule = upsertReminderRule(store, body);
+    appendAudit("reminder_rule_upsert", user.userId, { ruleId: rule.id, targetType: rule.targetType, targetId: rule.targetId });
+    return ok({ item: rule });
+  }
+
+  const reminderRuleDeleteMatch = path.match(/^admin\/reminder-rules\/([^/]+)\/delete$/);
+  if (method === "POST" && reminderRuleDeleteMatch) {
+    const { user } = requireAdmin(event);
+    const ruleId = decodeURIComponent(reminderRuleDeleteMatch[1]);
+    const removed = deleteReminderRule(store, ruleId);
+    if (!removed) {
+      return toApiError(404, "REMINDER_RULE_NOT_FOUND", "提醒规则不存在");
+    }
+    appendAudit("reminder_rule_delete", user.userId, { ruleId });
+    return ok({ item: removed });
+  }
+
+  if (method === "POST" && path === "admin/notification-deliveries/dispatch-pending") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{ limit?: number }>(event);
+    const result = await dispatchPendingNotificationDeliveries(store, { limit: body.limit });
+    appendAudit("notification_delivery_dispatch_pending", user.userId, { count: result.total });
+    return ok(result);
+  }
+
+  if (method === "GET" && path === "admin/import-candidate-jobs") {
+    requireAdmin(event);
+    return ok(listImportJobsWithCandidates(store));
+  }
+
+  if (method === "POST" && path === "admin/import-candidate-jobs") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{ rawText?: string; title?: string; location?: string; weekday?: number; startSection?: number; endSection?: number; targetSourceId?: string }>(event);
+    const job = createManualImportJob(store, { ownerUserId: user.userId, type: "manual", rawText: body.rawText, targetSourceId: body.targetSourceId });
+    if (asString(body.title)) {
+      createImportCandidateEvent(store, {
+        jobId: job.id,
+        title: asString(body.title),
+        location: asString(body.location),
+        weekday: body.weekday,
+        startSection: body.startSection,
+        endSection: body.endSection,
+        rawPayload: body as Record<string, unknown>,
+      });
+    }
+    appendAudit("import_candidate_job_create", user.userId, { jobId: job.id });
+    return ok({ item: job });
+  }
+
+  const importCandidateFromLegacyMatch = path.match(/^admin\/import-candidate-jobs\/from-schedule-import\/([^/]+)$/);
+  if (method === "POST" && importCandidateFromLegacyMatch) {
+    const { user } = requireAdmin(event);
+    const legacyJobId = decodeURIComponent(importCandidateFromLegacyMatch[1]);
+    const body = await readJsonBody<{ targetSourceId?: string; itemId?: string }>(event);
+    let status: Awaited<ReturnType<typeof getScheduleImportJobStatus>> | null = null;
+    try {
+      status = await getScheduleImportJobStatus(event, legacyJobId);
+    } catch (error) {
+      return toApiError(400, "LEGACY_IMPORT_JOB_UNAVAILABLE", error instanceof Error ? error.message : "旧导入任务不可用");
+    }
+    if (!status) {
+      return toApiError(404, "SCHEDULE_IMPORT_JOB_NOT_FOUND", "旧导入任务不存在");
+    }
+    const previewEntries = status.results
+      .filter((item) => !body.itemId || item.itemId === body.itemId)
+      .flatMap((item) => item.previewEntries || []);
+    if (previewEntries.length <= 0) {
+      return toApiError(400, "SCHEDULE_IMPORT_PREVIEW_EMPTY", "旧导入任务没有可转换的 previewEntries");
+    }
+    const result = createCandidatesFromScheduleImportPreview(store, {
+      ownerUserId: user.userId,
+      legacyJobId,
+      previewEntries,
+      targetSourceId: body.targetSourceId,
+      rawText: `旧 PDF 导入任务 ${legacyJobId}`,
+    });
+    appendAudit("import_candidate_from_schedule_import", user.userId, { legacyJobId, jobId: result.job.id, candidateCount: result.candidates.length });
+    return ok({ item: result.job, candidates: result.candidates, candidateCount: result.candidates.length });
+  }
+
+  const importCandidateListMatch = path.match(/^admin\/import-candidate-jobs\/([^/]+)\/candidates$/);
+  if (method === "GET" && importCandidateListMatch) {
+    requireAdmin(event);
+    const jobId = decodeURIComponent(importCandidateListMatch[1]);
+    return ok(listImportCandidates(store, jobId));
+  }
+
+  const importCandidateCommitCalendarMatch = path.match(/^admin\/import-candidates\/([^/]+)\/commit-calendar$/);
+  if (method === "POST" && importCandidateCommitCalendarMatch) {
+    const { user } = requireAdmin(event);
+    const candidateId = decodeURIComponent(importCandidateCommitCalendarMatch[1]);
+    const body = await readJsonBody<{ sourceId?: string; publish?: boolean }>(event);
+    const result = commitImportCandidateToCalendarSource(store, { candidateId, sourceId: body.sourceId, actorUserId: user.userId, publish: body.publish });
+    if (!result) {
+      return toApiError(404, "IMPORT_CANDIDATE_NOT_FOUND", "导入候选不存在");
+    }
+    if (result === "source_not_found") {
+      return toApiError(404, "IMPORT_TARGET_SOURCE_NOT_FOUND", "目标日程源不存在");
+    }
+    appendAudit("import_candidate_commit_calendar", user.userId, { candidateId, scheduleId: result.schedule.id, versionNo: result.version.versionNo });
+    return ok(result);
+  }
+
+  const importCandidateCommitPersonalMatch = path.match(/^admin\/import-candidates\/([^/]+)\/commit-personal$/);
+  if (method === "POST" && importCandidateCommitPersonalMatch) {
+    const { user } = requireAdmin(event);
+    const candidateId = decodeURIComponent(importCandidateCommitPersonalMatch[1]);
+    const result = commitImportCandidateToPersonalEvent(store, { candidateId, userId: user.userId });
+    if (!result) {
+      return toApiError(404, "IMPORT_CANDIDATE_NOT_FOUND", "导入候选不存在");
+    }
+    appendAudit("import_candidate_commit_personal", user.userId, { candidateId, personalEventId: result.event.id });
+    return ok(result);
+  }
+
+  const importCandidateStatusMatch = path.match(/^admin\/import-candidates\/([^/]+)\/(accept|reject|correct)$/);
+  if (method === "POST" && importCandidateStatusMatch) {
+    const { user } = requireAdmin(event);
+    const candidateId = decodeURIComponent(importCandidateStatusMatch[1]);
+    const action = importCandidateStatusMatch[2];
+    const body = await readJsonBody<Partial<import("@touchx/shared").ImportCandidateEvent>>(event);
+    const status = action === "accept" ? "accepted" : action === "reject" ? "rejected" : "corrected";
+    const item = updateImportCandidateStatus(store, candidateId, status, body);
+    if (!item) {
+      return toApiError(404, "IMPORT_CANDIDATE_NOT_FOUND", "导入候选不存在");
+    }
+    appendAudit("import_candidate_update", user.userId, { candidateId, status });
+    return ok({ item });
+  }
+
+  if (method === "GET" && path === "admin/import-jobs") {
+    const { user } = requireScheduleImportAccess(event);
+    const parsedLimit = Number(query.limit);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(100, Math.trunc(parsedLimit))) : 20;
+    try {
+      const items = await listRecentScheduleImportJobs(event, {
+        actorUserId: user.userId,
+        includeAll: true,
+        limit,
+      });
+      return ok({ items, total: items.length, limit, storage: "schedule_import_jobs" });
+    } catch (error) {
+      if (String(error instanceof Error ? error.message : error).includes("NEXUS_DB")) {
+        return ok({ items: [], total: 0, limit, storage: "not_configured", warning: "NEXUS_DB 未配置，暂无导入任务存储" });
+      }
+      throw error;
+    }
+  }
+
+  const adminImportJobMatch = path.match(/^admin\/import-jobs\/([^/]+)$/);
+  if (method === "GET" && adminImportJobMatch) {
+    requireScheduleImportAccess(event);
+    const jobId = decodeURIComponent(adminImportJobMatch[1]);
+    try {
+      const item = await getScheduleImportJobStatus(event, jobId);
+      if (!item) {
+        return toApiError(404, "IMPORT_JOB_NOT_FOUND", "导入任务不存在");
+      }
+      return ok({ item });
+    } catch (error) {
+      if (String(error instanceof Error ? error.message : error).includes("NEXUS_DB")) {
+        return toApiError(503, "IMPORT_STORAGE_NOT_CONFIGURED", "NEXUS_DB 未配置，无法读取导入任务");
+      }
+      throw error;
+    }
   }
 
   if (method === "POST" && path === "admin/init-password") {
