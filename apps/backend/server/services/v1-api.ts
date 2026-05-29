@@ -85,7 +85,7 @@ import {
   listNotificationChannels,
   upsertNotificationChannel,
 } from "../modules/notification/notification-channel-service";
-import { dispatchPendingNotificationDeliveries } from "../modules/notification/notification-delivery-service";
+import { dispatchPendingNotificationDeliveries, retryFailedNotificationDelivery } from "../modules/notification/notification-delivery-service";
 import { deleteReminderRule, listReminderRules, upsertReminderRule } from "../modules/notification/reminder-rule-service";
 import { enqueueReminderCandidatesForUser, listReminderCandidatesForUser } from "../modules/notification/reminder-candidate-service";
 import {
@@ -2328,6 +2328,26 @@ export const handleV1Api = async (event: H3Event) => {
     const result = await dispatchPendingNotificationDeliveries(store, { limit: body.limit });
     appendAudit("notification_delivery_dispatch_pending", user.userId, { count: result.total });
     return ok(result);
+  }
+
+  const notificationDeliveryRetryMatch = path.match(/^admin\/notification-deliveries\/([^/]+)\/retry$/);
+  if (method === "POST" && notificationDeliveryRetryMatch) {
+    const { user } = requireAdmin(event);
+    const deliveryId = decodeURIComponent(notificationDeliveryRetryMatch[1]);
+    const result = await retryFailedNotificationDelivery(store, deliveryId);
+    if (!result.item) {
+      return toApiError(404, "NOTIFICATION_DELIVERY_NOT_FOUND", "投递记录不存在");
+    }
+    if (!result.retried) {
+      return toApiError(400, "NOTIFICATION_DELIVERY_RETRY_NOT_FAILED", "仅 failed 状态的投递记录可手动重试");
+    }
+    appendAudit("notification_delivery_retry", user.userId, {
+      deliveryId,
+      status: result.item.status,
+      attemptCount: result.item.attemptCount,
+      channelType: result.item.channelType,
+    });
+    return ok({ item: result.item, retried: result.retried });
   }
 
   if (method === "GET" && path === "admin/import-candidate-jobs") {

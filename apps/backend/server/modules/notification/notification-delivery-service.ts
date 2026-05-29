@@ -66,6 +66,11 @@ const resolveFallbackChannelType = (store: NexusStore, delivery: NotificationDel
 };
 
 const createFallbackDelivery = (store: NexusStore, source: NotificationDelivery, channelType: NotificationChannelType) => {
+  const dedupeKey = `${source.dedupeKey}:fallback:${channelType}`;
+  const existing = store.notificationDeliveries.find((item) => item.dedupeKey === dedupeKey && item.status !== "cancelled") || null;
+  if (existing) {
+    return existing;
+  }
   return createNotificationDelivery(store, {
     userId: source.userId,
     channelType,
@@ -81,7 +86,7 @@ const createFallbackDelivery = (store: NexusStore, source: NotificationDelivery,
       ],
     },
     scheduledAt: storeHelpers.nowIso(),
-    dedupeKey: `${source.dedupeKey}:fallback:${channelType}`,
+    dedupeKey,
   });
 };
 
@@ -185,6 +190,43 @@ export const dispatchNotificationDelivery = async (store: NexusStore, deliveryId
     }
     return delivery;
   }
+};
+
+export const retryFailedNotificationDelivery = async (store: NexusStore, deliveryId: string) => {
+  const delivery = store.notificationDeliveries.find((item) => item.id === deliveryId) || null;
+  if (!delivery) {
+    return {
+      item: null,
+      retried: false,
+      reason: "not_found" as const,
+    };
+  }
+  if (delivery.status !== "failed") {
+    return {
+      item: delivery,
+      retried: false,
+      reason: "not_failed" as const,
+    };
+  }
+  const now = storeHelpers.nowIso();
+  const retryCount = Number(delivery.payload?.manualRetryCount || 0);
+  delivery.status = "pending";
+  delivery.scheduledAt = now;
+  delivery.errorMessage = "";
+  delivery.externalMessageId = "";
+  delete delivery.sentAt;
+  delivery.payload = {
+    ...delivery.payload,
+    manualRetryCount: Number.isFinite(retryCount) ? retryCount + 1 : 1,
+    lastManualRetryAt: now,
+  };
+  delivery.updatedAt = now;
+  const dispatched = await dispatchNotificationDelivery(store, delivery.id);
+  return {
+    item: dispatched || delivery,
+    retried: true,
+    reason: "retried" as const,
+  };
 };
 
 export const dispatchPendingNotificationDeliveries = async (

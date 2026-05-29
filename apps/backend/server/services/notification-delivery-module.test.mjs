@@ -281,6 +281,69 @@ test("dispatches a Feishu tenant app delivery through token and message APIs", a
   }
 });
 
+test("retries a failed delivery in-place and increments attempts", async () => {
+  const delivery = await loadNotificationModule();
+  const store = createStore();
+  const originalFetch = globalThis.fetch;
+  let callCount = 0;
+  globalThis.fetch = async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return new Response("temporary bad gateway", { status: 502 });
+    }
+    return new Response("retry-ok-message", { status: 200 });
+  };
+  try {
+    const item = delivery.createNotificationDelivery(store, {
+      userId: "user-1",
+      channelType: "wechat_clawdbot",
+      title: "失败后重试",
+      body: "第一次失败，第二次成功",
+      payload: { source: "test" },
+      dedupeKey: "retry:user-1:test",
+      scheduledAt: "2026-05-18T00:00:00.000Z",
+    });
+
+    const failed = await delivery.dispatchNotificationDelivery(store, item.id);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.errorMessage, "temporary bad gateway");
+    assert.equal(failed.attemptCount, 1);
+
+    const retried = await delivery.retryFailedNotificationDelivery(store, item.id);
+    assert.equal(retried.retried, true);
+    assert.equal(retried.reason, "retried");
+    assert.equal(retried.item.status, "sent");
+    assert.equal(retried.item.externalMessageId, "retry-ok-message");
+    assert.equal(retried.item.attemptCount, 2);
+    assert.equal(retried.item.payload.manualRetryCount, 1);
+    assert.ok(retried.item.payload.lastManualRetryAt);
+    assert.equal(callCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not retry a non-failed delivery", async () => {
+  const delivery = await loadNotificationModule();
+  const store = createStore();
+  const item = delivery.createNotificationDelivery(store, {
+    userId: "user-1",
+    channelType: "wechat_clawdbot",
+    title: "待发送",
+    body: "pending 不应直接重试",
+    payload: { source: "test" },
+    dedupeKey: "retry:user-1:pending",
+    scheduledAt: "2026-05-18T00:00:00.000Z",
+  });
+
+  const result = await delivery.retryFailedNotificationDelivery(store, item.id);
+
+  assert.equal(result.retried, false);
+  assert.equal(result.reason, "not_failed");
+  assert.equal(result.item.status, "pending");
+  assert.equal(result.item.attemptCount, 0);
+});
+
 test("creates a fallback delivery when primary channel fails", async () => {
   const delivery = await loadNotificationModule();
   const store = createStore();

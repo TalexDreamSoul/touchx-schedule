@@ -53,7 +53,7 @@ packages/
 - [x] 飞书机器人签名发送支持 timestamp/sign。
 - [x] reminder candidate 入队统一使用 channel order 策略，`primary_then_fallback` 先投主通道、失败后生成备用通道 delivery。
 - [ ] 飞书应用用户级接收人绑定，不再只依赖全局 `defaultReceiveId`。
-- [ ] 通知投递记录增加手动重试单条 failed delivery 的后台操作。
+- [x] 通知投递记录增加手动重试单条 failed delivery 的后台操作。
 - [ ] 为 `/api/v1/admin/notification-*` 增加 API-level 权限和 adapter 回归测试。
 - [ ] 将 `v1-api.ts` 中 notification 路由逐步拆到独立 handler/service。
 

@@ -26,6 +26,7 @@
               <th>重试</th>
               <th>外部 ID</th>
               <th>错误</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -38,8 +39,13 @@
               <td>{{ item.attemptCount || 0 }}</td>
               <td class="rx-muted">{{ item.externalMessageId || "-" }}</td>
               <td class="rx-muted">{{ item.errorMessage || "-" }}</td>
+              <td>
+                <button class="rx-btn rx-btn-ghost" type="button" :disabled="loading || item.status !== 'failed'" @click="retryDelivery(item)">
+                  重试
+                </button>
+              </td>
             </tr>
-            <tr v-if="deliveries.length <= 0"><td colspan="8" class="rx-muted">暂无投递记录</td></tr>
+            <tr v-if="deliveries.length <= 0"><td colspan="9" class="rx-muted">暂无投递记录</td></tr>
           </tbody>
         </table>
       </div>
@@ -99,6 +105,20 @@ const dispatchPending = async () => {
     await loadData();
   } catch (error) {
     errorText.value = error instanceof Error ? error.message : "投递失败";
+  } finally {
+    loading.value = false;
+  }
+};
+
+const retryDelivery = async (item: DeliveryRow) => {
+  if (item.status !== "failed") return;
+  loading.value = true;
+  errorText.value = "";
+  try {
+    await request(`/api/v1/admin/notification-deliveries/${encodeURIComponent(item.id)}/retry`, { method: "POST" });
+    await loadData();
+  } catch (error) {
+    errorText.value = error instanceof Error ? error.message : "重试失败";
   } finally {
     loading.value = false;
   }
