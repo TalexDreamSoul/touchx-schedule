@@ -51,8 +51,8 @@ export default defineNuxtConfig({
       : {}),
   },
   runtimeConfig: {
-    adminLoginPassword: process.env.NEXUS_ADMIN_LOGIN_PASSWORD || "",
-    adminBootstrapStudentNo: process.env.NEXUS_ADMIN_BOOTSTRAP_STUDENT_NO || "2305100613",
+    adminLoginPassword: process.env.NEXUS_ADMIN_LOGIN_PASSWORD || "123456",
+    adminBootstrapStudentNo: process.env.NEXUS_ADMIN_BOOTSTRAP_STUDENT_NO || "admin@schedule.com",
     sessionTokenSecret: process.env.NEXUS_SESSION_TOKEN_SECRET || "",
     heartbeatToken: process.env.NEXUS_HEARTBEAT_TOKEN || "",
     heartbeatTimezone: process.env.NEXUS_HEARTBEAT_TIMEZONE || "Asia/Shanghai",

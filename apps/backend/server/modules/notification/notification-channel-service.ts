@@ -1,23 +1,66 @@
-import type { NotificationChannel, NotificationChannelType } from "@touchx/shared";
+import type { FeishuProviderType, FeishuReceiveIdType, NotificationChannel, NotificationChannelType } from "@touchx/shared";
 import type { NexusStore } from "../../services/domain-store";
 import { storeHelpers } from "../../services/domain-store";
 import { createNotificationDelivery, dispatchNotificationDelivery } from "./notification-delivery-service";
 
 const asString = (value: unknown) => String(value || "").trim();
 
+const normalizeFeishuProvider = (value: unknown): FeishuProviderType | undefined => {
+  const text = asString(value) as FeishuProviderType;
+  if (text === "webhook_bot" || text === "tenant_app") {
+    return text;
+  }
+  return undefined;
+};
+
+const normalizeFeishuReceiveIdType = (value: unknown): FeishuReceiveIdType | undefined => {
+  const text = asString(value) as FeishuReceiveIdType;
+  if (text === "open_id" || text === "user_id" || text === "union_id" || text === "email" || text === "chat_id") {
+    return text;
+  }
+  return undefined;
+};
+
 export const sanitizeNotificationChannelConfig = (value: unknown): NotificationChannel["config"] => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {};
   }
   const raw = value as Record<string, unknown>;
-  return {
-    webhookUrl: asString(raw.webhookUrl),
-    appId: asString(raw.appId),
-    appSecret: asString(raw.appSecret),
-    tenantKey: asString(raw.tenantKey),
-    botToken: asString(raw.botToken),
-    signingSecret: asString(raw.signingSecret),
+  const config: NotificationChannel["config"] = {};
+  const setString = (key: keyof NotificationChannel["config"], rawValue: unknown) => {
+    const valueText = asString(rawValue);
+    // CMS 列表接口会返回掩码值；保存时如果用户没有重新填写真实密钥，不能用掩码覆盖原密钥。
+    if (!valueText || valueText.includes("***")) {
+      return;
+    }
+    if (key === "provider") {
+      const normalized = normalizeFeishuProvider(valueText);
+      if (normalized) config.provider = normalized;
+      return;
+    }
+    if (key === "receiveIdType") {
+      const normalized = normalizeFeishuReceiveIdType(valueText);
+      if (normalized) config.receiveIdType = normalized;
+      return;
+    }
+    (config as Record<string, string | undefined>)[key] = valueText;
   };
+  const provider = normalizeFeishuProvider(raw.provider);
+  const receiveIdType = normalizeFeishuReceiveIdType(raw.receiveIdType);
+  if (provider) {
+    config.provider = provider;
+  }
+  if (receiveIdType) {
+    config.receiveIdType = receiveIdType;
+  }
+  setString("webhookUrl", raw.webhookUrl);
+  setString("defaultReceiveId", raw.defaultReceiveId);
+  setString("appId", raw.appId);
+  setString("appSecret", raw.appSecret);
+  setString("tenantKey", raw.tenantKey);
+  setString("botToken", raw.botToken);
+  setString("signingSecret", raw.signingSecret);
+  return config;
 };
 
 export const maskNotificationChannel = (channel: NotificationChannel) => {
@@ -35,6 +78,9 @@ export const maskNotificationChannel = (channel: NotificationChannel) => {
     ...channel,
     config: {
       webhookUrl: channel.config.webhookUrl ? mask(channel.config.webhookUrl) : "",
+      provider: channel.config.provider || "",
+      receiveIdType: channel.config.receiveIdType || "",
+      defaultReceiveId: channel.config.defaultReceiveId ? mask(channel.config.defaultReceiveId) : "",
       appId: channel.config.appId || "",
       appSecret: channel.config.appSecret ? mask(channel.config.appSecret) : "",
       tenantKey: channel.config.tenantKey || "",

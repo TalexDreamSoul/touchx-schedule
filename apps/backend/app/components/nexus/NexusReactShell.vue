@@ -30,7 +30,9 @@
           <NuxtLink to="/nexus/reminder-rules" class="rx-nav-link">提醒规则</NuxtLink>
           <NuxtLink to="/nexus/reminder-candidates" class="rx-nav-link">提醒候选</NuxtLink>
           <NuxtLink to="/nexus/notification-channels" class="rx-nav-link">通知通道</NuxtLink>
+          <NuxtLink to="/nexus/notification-deliveries" class="rx-nav-link">投递记录</NuxtLink>
           <NuxtLink to="/nexus/imports" class="rx-nav-link">导入中心</NuxtLink>
+          <NuxtLink to="/nexus/audit-logs" class="rx-nav-link">审计日志</NuxtLink>
           <NuxtLink to="/nexus/schedules" class="rx-nav-link">旧课表</NuxtLink>
         </nav>
       </aside>

@@ -596,9 +596,9 @@ nitro: {
 任务：
 
 - [x] 落地本 Roadmap 文档。
-- [ ] 确认通用日程源模型命名。
-- [ ] 确认 React Native CLI / 原生 RN 工程作为未来 App 主路线，不使用 Expo。
-- [ ] 确认小程序迁移策略：uni-app 过渡，未来 Taro / React 小程序。
+- [x] 确认通用日程源模型命名。
+- [x] 确认 React Native CLI / 原生 RN 工程作为未来 App 主路线，不使用 Expo。
+- [x] 确认小程序迁移策略：uni-app 过渡，未来 Taro / React 小程序。
 - [ ] 确认 Docker 部署目标：Nuxt node-server + PostgreSQL + Redis。
 
 验收标准：
@@ -614,19 +614,19 @@ nitro: {
 
 任务：
 
-- [ ] 在 `packages/shared` 拆分文件：
+- [x] 在 `packages/shared` 拆分文件：
   - `calendar.ts`
   - `notification.ts`
   - `import.ts`
   - `index.ts` 统一导出
-- [ ] 新增 `packages/calendar-core`。
-- [ ] 实现纯函数：
+- [x] 新增 `packages/calendar-core`。
+- [x] 实现纯函数：
   - `applyUserEventOverrides`
   - `resolveEffectiveCalendarEvents`
   - `detectCalendarConflicts`
   - `expandRecurringEvents`
   - `resolveReminderCandidates`
-- [ ] 为 core 增加基础测试。
+- [x] 为 core 增加基础测试。
 
 验收标准：
 
@@ -642,7 +642,7 @@ nitro: {
 
 任务：
 
-- [ ] 新增：
+- [x] 新增：
 
 ```txt
 apps/backend/server/modules/calendar/
@@ -652,13 +652,13 @@ apps/backend/server/modules/calendar/
   calendar-subscription-service.ts
 ```
 
-- [ ] 兼容映射：
+- [x] 兼容映射：
   - `ScheduleRecord` -> `CalendarSource`
   - `ScheduleVersion.entries` -> `CalendarSourceEvent`
   - `ScheduleSubscription` -> `CalendarSubscription`
   - `SchedulePatch` -> `UserEventOverride`
   - `UserScheduleEvent` -> `PersonalEvent`
-- [ ] 新增 API：
+- [x] 新增 API：
   - `GET /api/v1/calendar/sources`
   - `GET /api/v1/calendar/sources/:id`
   - `GET /api/v1/calendar/me/effective`
@@ -682,6 +682,9 @@ apps/backend/server/modules/calendar/
 - [x] 新增 `/nexus/calendar-sources` 页面。
 - [x] 新增 `/nexus/notification-channels` 页面。
 - [x] 新增 `/nexus/imports` 页面雏形。
+- [x] 新增 React CMS 投递记录页面，支持查看 `NotificationDelivery` 与手动投递 pending。
+- [x] 新增 Nuxt `/nexus/notification-deliveries` 页面，覆盖 Worker 交付路径。
+- [x] 新增 React CMS / Nuxt 审计日志页面，支持查看关键操作 audit logs。
 - [ ] 抽出通用 CMS layout：
   - sidebar
   - topbar
@@ -704,8 +707,8 @@ apps/backend/server/modules/calendar/
 
 任务：
 
-- [ ] 新增 `packages/notification-core`。
-- [ ] 定义：
+- [x] 新增 `packages/notification-core`。
+- [x] 定义：
   - `NotificationChannel`
   - `UserNotificationBinding`
   - `NotificationDelivery`
@@ -717,19 +720,28 @@ apps/backend/server/modules/calendar/
   - `feishu-adapter.ts`
 - [x] ReminderRule CMS + API 基线。
 - [x] ReminderCandidate 生成与 NotificationDelivery 入队 API / CMS 基线。
-- [ ] 投递策略支持：
+- [x] 投递策略支持：
   - `both`
   - `primary_then_fallback`
   - `primary_only`
 - [x] 支持 pending delivery 手动 dispatch 与 webhook adapter 基线。
-- [x] CMS 支持配置渠道和测试发送（当前先创建投递记录，真实 adapter 待接入）。
+- [x] CMS 支持配置渠道和测试发送（已接真实 webhook / 飞书应用 adapter）。
+- [x] CMS 支持查看投递记录、失败信息、重试次数与外部消息 ID。
+- [x] 飞书 provider 支持两种接入方式：
+  - 自定义机器人 webhook：`provider=webhook_bot` + `webhookUrl`。
+  - 企业自建应用：`provider=tenant_app` + `appId/appSecret` + `receiveIdType/defaultReceiveId`。
+- [x] 飞书应用 provider 支持获取 `tenant_access_token` 并调用 `/im/v1/messages` 发送文本消息。
+- [x] 飞书机器人签名发送支持 timestamp/sign 计算。
+- [x] reminder candidate 入队使用统一 `resolveChannelOrder` 处理 `both` / `primary_only` / `primary_then_fallback`。
+- [ ] 飞书应用接收人绑定从全局 `defaultReceiveId` 升级为用户级 binding。
 - [ ] 旧 `schedule_reminder_deliveries` 逐步迁移为通用 `notification_deliveries`。
 
 验收标准：
 
 - 提醒不再依赖旧企业微信绑定逻辑。
 - ClawDBot 和飞书可以同时配置。
-- 失败投递可重试、可审计。
+- 飞书可选择机器人 webhook 或企业自建应用 provider。
+- 失败投递可 fallback、可审计。
 
 ---
 
@@ -745,8 +757,9 @@ apps/backend/server/modules/calendar/
   - `PATCH /api/v1/calendar/me/personal-events/:id`
   - `POST /api/v1/calendar/me/personal-events/:id/done`
 - [x] 支持 todo 状态：pending / done / archived（cancelled 待补）。
-- [ ] 支持 AI / PDF / 手动来源。
-- [ ] 小程序先接入简单 todo 创建与今日视图展示。
+- [x] 支持手动来源，并可由导入候选提交为个人事项。
+- [ ] 支持 AI / PDF 直接创建个人事项。
+- [x] 小程序先接入简单 todo 创建与今日视图展示。
 - [x] CMS 先接入简单 todo 创建、完成、归档。
 
 验收标准：
@@ -763,15 +776,14 @@ apps/backend/server/modules/calendar/
 
 任务：
 
-- [ ] 新增 `packages/import-core`。
+- [x] 新增 `packages/import-core`。
 - [x] 定义 `ImportJob` 和 `ImportCandidateEvent`。
 - [x] CMS 导入中心兼容读取现有 PDF 导入任务。
-- [ ] 改造现有 PDF 导入：
-  - 上传
-  - 解析
-  - 候选事件
-  - 审核
-  - 提交到日程源或个人事件
+- [x] 旧 PDF 导入可转换为候选事件。
+- [x] 候选事件支持审核、修正、接受 / 拒绝。
+- [x] 候选事件支持提交到日程源或个人事件。
+- [x] 新导入中心支持上传 PDF 到旧解析队列，并转入候选事件审核流。
+- [ ] 图片 OCR / 教务系统导入入口产品化。
 - [ ] 为教务系统预留 connector：
   - 登录态 / cookie
   - 拉取课程
@@ -826,13 +838,14 @@ apps/backend/server/modules/calendar/
 
 任务：
 
-- [ ] 评估 Taro React 小程序。
+- [x] 评估 Taro React 小程序。
 - [x] 新增 `apps/miniapp` PoC。
 - [x] 接入共享包。
 - [x] 复刻最小页面：
   - 今日视图
   - 周视图
   - 订阅源列表
+- [x] 接入学号登录、日程源订阅和个人 Todo 的 V1 用户闭环。
 - [ ] 对比 uni-app：
   - 包体积
   - 首屏性能
@@ -886,14 +899,14 @@ apps/backend/server/modules/calendar/
 接下来建议按这个顺序做：
 
 ```txt
-1. 新增 shared calendar / notification / import 类型文件
-2. 新增 packages/calendar-core
-3. 后端新增 calendar adapter API
-4. CMS 新增 calendar-sources 页面
-5. 通知通道抽象，接 ClawDBot + 飞书
-6. 新增 PersonalEvent / Todo API
-7. RN App 起步
-8. Docker + PostgreSQL 迁移
+1. V1 收口：聚焦 backend + CMS + 通知渠道，不再扩大 RN/小程序迁移范围
+2. 通知渠道优化：完善 ClawDBot + 飞书 webhook / 飞书应用 provider、fallback、审计与 smoke
+3. CMS 管理闭环：通道配置、投递记录、重试/dispatch、导入中心和审计日志
+4. 后端 API 减债：优先拆 auth/calendar/notification/import handler，保留 /api/v1 外部路径
+5. 安全收口：session secret、logout 撤销策略、CalendarSource 权限、密码哈希
+6. 验证门槛：focused type-check / build / node tests / smoke / git diff --check
+7. 共享层收敛：miniapp/mobile API wrapper 后续再向 @touchx/api-client 收敛
+8. Docker + PostgreSQL 迁移留到 V1 后
 ```
 
 短期不要做：
@@ -937,9 +950,10 @@ apps/backend/server/modules/calendar/
 ### Batch 4：通知通道
 
 - [x] `packages/notification-core`
-- [ ] `wechat-clawdbot-adapter`
-- [ ] `feishu-adapter`
-- [ ] CMS 通知渠道配置页面
+- [x] `wechat-clawdbot-adapter`
+- [x] `feishu-adapter`
+- [x] CMS 通知渠道配置页面
+- [x] CMS 投递记录与 pending 手动 dispatch 页面
 
 ---
 

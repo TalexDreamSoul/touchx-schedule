@@ -10,7 +10,7 @@
             </button>
           </div>
           <h1>首次初始化</h1>
-          <p class="head-desc">管理员学号 {{ bootstrapStudentNo || "未识别" }}，请设置后台登录密码</p>
+          <p class="head-desc">管理员账号 {{ bootstrapStudentNo || "未识别" }}，请设置后台登录密码</p>
         </header>
 
         <div class="init-body">
@@ -96,9 +96,11 @@ const loadInitContext = async () => {
     const payload = (await response.json()) as ApiEnvelope<{
       user?: {
         studentNo?: string;
+        accountName?: string;
       };
       needInit?: boolean;
       bootstrapStudentNo?: string;
+      bootstrapAccountName?: string;
     }>;
     if (!response.ok || !payload.ok) {
       throw new Error(String(payload?.error?.message || `HTTP ${response.status}`).trim() || "会话无效");
@@ -108,7 +110,7 @@ const loadInitContext = async () => {
       await navigateTo("/nexus", { replace: true });
       return;
     }
-    bootstrapStudentNo.value = String(payload?.data?.bootstrapStudentNo || payload?.data?.user?.studentNo || "").trim();
+    bootstrapStudentNo.value = String(payload?.data?.bootstrapAccountName || payload?.data?.bootstrapStudentNo || payload?.data?.user?.accountName || payload?.data?.user?.studentNo || "").trim();
   } catch {
     clearNexusSessionToken();
     await navigateTo(buildNexusLoginPath(route.fullPath), { replace: true });

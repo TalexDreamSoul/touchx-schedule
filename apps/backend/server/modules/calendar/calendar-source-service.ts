@@ -7,8 +7,20 @@ import {
   toCalendarSourceVersion,
 } from "./calendar-adapter";
 
-export const listCalendarSources = (store: NexusStore) => {
+export const listCalendarSources = (store: NexusStore, options: { viewerUserId?: string; includePrivate?: boolean } = {}) => {
+  const viewer = options.viewerUserId ? store.users.find((user) => user.userId === options.viewerUserId) || null : null;
   const items = store.schedules
+    .filter((schedule) => {
+      if (options.includePrivate) return true;
+      const visibility = schedule.visibility || (schedule.classId === `user:${schedule.createdByUserId}` ? "private" : "class_only");
+      if (visibility === "public") return true;
+      if (!viewer) return false;
+      if (schedule.createdByUserId === viewer.userId || viewer.adminRole === "super_admin" || viewer.adminRole === "operator") return true;
+      if (visibility === "class_only") {
+        return store.classMembers.some((member) => member.classId === schedule.classId && member.userId === viewer.userId);
+      }
+      return visibility === "invite_only";
+    })
     .map((schedule) => toAdminCalendarSourcePayload(store, schedule))
     .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
   return {

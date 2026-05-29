@@ -10,16 +10,17 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@touchx/shared": "workspace:*",
-    "@touchx/calendar-core": "workspace:*",
-    "@touchx/api-client": "workspace:*",
-    "@touchx/ui-tokens": "workspace:*",
+    "@babel/runtime": "^7.28.6",
     "@react-navigation/native": "^7.0.0",
     "@react-navigation/native-stack": "^7.0.0",
+    "@touchx/api-client": "workspace:*",
+    "@touchx/calendar-core": "workspace:*",
+    "@touchx/shared": "workspace:*",
+    "@touchx/ui-tokens": "workspace:*",
     "react": "^18.3.1",
     "react-native": "^0.76.0",
     "react-native-safe-area-context": "^4.14.0",
-    "react-native-screens": "^4.4.0"
+    "react-native-screens": "4.4.0"
   },
   "devDependencies": {
     "@react-native-community/cli": "^15.0.0",
@@ -27,6 +28,7 @@
     "@react-native-community/cli-platform-ios": "^15.0.0",
     "@react-native/babel-preset": "^0.76.0",
     "@react-native/metro-config": "^0.76.0",
+    "@react-native/gradle-plugin": "^0.76.0",
     "@react-native/typescript-config": "^0.76.0",
     "@types/jest": "^29.5.14",
     "@types/react": "^18.3.12",

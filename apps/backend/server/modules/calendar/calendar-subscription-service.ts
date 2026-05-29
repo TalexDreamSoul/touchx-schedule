@@ -15,6 +15,8 @@ export const listUserCalendarSubscriptions = (store: NexusStore, user: UserRecor
     return {
       ...item,
       sourceTitle: schedule?.title || "",
+      sourceType: schedule?.sourceType || (schedule?.classId === `user:${schedule?.createdByUserId}` ? "custom" : "class_schedule"),
+      visibility: schedule?.visibility || "class_only",
       classId: classItem?.id || "",
       classLabel: classItem?.name || "",
     };
@@ -29,6 +31,16 @@ export const subscribeCalendarSource = (store: NexusStore, user: UserRecord, sou
   const schedule = findScheduleByCalendarSourceId(store, sourceId);
   if (!schedule) {
     return null;
+  }
+  const visibility = schedule.visibility || (schedule.classId === `user:${schedule.createdByUserId}` ? "private" : "class_only");
+  const isOwner = schedule.createdByUserId === user.userId;
+  const isAdmin = user.adminRole === "super_admin" || user.adminRole === "operator";
+  const isClassMember = store.classMembers.some((item) => item.classId === schedule.classId && item.userId === user.userId);
+  if (visibility === "private" && !isOwner && !isAdmin) {
+    return "forbidden" as const;
+  }
+  if (visibility === "class_only" && !isOwner && !isAdmin && !isClassMember) {
+    return "forbidden" as const;
   }
   const publishedVersion = store.scheduleVersions.find(
     (item) => item.scheduleId === schedule.id && item.versionNo === schedule.publishedVersionNo && item.status === "published",
@@ -74,4 +86,15 @@ export const subscribeCalendarSource = (store: NexusStore, user: UserRecord, sou
     updatedAt: subscription.createdAt,
   };
   return { subscription: item, duplicated: false };
+};
+
+export const cancelCalendarSubscription = (store: NexusStore, user: UserRecord, subscriptionId: string) => {
+  const subscription = store.scheduleSubscriptions.find((item) => item.id === subscriptionId) || null;
+  if (!subscription || subscription.subscriberUserId !== user.userId) {
+    return null;
+  }
+  store.scheduleSubscriptions = store.scheduleSubscriptions.filter((item) => item.id !== subscriptionId);
+  store.schedulePatches = store.schedulePatches.filter((item) => item.subscriptionId !== subscriptionId);
+  store.scheduleConflicts = store.scheduleConflicts.filter((item) => item.subscriptionId !== subscriptionId);
+  return subscription;
 };

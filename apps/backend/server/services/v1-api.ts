@@ -1,13 +1,19 @@
-import { getHeader, getMethod, getQuery, getRequestURL, H3Event, setHeader, setResponseStatus } from "h3";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { getHeader, getMethod, getQuery, getRequestURL, H3Event, readMultipartFormData, setHeader, setResponseStatus } from "h3";
 import type {
   ClassRole,
   DistanceLevel,
+  CalendarEventType,
+  CalendarSourceType,
+  CalendarSourceVisibility,
   NotificationChannelType,
   ScheduleConflict,
   SchedulePatch,
   ScheduleSubscription,
 } from "@touchx/shared";
 import {
+  DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME,
+  DEFAULT_BOOTSTRAP_ADMIN_PASSWORD,
   DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO,
   FOOD_CAMPAIGN_OPTION_LIMIT,
   getNexusStore,
@@ -51,7 +57,7 @@ import {
 } from "../utils/api-envelope";
 import { createSignedSession } from "../utils/session-token";
 import { handleSocialV1Api } from "./social-v1-api";
-import type { ScheduleImportPreviewEntry } from "./schedule-import-preview";
+import { buildScheduleImportPreviewEntries, type ScheduleImportPreviewEntry } from "./schedule-import-preview";
 import {
   confirmScheduleImportJob,
   createScheduleImportJob,
@@ -70,9 +76,10 @@ import {
 } from "./reminder-delivery-service";
 import { clampNumber, estimateFoodCaloriesKcal, normalizeCaloriesKcal, resolveExerciseEquivalentMinutes } from "./food-utils";
 import { buildEffectiveCalendarForUser } from "../modules/calendar/effective-calendar-service";
+import { addDaysToDateKey, getSectionTimeBySection, SCHEDULE_TERM_META, zonedDateTimeToUtc } from "./schedule-calendar";
 import { getCalendarSourceDetail, listCalendarSources } from "../modules/calendar/calendar-source-service";
 import { toAdminCalendarSourcePayload, toCalendarSourceVersion } from "../modules/calendar/calendar-adapter";
-import { listUserCalendarSubscriptions, subscribeCalendarSource } from "../modules/calendar/calendar-subscription-service";
+import { cancelCalendarSubscription, listUserCalendarSubscriptions, subscribeCalendarSource } from "../modules/calendar/calendar-subscription-service";
 import {
   createNotificationTestDelivery,
   listNotificationChannels,
@@ -91,8 +98,319 @@ import {
   listImportJobsWithCandidates,
   updateImportCandidateStatus,
 } from "../modules/import/import-candidate-service";
+import { parseSchedulePdf } from "./schedule-pdf-parser";
 
 const asString = (value: unknown) => String(value || "").trim();
+
+const ACCOUNT_NAME_PATTERN = /^[a-zA-Z0-9_@.\-]{3,48}$/;
+const USERNAME_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const WECHAT_BINDING_TTL_MS = 10 * 60 * 1000;
+const ICS_ESCAPE_PATTERN = /[\\,;\n\r]/g;
+
+const normalizeAccountName = (value: unknown) => asString(value).toLowerCase();
+
+const createPasswordSalt = () => randomBytes(16).toString("hex");
+
+const hashPassword = (password: string, salt: string) => createHash("sha256").update(`${salt}:${password}`).digest("hex");
+
+const verifyPassword = (password: string, salt: string, expectedHash: string) => {
+  const hash = hashPassword(password, salt);
+  const left = Buffer.from(hash);
+  const right = Buffer.from(asString(expectedHash));
+  if (left.length !== right.length) {
+    return false;
+  }
+  return timingSafeEqual(left, right);
+};
+
+const normalizeReminderOffsets = (value: unknown, fallback: number[] = [30, 15]) => {
+  if (!Array.isArray(value)) {
+    return [...fallback];
+  }
+  const items = value
+    .map((item) => Math.trunc(Number(item)))
+    .filter((item) => Number.isFinite(item) && item >= 0 && item <= 14 * 24 * 60);
+  return Array.from(new Set(items)).slice(0, 8);
+};
+
+const createVirtualStudentNo = (accountName: string) => {
+  const digest = createHash("sha1").update(accountName).digest("hex").slice(0, 16);
+  return `acct_${digest}`;
+};
+
+const ensureAccountNameAvailable = (store: ReturnType<typeof getNexusStore>, accountName: string, ignoreUserId = "") => {
+  return !store.users.some((item) => normalizeAccountName(item.accountName || item.studentNo) === accountName && item.userId !== ignoreUserId);
+};
+
+const isPublishedScheduleVisibleToUser = (schedule: ScheduleRecord, viewer?: UserRecord | null) => {
+  if (schedule.publishedVersionNo <= 0) {
+    return false;
+  }
+  const visibility = schedule.visibility || (schedule.classId === `user:${schedule.createdByUserId}` ? "private" : "class_only");
+  if (visibility === "public") {
+    return true;
+  }
+  if (!viewer) {
+    return false;
+  }
+  if (schedule.createdByUserId === viewer.userId || isAdminRole(viewer)) {
+    return true;
+  }
+  if (visibility === "private") {
+    return false;
+  }
+  if (visibility === "class_only") {
+    return storeHasClassMembership(schedule.classId, viewer.userId);
+  }
+  return true;
+};
+
+const storeHasClassMembership = (classId: string, userId: string) => {
+  const store = getNexusStore();
+  return store.classMembers.some((item) => item.classId === classId && item.userId === userId);
+};
+
+const normalizeCalendarSourceType = (value: unknown): CalendarSourceType => {
+  const text = asString(value) as CalendarSourceType;
+  if (
+    text === "class_schedule" ||
+    text === "exam_schedule" ||
+    text === "school_calendar" ||
+    text === "club_activity" ||
+    text === "organization_event" ||
+    text === "public_calendar" ||
+    text === "academic_system" ||
+    text === "pdf_import" ||
+    text === "manual_collection" ||
+    text === "personal_template" ||
+    text === "custom"
+  ) {
+    return text;
+  }
+  return "custom";
+};
+
+const normalizeCalendarEventType = (value: unknown): CalendarEventType => {
+  const text = asString(value) as CalendarEventType;
+  if (text === "course" || text === "exam" || text === "todo" || text === "activity" || text === "holiday" || text === "deadline" || text === "custom") {
+    return text;
+  }
+  return "custom";
+};
+
+const normalizeCalendarVisibility = (value: unknown, fallback: CalendarSourceVisibility = "private"): CalendarSourceVisibility => {
+  const text = asString(value) as CalendarSourceVisibility;
+  if (text === "public" || text === "class_only" || text === "invite_only" || text === "private") {
+    return text;
+  }
+  return fallback;
+};
+
+const normalizeScheduleEntriesFromSourceEvents = (events: unknown[], sourceType: CalendarSourceType): ScheduleEntryRecord[] => {
+  if (!Array.isArray(events)) {
+    return [];
+  }
+  return events.map((raw) => {
+    const item = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+    const title = asString(item.title || item.courseName || item.name);
+    const weekday = Math.max(1, Math.min(7, Math.trunc(Number(item.weekday || item.day || 1))));
+    const startSection = Math.max(1, Math.trunc(Number(item.startSection || item.start_section || 1)));
+    const endSection = Math.max(startSection, Math.trunc(Number(item.endSection || item.end_section || startSection)));
+    if (!title) {
+      return null;
+    }
+    return {
+      id: storeHelpers.createId("entry"),
+      day: weekday,
+      startSection,
+      endSection,
+      weekExpr: asString(item.weekExpr || item.week_expr) || "1-25",
+      parity: item.parity === "odd" || item.parity === "even" ? item.parity : "all",
+      courseName: title,
+      classroom: asString(item.location || item.classroom || item.room),
+      teacher: asString(item.teacherOrOwner || item.teacher || item.owner),
+    } satisfies ScheduleEntryRecord;
+  }).filter((item): item is ScheduleEntryRecord => Boolean(item));
+};
+
+const ensurePersonalSourceClass = (store: ReturnType<typeof getNexusStore>, user: UserRecord) => {
+  const now = storeHelpers.nowIso();
+  const classId = `user:${user.userId}`;
+  let classItem = store.classes.find((item) => item.id === classId) || null;
+  if (!classItem) {
+    classItem = {
+      id: classId,
+      name: `${user.nickname || user.name || user.accountName || user.userId}的日程源`,
+      ownerUserId: user.userId,
+      timezone: "Asia/Shanghai",
+      status: "active",
+      activeJoinCode: storeHelpers.generateJoinCode(),
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.classes.push(classItem);
+  } else {
+    classItem.updatedAt = now;
+  }
+  if (!store.classMembers.some((item) => item.classId === classId && item.userId === user.userId)) {
+    store.classMembers.push({
+      id: storeHelpers.createId("class_member"),
+      classId,
+      userId: user.userId,
+      classRole: "class_owner",
+      joinedAt: now,
+    });
+  }
+  if (!user.classIds.includes(classId)) {
+    user.classIds = [...user.classIds, classId];
+    user.updatedAt = now;
+  }
+  return classItem;
+};
+
+const createOrUpdateCustomCalendarSource = (
+  store: ReturnType<typeof getNexusStore>,
+  user: UserRecord,
+  input: {
+    sourceId?: string;
+    title?: string;
+    description?: string;
+    type?: CalendarSourceType;
+    visibility?: CalendarSourceVisibility;
+    events?: unknown[];
+    publish?: boolean;
+  },
+) => {
+  const now = storeHelpers.nowIso();
+  const title = asString(input.title);
+  if (!title) {
+    return null;
+  }
+  const type = normalizeCalendarSourceType(input.type);
+  const visibility = normalizeCalendarVisibility(input.visibility, "private");
+  const personalClass = ensurePersonalSourceClass(store, user);
+  const scheduleId = asString(input.sourceId).replace(/^schedule:/, "");
+  let schedule = scheduleId ? store.schedules.find((item) => item.id === scheduleId && item.createdByUserId === user.userId) || null : null;
+  if (!schedule) {
+    schedule = {
+      id: storeHelpers.createId("schedule"),
+      classId: personalClass.id,
+      title,
+      description: asString(input.description),
+      sourceType: type,
+      visibility,
+      ownerType: "user",
+      ownerId: user.userId,
+      publishedVersionNo: 0,
+      createdByUserId: user.userId,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.schedules.push(schedule);
+  } else {
+    schedule.title = title;
+    schedule.description = asString(input.description);
+    schedule.sourceType = type;
+    schedule.visibility = visibility;
+    schedule.ownerType = "user";
+    schedule.ownerId = user.userId;
+    schedule.updatedAt = now;
+  }
+  const events = normalizeScheduleEntriesFromSourceEvents(input.events || [], type);
+  if (events.length > 0 || input.publish !== false) {
+    const latestVersionNo = store.scheduleVersions
+      .filter((item) => item.scheduleId === schedule.id)
+      .reduce((max, item) => Math.max(max, Number(item.versionNo || 0)), 0);
+    const versionNo = latestVersionNo + 1;
+    const version: ScheduleVersionRecord = {
+      id: storeHelpers.createId("schedule_version"),
+      scheduleId: schedule.id,
+      versionNo,
+      status: input.publish === false ? "draft" : "published",
+      entries: events,
+      createdByUserId: user.userId,
+      createdAt: now,
+    };
+    store.scheduleVersions.push(version);
+    if (version.status === "published") {
+      schedule.publishedVersionNo = versionNo;
+      store.scheduleSubscriptions
+        .filter((item) => item.sourceScheduleId === schedule.id)
+        .forEach((item) => {
+          item.baseVersionNo = versionNo;
+          item.followMode = "following";
+        });
+      if (!store.scheduleSubscriptions.some((item) => item.subscriberUserId === user.userId && item.sourceScheduleId === schedule.id)) {
+        store.scheduleSubscriptions.push({
+          id: storeHelpers.createId("schedule_subscription"),
+          subscriberUserId: user.userId,
+          sourceScheduleId: schedule.id,
+          baseVersionNo: versionNo,
+          followMode: "following",
+          createdAt: now,
+        });
+      }
+    }
+  }
+  return schedule;
+};
+
+const findWechatBinding = (store: ReturnType<typeof getNexusStore>, userId: string) => {
+  return store.userNotificationBindings.find((item) => item.userId === userId && item.channelType === "wechat_clawdbot" && item.status === "active") || null;
+};
+
+const createWechatBindingQrSvg = (payload: string) => {
+  const digest = createHash("sha256").update(payload).digest();
+  const size = 29;
+  const cell = 8;
+  const margin = 16;
+  const total = size * cell + margin * 2;
+  const isFinder = (x: number, y: number, ox: number, oy: number) => x >= ox && x < ox + 7 && y >= oy && y < oy + 7;
+  const finderFill = (x: number, y: number, ox: number, oy: number) => {
+    const dx = x - ox;
+    const dy = y - oy;
+    return dx === 0 || dy === 0 || dx === 6 || dy === 6 || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4);
+  };
+  const rects: string[] = [];
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      let fill = false;
+      if (isFinder(x, y, 0, 0)) fill = finderFill(x, y, 0, 0);
+      else if (isFinder(x, y, size - 7, 0)) fill = finderFill(x, y, size - 7, 0);
+      else if (isFinder(x, y, 0, size - 7)) fill = finderFill(x, y, 0, size - 7);
+      else {
+        const byte = digest[(x * 7 + y * 13) % digest.length];
+        fill = ((byte >> ((x + y) % 8)) & 1) === 1;
+      }
+      if (fill) {
+        rects.push(`<rect x="${margin + x * cell}" y="${margin + y * cell}" width="${cell}" height="${cell}"/>`);
+      }
+    }
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${total}" viewBox="0 0 ${total} ${total}"><rect width="100%" height="100%" rx="18" fill="#fff"/><g fill="#111827">${rects.join("")}</g></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
+const readSinglePdfUpload = async (event: H3Event, maxBytes = 12 * 1024 * 1024) => {
+  const parts = await readMultipartFormData(event);
+  const filePart = (parts || []).find((part) => part?.name === "file" && part.data instanceof Uint8Array) || null;
+  if (!filePart || !(filePart.data instanceof Uint8Array)) {
+    return toApiError(400, "PDF_FILE_REQUIRED", "请上传 PDF 文件");
+  }
+  const bytes = filePart.data;
+  if (bytes.length <= 0) {
+    return toApiError(400, "PDF_FILE_EMPTY", "上传文件为空");
+  }
+  if (bytes.length > maxBytes) {
+    return toApiError(400, "PDF_FILE_TOO_LARGE", `文件过大，限制 ${Math.floor(maxBytes / 1024 / 1024)}MB`);
+  }
+  const fileName = asString(filePart.filename) || `schedule_${Date.now()}.pdf`;
+  const mime = asString(filePart.type).toLowerCase();
+  if (!fileName.toLowerCase().endsWith(".pdf") && !mime.includes("pdf") && !(bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46)) {
+    return toApiError(400, "PDF_FILE_INVALID", "仅支持 PDF 文件");
+  }
+  return { bytes, fileName };
+};
 
 interface AdminAuthState {
   bootstrapStudentNo: string;
@@ -378,18 +696,19 @@ const requireScheduleImportAccess = (event: H3Event) => {
 const resolveBootstrapStudentNo = (store: ReturnType<typeof getNexusStore>, config: ReturnType<typeof useRuntimeConfig>) => {
   const configured = asString(config.adminBootstrapStudentNo || DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO);
   const admins = store.users.filter((item) => isAdminRole(item));
-  if (configured && admins.some((item) => item.studentNo === configured)) {
+  if (configured && admins.some((item) => item.studentNo === configured || normalizeAccountName(item.accountName) === normalizeAccountName(configured))) {
     return configured;
   }
-  return admins[0]?.studentNo || configured || DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO;
+  const defaultAdmin = admins.find((item) => normalizeAccountName(item.accountName || item.studentNo) === normalizeAccountName(DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME)) || null;
+  return defaultAdmin?.accountName || defaultAdmin?.studentNo || admins[0]?.accountName || admins[0]?.studentNo || configured || DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO;
 };
 
 const getAdminAuthState = (store: ReturnType<typeof getNexusStore>, config: ReturnType<typeof useRuntimeConfig>) => {
   const existing = adminAuthStateMap.get(store);
   const bootstrapStudentNo = resolveBootstrapStudentNo(store, config);
-  const configuredPassword = asString(config.adminLoginPassword);
+  const configuredPassword = asString(config.adminLoginPassword || DEFAULT_BOOTSTRAP_ADMIN_PASSWORD);
   if (existing) {
-    if (!existing.initialized && configuredPassword) {
+    if (configuredPassword && (existing.password !== configuredPassword || !existing.initialized)) {
       existing.password = configuredPassword;
       existing.initialized = true;
       existing.updatedAt = storeHelpers.nowIso();
@@ -486,6 +805,7 @@ const toUserPayload = (user: UserRecord) => {
   };
   return {
     userId: user.userId,
+    accountName: user.accountName || "",
     studentNo: user.studentNo,
     studentId: user.studentId || "",
     name: resolveMeaningfulUserName(),
@@ -498,6 +818,7 @@ const toUserPayload = (user: UserRecord) => {
     reminderEnabled: user.reminderEnabled,
     reminderWindowMinutes: user.reminderWindowMinutes,
     createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
   };
 };
 
@@ -975,28 +1296,78 @@ const serializeCampaignDetail = (campaign: FoodCampaignRecord, viewerUserId: str
   };
 };
 
-const toIcsContent = (schedule: ScheduleRecord, version: ScheduleVersionRecord, timezone: string) => {
+const escapeIcsText = (value: unknown) => {
+  return asString(value).replace(ICS_ESCAPE_PATTERN, (char) => {
+    if (char === "\n" || char === "\r") return "\\n";
+    return `\\${char}`;
+  });
+};
+
+const toIcsDate = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+
+const expandWeekExprForIcs = (weekExpr: string, maxWeek = SCHEDULE_TERM_META.maxWeek) => {
+  const weeks = new Set<number>();
+  const normalized = asString(weekExpr) || `1-${maxWeek}`;
+  for (const match of normalized.matchAll(/(\d+)(?:-(\d+))?/g)) {
+    const start = Math.max(1, Math.min(maxWeek, Number(match[1]) || 1));
+    const end = Math.max(start, Math.min(maxWeek, Number(match[2] || match[1]) || start));
+    for (let week = start; week <= end; week += 1) {
+      weeks.add(week);
+    }
+  }
+  return Array.from(weeks).sort((left, right) => left - right);
+};
+
+const isWeekParityMatchedForIcs = (week: number, parity: ScheduleEntryRecord["parity"]) => {
+  if (parity === "odd") return week % 2 === 1;
+  if (parity === "even") return week % 2 === 0;
+  return true;
+};
+
+const toIcsContent = (input: {
+  calendarId: string;
+  title: string;
+  description?: string;
+  entries: ScheduleEntryRecord[];
+  timezone: string;
+  sourceTitle?: string;
+}) => {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//TouchX//ScheduleNexus//CN",
+    "PRODID:-//TouchX//Calendar//CN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcsText(input.title)}`,
+    `X-WR-TIMEZONE:${input.timezone}`,
   ];
-  version.entries.forEach((entry, index) => {
-    lines.push("BEGIN:VEVENT");
-    lines.push(`UID:${schedule.id}-${version.versionNo}-${index}@touchx`);
-    lines.push(`DTSTAMP:${new Date().toISOString().replace(/[-:]/g, "").replace(/\\.\\d{3}Z$/, "Z")}`);
-    lines.push(`SUMMARY:${entry.courseName}`);
-    lines.push(`DESCRIPTION:教师 ${entry.teacher || "-"} / 周次 ${entry.weekExpr}`);
-    lines.push(`LOCATION:${entry.classroom || "-"}`);
-    lines.push(`X-TX-DAY:${entry.day}`);
-    lines.push(`X-TX-SECTION:${entry.startSection}-${entry.endSection}`);
-    lines.push(`X-WR-TIMEZONE:${timezone}`);
-    lines.push("END:VEVENT");
+  const stamp = toIcsDate(new Date());
+  input.entries.forEach((entry, index) => {
+    const startTime = getSectionTimeBySection(entry.startSection)?.start || "08:30";
+    const endTime = getSectionTimeBySection(entry.endSection)?.end || startTime;
+    expandWeekExprForIcs(entry.weekExpr).filter((week) => isWeekParityMatchedForIcs(week, entry.parity)).forEach((week) => {
+      const dateKey = addDaysToDateKey(SCHEDULE_TERM_META.week1Monday, (week - 1) * 7 + Math.max(1, Math.min(7, entry.day)) - 1);
+      const startAt = zonedDateTimeToUtc(dateKey, startTime, input.timezone);
+      const endAt = zonedDateTimeToUtc(dateKey, endTime, input.timezone);
+      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) {
+        return;
+      }
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${input.calendarId}-${index}-w${week}@touchx`);
+      lines.push(`DTSTAMP:${stamp}`);
+      lines.push(`DTSTART:${toIcsDate(startAt)}`);
+      lines.push(`DTEND:${toIcsDate(endAt)}`);
+      lines.push(`SUMMARY:${escapeIcsText(entry.courseName)}`);
+      lines.push(`DESCRIPTION:${escapeIcsText([input.sourceTitle || "TouchX", entry.teacher ? `负责人 ${entry.teacher}` : "", `周次 ${entry.weekExpr}`].filter(Boolean).join(" / "))}`);
+      lines.push(`LOCATION:${escapeIcsText(entry.classroom || "")}`);
+      lines.push(`X-TX-DAY:${entry.day}`);
+      lines.push(`X-TX-WEEK:${week}`);
+      lines.push(`X-TX-SECTION:${entry.startSection}-${entry.endSection}`);
+      lines.push("END:VEVENT");
+    });
   });
   lines.push("END:VCALENDAR");
-  return lines.join("\\r\\n");
+  return lines.join("\r\n");
 };
 
 const isSocialCompatPath = (path: string) => {
@@ -1004,6 +1375,7 @@ const isSocialCompatPath = (path: string) => {
     path.startsWith("social/") ||
     path.startsWith("notifications") ||
     path.startsWith("ai/") ||
+    path.startsWith("bot/clawdbot/") ||
     path.startsWith("exams/") ||
     path === "calendar/views" ||
     path.startsWith("schedule-import/corrections") ||
@@ -1317,6 +1689,7 @@ export const handleV1Api = async (event: H3Event) => {
     const authState = getAdminAuthState(store, config);
     return ok({
       bootstrapStudentNo: authState.bootstrapStudentNo,
+      bootstrapAccountName: authState.bootstrapStudentNo,
       passwordInitialized: authState.initialized,
       requirePassword: authState.initialized,
     });
@@ -1324,17 +1697,18 @@ export const handleV1Api = async (event: H3Event) => {
 
   if (method === "POST" && path === "admin/login") {
     const config = useRuntimeConfig(event);
-    const body = await readJsonBody<{ password?: string; studentNo?: string }>(event);
-    const studentNo = asString(body.studentNo);
+    const body = await readJsonBody<{ password?: string; studentNo?: string; accountName?: string; username?: string }>(event);
+    const studentNo = asString(body.studentNo || body.accountName || body.username);
     const password = asString(body.password);
     const authState = getAdminAuthState(store, config);
     if (!studentNo) {
-      return toApiError(400, "ADMIN_STUDENT_NO_REQUIRED", "请输入管理员学号");
+      return toApiError(400, "ADMIN_ACCOUNT_REQUIRED", "请输入管理员账号");
     }
     if (authState.initialized && !password) {
       return toApiError(400, "ADMIN_PASSWORD_REQUIRED", "请输入登录密码");
     }
-    const targetAdmin = store.users.find((item) => item.studentNo === studentNo) || null;
+    const loginName = normalizeAccountName(studentNo);
+    const targetAdmin = store.users.find((item) => item.studentNo === studentNo || normalizeAccountName(item.accountName) === loginName) || null;
     if (!targetAdmin || !isAdminRole(targetAdmin)) {
       return toApiError(401, "ADMIN_LOGIN_FAILED", "管理员账号不存在或无权限");
     }
@@ -1342,8 +1716,8 @@ export const handleV1Api = async (event: H3Event) => {
       if (password !== authState.password) {
         return toApiError(401, "ADMIN_LOGIN_FAILED", "登录密码错误");
       }
-    } else if (studentNo !== authState.bootstrapStudentNo) {
-      return toApiError(401, "ADMIN_BOOTSTRAP_ONLY", "首次初始化仅允许默认管理员学号登录");
+    } else if (studentNo !== authState.bootstrapStudentNo && loginName !== normalizeAccountName(authState.bootstrapStudentNo)) {
+      return toApiError(401, "ADMIN_BOOTSTRAP_ONLY", "首次初始化仅允许默认管理员账号登录");
     }
     const session = createSession(event, targetAdmin, "admin", 24);
     appendAudit("admin_login", targetAdmin.userId, { studentNo: targetAdmin.studentNo });
@@ -1353,6 +1727,7 @@ export const handleV1Api = async (event: H3Event) => {
       user: toUserPayload(targetAdmin),
       needInit: !authState.initialized,
       bootstrapStudentNo: authState.bootstrapStudentNo,
+      bootstrapAccountName: authState.bootstrapStudentNo,
     });
   }
 
@@ -1374,12 +1749,45 @@ export const handleV1Api = async (event: H3Event) => {
       expiresAt: session.expiresAt,
       needInit: !authState.initialized,
       bootstrapStudentNo: authState.bootstrapStudentNo,
+      bootstrapAccountName: authState.bootstrapStudentNo,
     });
   }
 
   if (method === "GET" && path === "calendar/sources") {
-    const items = listCalendarSources(store);
+    const viewer = resolveSessionWithUser(event);
+    const includePrivate = asString(query.includePrivate).toLowerCase() === "true" || asString(query.include_private) === "1";
+    const items = listCalendarSources(store, {
+      viewerUserId: viewer?.user.userId,
+      includePrivate: includePrivate && viewer ? isAdminRole(viewer.user) : false,
+    });
     return ok(items);
+  }
+
+  if (method === "POST" && path === "calendar/sources") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{
+      sourceId?: string;
+      title?: string;
+      description?: string;
+      type?: CalendarSourceType;
+      visibility?: CalendarSourceVisibility;
+      publish?: boolean;
+      events?: unknown[];
+    }>(event);
+    const source = createOrUpdateCustomCalendarSource(store, user, {
+      sourceId: body.sourceId,
+      title: body.title,
+      description: body.description,
+      type: body.type,
+      visibility: body.visibility,
+      publish: body.publish,
+      events: body.events,
+    });
+    if (!source) {
+      return toApiError(400, "CALENDAR_SOURCE_TITLE_REQUIRED", "日程源标题不能为空");
+    }
+    appendAudit("calendar_source_upsert", user.userId, { sourceId: `schedule:${source.id}`, title: source.title });
+    return ok({ item: toAdminCalendarSourcePayload(store, source) });
   }
 
   const calendarSourcePublishVersionMatch = path.match(/^admin\/calendar\/sources\/([^/]+)\/versions\/(\d+)\/publish$/);
@@ -1417,6 +1825,99 @@ export const handleV1Api = async (event: H3Event) => {
   if (method === "GET" && path === "calendar/me/subscriptions") {
     const { user } = requireUser(event);
     return ok(listUserCalendarSubscriptions(store, user));
+  }
+
+  const calendarSubscriptionCancelMatch = path.match(/^calendar\/me\/subscriptions\/([^/]+)\/(?:cancel|delete)$/);
+  if (method === "POST" && calendarSubscriptionCancelMatch) {
+    const { user } = requireUser(event);
+    const subscriptionId = decodeURIComponent(calendarSubscriptionCancelMatch[1]);
+    const removed = cancelCalendarSubscription(store, user, subscriptionId);
+    if (!removed) {
+      return toApiError(404, "CALENDAR_SUBSCRIPTION_NOT_FOUND", "订阅不存在或不属于当前用户");
+    }
+    appendAudit("calendar_source_unsubscribe", user.userId, { subscriptionId, sourceScheduleId: removed.sourceScheduleId });
+    return ok({ cancelled: true, subscriptionId });
+  }
+
+  if (method === "GET" && path === "calendar/me/settings") {
+    const { user } = requireUser(event);
+    return ok({
+      reminderEnabled: user.reminderEnabled,
+      reminderWindowMinutes: user.reminderWindowMinutes,
+      defaultViewMode: "timeline",
+      showWeekends: true,
+      syncToSystemCalendar: true,
+    });
+  }
+
+  if (method === "POST" && path === "calendar/me/settings") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{ reminderEnabled?: boolean; reminderWindowMinutes?: unknown[]; nickname?: string }>(event);
+    if (typeof body.reminderEnabled === "boolean") {
+      user.reminderEnabled = body.reminderEnabled;
+    }
+    if (Array.isArray(body.reminderWindowMinutes)) {
+      user.reminderWindowMinutes = normalizeReminderOffsets(body.reminderWindowMinutes, user.reminderWindowMinutes);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "nickname")) {
+      const nickname = asString(body.nickname);
+      if (nickname) user.nickname = nickname;
+    }
+    user.updatedAt = storeHelpers.nowIso();
+    appendAudit("calendar_settings_update", user.userId, { reminderEnabled: user.reminderEnabled, offsets: user.reminderWindowMinutes });
+    return ok({ user: toUserPayload(user) });
+  }
+
+  if (method === "GET" && path === "calendar/me/notification-bindings") {
+    const { user } = requireUser(event);
+    const items = store.userNotificationBindings.filter((item) => item.userId === user.userId);
+    return ok({ items, total: items.length });
+  }
+
+  if (method === "POST" && path === "calendar/me/notification-bindings/wechat-clawdbot/qr") {
+    const { user } = requireUser(event);
+    const now = storeHelpers.nowIso();
+    const token = `wxbind_${randomBytes(16).toString("hex")}`;
+    const externalUserId = asString(user.accountName || user.studentNo || user.userId);
+    const existing = store.userNotificationBindings.find((item) => item.userId === user.userId && item.channelType === "wechat_clawdbot") || null;
+    if (existing) {
+      existing.externalUserId = externalUserId;
+      existing.externalOpenId = token;
+      existing.status = "active";
+      existing.updatedAt = now;
+    } else {
+      store.userNotificationBindings.push({
+        id: storeHelpers.createId("notification_binding"),
+        userId: user.userId,
+        channelType: "wechat_clawdbot",
+        externalUserId,
+        externalOpenId: token,
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    const bindingPayload = `touchx://wechat-clawdbot/bind?token=${encodeURIComponent(token)}&uid=${encodeURIComponent(user.userId)}`;
+    appendAudit("wechat_clawdbot_qr_create", user.userId, { bindingToken: token });
+    return ok({
+      bindingToken: token,
+      expiresAt: new Date(Date.now() + WECHAT_BINDING_TTL_MS).toISOString(),
+      qrPayload: bindingPayload,
+      qrImageUrl: createWechatBindingQrSvg(bindingPayload),
+      binding: findWechatBinding(store, user.userId),
+    });
+  }
+
+  if (method === "POST" && path === "calendar/me/notification-bindings/wechat-clawdbot/unbind") {
+    const { user } = requireUser(event);
+    store.userNotificationBindings.forEach((item) => {
+      if (item.userId === user.userId && item.channelType === "wechat_clawdbot") {
+        item.status = "disabled";
+        item.updatedAt = storeHelpers.nowIso();
+      }
+    });
+    appendAudit("wechat_clawdbot_unbind", user.userId, {});
+    return ok({ unbound: true });
   }
 
   if (method === "GET" && path === "calendar/me/personal-events") {
@@ -1562,6 +2063,72 @@ export const handleV1Api = async (event: H3Event) => {
     return ok({ item });
   }
 
+  if (method === "GET" && path === "calendar/me/reminder-rules") {
+    const { user } = requireUser(event);
+    const subscriptionIds = new Set(store.scheduleSubscriptions.filter((item) => item.subscriberUserId === user.userId).map((item) => item.id));
+    const items = store.reminderRules
+      .filter((rule) => {
+        if (rule.targetType === "global") return rule.targetId === `user:${user.userId}` || rule.targetId === "global";
+        if (rule.targetType === "subscription") return subscriptionIds.has(rule.targetId);
+        if (rule.targetType === "personal_event") return store.userScheduleEvents.some((item) => item.id === rule.targetId && item.userId === user.userId);
+        return false;
+      })
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return ok({ items, total: items.length });
+  }
+
+  if (method === "POST" && path === "calendar/me/reminder-rules") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{
+      id?: string;
+      targetType?: "subscription" | "source_event" | "personal_event" | "global";
+      targetId?: string;
+      enabled?: boolean;
+      offsetMinutes?: number;
+      templateKey?: string;
+      channelStrategy?: "both" | "primary_then_fallback" | "primary_only";
+      quietHoursRespect?: boolean;
+    }>(event);
+    const targetType = body.targetType || "global";
+    const targetId = targetType === "global" ? (asString(body.targetId) || `user:${user.userId}`) : asString(body.targetId);
+    if (targetType === "subscription" && !store.scheduleSubscriptions.some((item) => item.id === targetId && item.subscriberUserId === user.userId)) {
+      return toApiError(403, "REMINDER_RULE_TARGET_FORBIDDEN", "不能编辑非本人订阅的提醒规则");
+    }
+    if (targetType === "personal_event" && !store.userScheduleEvents.some((item) => item.id === targetId && item.userId === user.userId)) {
+      return toApiError(403, "REMINDER_RULE_TARGET_FORBIDDEN", "不能编辑非本人事项的提醒规则");
+    }
+    const existing = asString(body.id) ? store.reminderRules.find((item) => item.id === asString(body.id)) || null : null;
+    if (existing && existing.targetType === "subscription" && !store.scheduleSubscriptions.some((item) => item.id === existing.targetId && item.subscriberUserId === user.userId)) {
+      return toApiError(403, "REMINDER_RULE_FORBIDDEN", "不能编辑非本人提醒规则");
+    }
+    const rule = upsertReminderRule(store, {
+      ...body,
+      targetType,
+      targetId,
+      templateKey: asString(body.templateKey) || "calendar.event.reminder",
+    });
+    appendAudit("user_reminder_rule_upsert", user.userId, { ruleId: rule.id, targetType: rule.targetType, targetId: rule.targetId });
+    return ok({ item: rule });
+  }
+
+  const myReminderRuleDeleteMatch = path.match(/^calendar\/me\/reminder-rules\/([^/]+)\/delete$/);
+  if (method === "POST" && myReminderRuleDeleteMatch) {
+    const { user } = requireUser(event);
+    const ruleId = decodeURIComponent(myReminderRuleDeleteMatch[1]);
+    const rule = store.reminderRules.find((item) => item.id === ruleId) || null;
+    const allowed = rule && (
+      (rule.targetType === "global" && (rule.targetId === `user:${user.userId}` || rule.targetId === "global")) ||
+      (rule.targetType === "subscription" && store.scheduleSubscriptions.some((item) => item.id === rule.targetId && item.subscriberUserId === user.userId)) ||
+      (rule.targetType === "personal_event" && store.userScheduleEvents.some((item) => item.id === rule.targetId && item.userId === user.userId))
+    );
+    if (!allowed) {
+      return toApiError(404, "REMINDER_RULE_NOT_FOUND", "提醒规则不存在");
+    }
+    const removed = deleteReminderRule(store, ruleId);
+    appendAudit("user_reminder_rule_delete", user.userId, { ruleId });
+    return ok({ item: removed });
+  }
+
   if (method === "GET" && path === "calendar/me/reminder-candidates") {
     const { user } = requireUser(event);
     const result = listReminderCandidatesForUser(store, user, {
@@ -1593,6 +2160,38 @@ export const handleV1Api = async (event: H3Event) => {
     return ok(result);
   }
 
+  if (method === "POST" && path === "calendar/me/pdf-import/preview") {
+    const { user } = requireUser(event);
+    const upload = await readSinglePdfUpload(event);
+    const parsed = parseSchedulePdf(upload.bytes);
+    const previewEntries = buildScheduleImportPreviewEntries(parsed.courses || []);
+    if (previewEntries.length <= 0) {
+      return toApiError(422, "PDF_SCHEDULE_EMPTY", "未能从 PDF 中解析出日程，请确认文件格式或使用图片/OCR 导入");
+    }
+    const result = createCandidatesFromScheduleImportPreview(store, {
+      ownerUserId: user.userId,
+      legacyJobId: `pdf_${Date.now().toString(36)}`,
+      previewEntries,
+      rawText: `PDF 解析：${upload.fileName}`,
+    });
+    result.job.rawPayload = {
+      fileName: upload.fileName,
+      parsedName: parsed.name,
+      parsedStudentNo: parsed.studentNo,
+    };
+    const candidates = result.candidates;
+    appendAudit("calendar_pdf_import_preview", user.userId, { jobId: result.job.id, fileName: upload.fileName, candidateCount: candidates.length });
+    return ok({
+      jobId: result.job.id,
+      fileName: upload.fileName,
+      parsedName: asString(parsed.name),
+      parsedStudentNo: asString(parsed.studentNo),
+      previewEntries,
+      candidates,
+      total: previewEntries.length,
+    });
+  }
+
   const calendarSourceSubscribeMatch = path.match(/^calendar\/sources\/([^/]+)\/subscribe$/);
   if (method === "POST" && calendarSourceSubscribeMatch) {
     const { user } = requireUser(event);
@@ -1603,6 +2202,9 @@ export const handleV1Api = async (event: H3Event) => {
     }
     if (result === "not_published") {
       return toApiError(400, "CALENDAR_SOURCE_NOT_PUBLISHED", "日程源尚未发布，暂不可订阅");
+    }
+    if (result === "forbidden") {
+      return toApiError(403, "CALENDAR_SOURCE_FORBIDDEN", "当前用户无权订阅该日程源");
     }
     appendAudit("calendar_source_subscribe", user.userId, { sourceId, subscriptionId: result.subscription.id });
     return ok(result);
@@ -1856,7 +2458,7 @@ export const handleV1Api = async (event: H3Event) => {
     if (authState.initialized) {
       return toApiError(400, "ADMIN_PASSWORD_ALREADY_INITIALIZED", "管理员密码已初始化");
     }
-    if (user.studentNo !== authState.bootstrapStudentNo) {
+    if (user.studentNo !== authState.bootstrapStudentNo && normalizeAccountName(user.accountName) !== normalizeAccountName(authState.bootstrapStudentNo)) {
       return toApiError(403, "ADMIN_INIT_FORBIDDEN", "仅默认管理员可完成首次初始化");
     }
     const password = asString(body.password);
@@ -1882,57 +2484,116 @@ export const handleV1Api = async (event: H3Event) => {
     });
   }
 
-  if (method === "POST" && path === "auth/login") {
-    const body = await readJsonBody<{ studentNo?: string; name?: string; nickname?: string; classLabel?: string }>(event);
-    const studentNo = asString(body.studentNo);
-    if (!studentNo) {
-      return toApiError(400, "STUDENT_NO_REQUIRED", "登录需要提供 studentNo");
+  if (method === "POST" && path === "auth/register") {
+    const body = await readJsonBody<{ accountName?: string; username?: string; password?: string; confirmPassword?: string; nickname?: string; name?: string }>(event);
+    const accountName = normalizeAccountName(body.accountName || body.username);
+    const password = asString(body.password);
+    const confirmPassword = asString(body.confirmPassword || body.password);
+    if (!ACCOUNT_NAME_PATTERN.test(accountName) && !USERNAME_EMAIL_PATTERN.test(accountName)) {
+      return toApiError(400, "ACCOUNT_NAME_INVALID", "账号需为 3-48 位字母/数字/下划线/邮箱");
     }
-    if (!/^\d{6,32}$/.test(studentNo)) {
-      return toApiError(400, "STUDENT_NO_INVALID", "学号格式不正确");
+    if (password.length < 6) {
+      return toApiError(400, "PASSWORD_TOO_SHORT", "密码至少 6 位");
     }
-    let user = store.users.find((item) => item.studentNo === studentNo) || null;
-    if (!user) {
-      const inputName = asString(body.name);
-      const inputNickname = asString(body.nickname) || inputName;
-      user = {
-        userId: storeHelpers.createId("user"),
-        studentNo,
-        studentId: "",
-        name: inputName,
-        classLabel: asString(body.classLabel),
-        nickname: inputNickname,
-        avatarUrl: "",
-        wallpaperUrl: "",
-        classIds: [],
-        adminRole: "none",
-        reminderEnabled: true,
-        reminderWindowMinutes: [30, 15],
-        createdAt: storeHelpers.nowIso(),
-        updatedAt: storeHelpers.nowIso(),
-      };
-      store.users.push(user);
-      appendAudit("auth_register", user.userId, { studentNo: user.studentNo });
-    } else {
-      if (asString(body.name)) {
-        user.name = asString(body.name);
-      }
-      if (asString(body.nickname)) {
-        user.nickname = asString(body.nickname);
-      }
-      if (asString(body.classLabel)) {
-        user.classLabel = asString(body.classLabel);
-      }
-      user.updatedAt = storeHelpers.nowIso();
+    if (password !== confirmPassword) {
+      return toApiError(400, "PASSWORD_CONFIRM_MISMATCH", "两次输入密码不一致");
     }
+    if (!ensureAccountNameAvailable(store, accountName)) {
+      return toApiError(409, "ACCOUNT_NAME_EXISTS", "账号已被注册");
+    }
+    const now = storeHelpers.nowIso();
+    const salt = createPasswordSalt();
+    const user: UserRecord = {
+      userId: storeHelpers.createId("user"),
+      studentNo: createVirtualStudentNo(accountName),
+      studentId: "",
+      name: asString(body.name),
+      classLabel: "",
+      nickname: asString(body.nickname || body.name) || accountName,
+      avatarUrl: "",
+      wallpaperUrl: "",
+      classIds: [],
+      adminRole: "none",
+      accountName,
+      passwordSalt: salt,
+      passwordHash: hashPassword(password, salt),
+      authProvider: "account_password",
+      reminderEnabled: true,
+      reminderWindowMinutes: [30, 15],
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.users.push(user);
     const session = createSession(event, user, "user", 24 * 14);
-    appendAudit("auth_login", user.userId, {});
+    appendAudit("auth_register", user.userId, { accountName });
+    return ok({ sessionToken: session.token, expiresAt: session.expiresAt, mode: "account_password", user: toAuthUserPayload(user) });
+  }
+
+  if (method === "POST" && path === "auth/login") {
+    const body = await readJsonBody<{ accountName?: string; username?: string; password?: string; studentNo?: string; name?: string; nickname?: string; classLabel?: string }>(event);
+    const accountName = normalizeAccountName(body.accountName || body.username || body.studentNo);
+    const password = asString(body.password);
+    if (!accountName) {
+      return toApiError(400, "ACCOUNT_NAME_REQUIRED", "请输入账号");
+    }
+    let user = store.users.find((item) => normalizeAccountName(item.accountName || item.studentNo) === accountName) || null;
+    if (user?.passwordHash) {
+      if (!password) {
+        return toApiError(400, "PASSWORD_REQUIRED", "请输入密码");
+      }
+      if (!verifyPassword(password, asString(user.passwordSalt), asString(user.passwordHash))) {
+        return toApiError(401, "AUTH_LOGIN_FAILED", "账号或密码错误");
+      }
+    } else {
+      const legacyStudentNo = asString(body.studentNo || body.accountName || body.username);
+      if (/^\d{6,32}$/.test(legacyStudentNo)) {
+        user = store.users.find((item) => item.studentNo === legacyStudentNo) || null;
+        if (user && password && user.passwordHash && !verifyPassword(password, asString(user.passwordSalt), asString(user.passwordHash))) {
+          return toApiError(401, "AUTH_LOGIN_FAILED", "账号或密码错误");
+        }
+      }
+      if (!user) {
+        return toApiError(401, "AUTH_LOGIN_FAILED", "账号不存在，请先注册");
+      }
+    }
+    if (asString(body.name)) user.name = asString(body.name);
+    if (asString(body.nickname)) user.nickname = asString(body.nickname);
+    if (asString(body.classLabel)) user.classLabel = asString(body.classLabel);
+    user.updatedAt = storeHelpers.nowIso();
+    const session = createSession(event, user, "user", 24 * 14);
+    appendAudit("auth_login", user.userId, { accountName });
     return ok({
       sessionToken: session.token,
       expiresAt: session.expiresAt,
-      mode: "mock",
+      mode: user.authProvider || (user.passwordHash ? "account_password" : "legacy_student_no"),
       user: toAuthUserPayload(user),
     });
+  }
+
+  if (method === "POST" && path === "auth/profile") {
+    const { user } = requireUser(event);
+    const body = await readJsonBody<{ nickname?: string; name?: string; avatarUrl?: string; wallpaperUrl?: string; password?: string; oldPassword?: string }>(event);
+    if (Object.prototype.hasOwnProperty.call(body, "nickname")) {
+      const nickname = asString(body.nickname);
+      if (!nickname) return toApiError(400, "NICKNAME_REQUIRED", "昵称不能为空");
+      user.nickname = nickname;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "name")) user.name = asString(body.name);
+    if (Object.prototype.hasOwnProperty.call(body, "avatarUrl")) user.avatarUrl = asString(body.avatarUrl);
+    if (Object.prototype.hasOwnProperty.call(body, "wallpaperUrl")) user.wallpaperUrl = asString(body.wallpaperUrl);
+    if (asString(body.password)) {
+      if (user.passwordHash && !verifyPassword(asString(body.oldPassword), asString(user.passwordSalt), asString(user.passwordHash))) {
+        return toApiError(401, "OLD_PASSWORD_INVALID", "旧密码不正确");
+      }
+      if (asString(body.password).length < 6) return toApiError(400, "PASSWORD_TOO_SHORT", "密码至少 6 位");
+      const salt = createPasswordSalt();
+      user.passwordSalt = salt;
+      user.passwordHash = hashPassword(asString(body.password), salt);
+      user.authProvider = "account_password";
+    }
+    user.updatedAt = storeHelpers.nowIso();
+    appendAudit("auth_profile_update", user.userId, {});
+    return ok({ user: toAuthUserPayload(user) });
   }
 
   if (method === "POST" && path === "auth/logout") {
@@ -1946,7 +2607,7 @@ export const handleV1Api = async (event: H3Event) => {
   if (method === "GET" && path === "auth/me") {
     const { user, session } = requireUser(event);
     return ok({
-      mode: "mock",
+      mode: user.authProvider || (user.passwordHash ? "account_password" : "legacy_student_no"),
       user: toAuthUserPayload(user),
       role: session.role,
       expiresAt: session.expiresAt,
@@ -4639,6 +5300,62 @@ export const handleV1Api = async (event: H3Event) => {
     });
   }
 
+  if (method === "GET" && path === "calendar/me/ics") {
+    const { user } = requireUser(event);
+    const calendar = buildEffectiveCalendarForUser(store, user, {
+      week: Number(query.week || 0) || undefined,
+      date: asString(query.date),
+    });
+    const entries = calendar.items.map((item) => ({
+      id: item.id,
+      day: Math.max(1, Math.min(7, Number(item.weekday || 1))),
+      startSection: Math.max(1, Number(item.startSection || 1)),
+      endSection: Math.max(Number(item.startSection || 1), Number(item.endSection || item.startSection || 1)),
+      weekExpr: item.weekExpr || String(calendar.week),
+      parity: item.parity === "odd" || item.parity === "even" ? item.parity : "all",
+      courseName: item.title,
+      classroom: item.location,
+      teacher: asString(item.metadata?.teacherOrOwner),
+    } satisfies ScheduleEntryRecord));
+    const content = toIcsContent({
+      calendarId: `user-${user.userId}`,
+      title: `${user.nickname || user.name || user.accountName || "TouchX"}的日程`,
+      entries,
+      timezone: "Asia/Shanghai",
+      sourceTitle: "TouchX 日程",
+    });
+    setHeader(event, "content-type", "text/calendar; charset=utf-8");
+    setHeader(event, "content-disposition", `attachment; filename=\"touchx-calendar.ics\"`);
+    return content;
+  }
+
+  const calendarSourceIcsMatch = path.match(/^calendar\/sources\/([^/]+)\/ics$/);
+  if (method === "GET" && calendarSourceIcsMatch) {
+    const context = requireUser(event);
+    const sourceId = decodeURIComponent(calendarSourceIcsMatch[1]);
+    const scheduleId = sourceId.replace(/^schedule:/, "");
+    const schedule = store.schedules.find((item) => item.id === scheduleId) || null;
+    if (!schedule) return toApiError(404, "CALENDAR_SOURCE_NOT_FOUND", "日程源不存在");
+    if (!isPublishedScheduleVisibleToUser(schedule, context.user)) {
+      return toApiError(403, "CALENDAR_SOURCE_FORBIDDEN", "无权导出该日程源");
+    }
+    const version = getPublishedScheduleVersion(schedule.id, schedule.publishedVersionNo);
+    if (!version) return toApiError(400, "CALENDAR_SOURCE_NOT_PUBLISHED", "日程源尚未发布，无法导出 ICS");
+    const classItem = store.classes.find((item) => item.id === schedule.classId) || null;
+    const timezone = classItem?.timezone || "Asia/Shanghai";
+    const content = toIcsContent({
+      calendarId: schedule.id,
+      title: schedule.title,
+      description: schedule.description,
+      entries: version.entries,
+      timezone,
+      sourceTitle: schedule.title,
+    });
+    setHeader(event, "content-type", "text/calendar; charset=utf-8");
+    setHeader(event, "content-disposition", `attachment; filename=\"${encodeURIComponent(schedule.title)}.ics\"`);
+    return content;
+  }
+
   const scheduleIcsMatch = path.match(/^schedules\/([^/]+)\/ics$/);
   if (method === "GET" && scheduleIcsMatch) {
     requireUser(event);
@@ -4653,7 +5370,14 @@ export const handleV1Api = async (event: H3Event) => {
     }
     const classItem = store.classes.find((item) => item.id === schedule.classId) || null;
     const timezone = classItem?.timezone || "Asia/Shanghai";
-    const content = toIcsContent(schedule, publishedVersion, timezone);
+    const content = toIcsContent({
+      calendarId: schedule.id,
+      title: schedule.title,
+      description: schedule.description,
+      entries: publishedVersion.entries,
+      timezone,
+      sourceTitle: schedule.title,
+    });
     setHeader(event, "content-type", "text/calendar; charset=utf-8");
     setHeader(event, "content-disposition", `attachment; filename=\"${encodeURIComponent(schedule.title)}.ics\"`);
     return content;

@@ -53,10 +53,34 @@ export const useNexusApi = () => {
     return json.data as T;
   };
 
+  const upload = async <T = unknown>(path: string, formData: FormData) => {
+    const headers: Record<string, string> = {};
+    const token = ensureSessionToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(path, {
+      method: "POST",
+      headers,
+      credentials: "omit",
+      body: formData,
+    });
+    const json = (await response.json()) as ApiEnvelope<T>;
+    if (response.status === 401 || String(json?.error?.code || "").includes("AUTH")) {
+      await goToLogin();
+      throw new Error("登录已失效，请重新登录");
+    }
+    if (!response.ok || !json.ok) {
+      throw new Error(String(json?.error?.message || `HTTP ${response.status}`));
+    }
+    return json.data as T;
+  };
+
   return {
     sessionToken,
     ensureSessionToken,
     request,
+    upload,
     goToLogin,
   };
 };

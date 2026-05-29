@@ -9,11 +9,27 @@
 /* Begin PBXBuildFile section */
 		00E356F31AD99517003FC87E /* TouchXMobileTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* TouchXMobileTests.m */; };
 		0C80B921A6F3F58F76C31292 /* libPods-TouchXMobile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-TouchXMobile.a */; };
+		0FD8A8624AE28F2F229FD96C /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2F580F6B37141DCE4BF02E70 /* UserNotifications.framework */; };
 		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
+		13B07FC21A68108700A75B9A /* NativeTabBarController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FC01A68108700A75B9A /* NativeTabBarController.mm */; };
+		167EB39822D69E6D2C3B7FD5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		265D0481C53AB4DAEC517411 /* TouchXNativeUX.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8672131915FB56B5D9CF745 /* TouchXNativeUX.swift */; };
+		427FC89154E2B2A162DA1979 /* TouchXScheduleActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6784A8DD3B39FB15052846D2 /* TouchXScheduleActivityAttributes.swift */; };
+		67F5758AE7FA30BE0A26DDE8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0E3C95E3583C959CC500050D /* Foundation.framework */; };
+		6865FB2F585A7AD36F16BB76 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A91A6F30C5A2CC8E2B3E741 /* ActivityKit.framework */; };
+		6A252330BC5E4549EDD71FF7 /* TouchXScheduleWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B9000313B6C4C06DCEAEA5E /* TouchXScheduleWidget.swift */; };
 		7699B88040F8A987B510C191 /* libPods-TouchXMobile-TouchXMobileTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 19F6CBCC0A4E27FBF8BF4A61 /* libPods-TouchXMobile-TouchXMobileTests.a */; };
+		7D409D9BF8BC1015677A77CA /* UIKitExtensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEEA70FABEB0F78FC62A0974 /* UIKitExtensions.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		928F064601420DB61D5736AC /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D495C6B81947C1813C21159E /* SwiftUI.framework */; };
+		A7B6D8E15FBED3E35A0EE0CE /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A91A6F30C5A2CC8E2B3E741 /* ActivityKit.framework */; };
+		BF55471B88CE3518563F4EA9 /* TouchXScheduleActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AE63BB72EE433CD3D11B213 /* TouchXScheduleActivityAttributes.swift */; };
+		CAC2129B562C235868B664F7 /* TouchXNativeUXBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = C6B326985387166877578724 /* TouchXNativeUXBridge.mm */; };
+		D079D427822FDB446838E247 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F9D8507B80DDE00F3F18DFD0 /* WidgetKit.framework */; };
+		D0A1CDA8ACA91DE1AE01FC26 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F9D8507B80DDE00F3F18DFD0 /* WidgetKit.framework */; };
+		E8AC97DBDE53E7E2EB29A90F /* TouchXScheduleWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 639FE67D53E04AE2581547D5 /* TouchXScheduleWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -24,12 +40,35 @@
 			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
 			remoteInfo = TouchXMobile;
 		};
+		286B4A2BD94533C1DA2A773E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 700DA18CF701B700797905FF;
+			remoteInfo = TouchXScheduleWidget;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7379DA9A968F6A592AC411C5 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E8AC97DBDE53E7E2EB29A90F /* TouchXScheduleWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		00E356EE1AD99517003FC87E /* TouchXMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TouchXMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		00E356F21AD99517003FC87E /* TouchXMobileTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TouchXMobileTests.m; sourceTree = "<group>"; };
+		0B9000313B6C4C06DCEAEA5E /* TouchXScheduleWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TouchXScheduleWidget.swift; sourceTree = "<group>"; };
+		0E3C95E3583C959CC500050D /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		13B07F961A680F5B00A75B9A /* TouchXMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TouchXMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = TouchXMobile/AppDelegate.h; sourceTree = "<group>"; };
 		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = TouchXMobile/AppDelegate.mm; sourceTree = "<group>"; };
@@ -37,14 +76,30 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = TouchXMobile/Info.plist; sourceTree = "<group>"; };
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = TouchXMobile/main.m; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = TouchXMobile/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		13B07FC01A68108700A75B9A /* NativeTabBarController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = NativeTabBarController.mm; path = TouchXMobile/NativeTabBarController.mm; sourceTree = "<group>"; };
+		13B07FC31A68108700A75B9A /* NativeTabBarController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = NativeTabBarController.h; path = TouchXMobile/NativeTabBarController.h; sourceTree = "<group>"; };
 		19F6CBCC0A4E27FBF8BF4A61 /* libPods-TouchXMobile-TouchXMobileTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TouchXMobile-TouchXMobileTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1D64D2F12C768FBAB21800EE /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = Info.plist; path = Info.plist; sourceTree = "<group>"; };
+		2F580F6B37141DCE4BF02E70 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/UserNotifications.framework; sourceTree = DEVELOPER_DIR; };
 		3B4392A12AC88292D35C810B /* Pods-TouchXMobile.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TouchXMobile.debug.xcconfig"; path = "Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile.debug.xcconfig"; sourceTree = "<group>"; };
+		4C5C45C90506FA821936B8C9 /* TouchXScheduleWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = TouchXScheduleWidget.entitlements; path = TouchXScheduleWidget.entitlements; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-TouchXMobile.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TouchXMobile.release.xcconfig"; path = "Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile.release.xcconfig"; sourceTree = "<group>"; };
+		5B5ED628819D5E51FB3913E1 /* TouchXMobile.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; name = TouchXMobile.entitlements; path = TouchXMobile/TouchXMobile.entitlements; sourceTree = "<group>"; };
 		5B7EB9410499542E8C5724F5 /* Pods-TouchXMobile-TouchXMobileTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TouchXMobile-TouchXMobileTests.debug.xcconfig"; path = "Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests.debug.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-TouchXMobile.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-TouchXMobile.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		639FE67D53E04AE2581547D5 /* TouchXScheduleWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TouchXScheduleWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6784A8DD3B39FB15052846D2 /* TouchXScheduleActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TouchXScheduleActivityAttributes.swift; sourceTree = "<group>"; };
+		7A91A6F30C5A2CC8E2B3E741 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/ActivityKit.framework; sourceTree = DEVELOPER_DIR; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = TouchXMobile/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		89C6BE57DB24E9ADA2F236DE /* Pods-TouchXMobile-TouchXMobileTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-TouchXMobile-TouchXMobileTests.release.xcconfig"; path = "Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests.release.xcconfig"; sourceTree = "<group>"; };
+		8AE63BB72EE433CD3D11B213 /* TouchXScheduleActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TouchXScheduleActivityAttributes.swift; path = TouchXMobile/TouchXScheduleActivityAttributes.swift; sourceTree = SOURCE_ROOT; };
+		C6B326985387166877578724 /* TouchXNativeUXBridge.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; name = TouchXNativeUXBridge.mm; path = TouchXMobile/TouchXNativeUXBridge.mm; sourceTree = SOURCE_ROOT; };
+		D495C6B81947C1813C21159E /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
+		E8672131915FB56B5D9CF745 /* TouchXNativeUX.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = TouchXNativeUX.swift; path = TouchXMobile/TouchXNativeUX.swift; sourceTree = SOURCE_ROOT; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		F81422C13204449866BBF846 /* TouchXMobile-Bridging-Header.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = "TouchXMobile-Bridging-Header.h"; path = "TouchXMobile/TouchXMobile-Bridging-Header.h"; sourceTree = "<group>"; };
+		F9D8507B80DDE00F3F18DFD0 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
+		FEEA70FABEB0F78FC62A0974 /* UIKitExtensions.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = UIKitExtensions.swift; path = TouchXMobile/UIKitExtensions.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -61,6 +116,20 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-TouchXMobile.a in Frameworks */,
+				0FD8A8624AE28F2F229FD96C /* UserNotifications.framework in Frameworks */,
+				A7B6D8E15FBED3E35A0EE0CE /* ActivityKit.framework in Frameworks */,
+				D079D427822FDB446838E247 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D287F4C2D346C577B92DA1E5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67F5758AE7FA30BE0A26DDE8 /* Foundation.framework in Frameworks */,
+				928F064601420DB61D5736AC /* SwiftUI.framework in Frameworks */,
+				D0A1CDA8ACA91DE1AE01FC26 /* WidgetKit.framework in Frameworks */,
+				6865FB2F585A7AD36F16BB76 /* ActivityKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -89,13 +158,33 @@
 			children = (
 				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
 				13B07FB01A68108700A75B9A /* AppDelegate.mm */,
+				13B07FC31A68108700A75B9A /* NativeTabBarController.h */,
+				13B07FC01A68108700A75B9A /* NativeTabBarController.mm */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				E8672131915FB56B5D9CF745 /* TouchXNativeUX.swift */,
+				C6B326985387166877578724 /* TouchXNativeUXBridge.mm */,
+				8AE63BB72EE433CD3D11B213 /* TouchXScheduleActivityAttributes.swift */,
+				FEEA70FABEB0F78FC62A0974 /* UIKitExtensions.swift */,
+				F81422C13204449866BBF846 /* TouchXMobile-Bridging-Header.h */,
+				5B5ED628819D5E51FB3913E1 /* TouchXMobile.entitlements */,
 			);
 			name = TouchXMobile;
+			sourceTree = "<group>";
+		};
+		1DE7D762C03F4C3D72F4B319 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				2F580F6B37141DCE4BF02E70 /* UserNotifications.framework */,
+				7A91A6F30C5A2CC8E2B3E741 /* ActivityKit.framework */,
+				F9D8507B80DDE00F3F18DFD0 /* WidgetKit.framework */,
+				0E3C95E3583C959CC500050D /* Foundation.framework */,
+				D495C6B81947C1813C21159E /* SwiftUI.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
@@ -104,8 +193,21 @@
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-TouchXMobile.a */,
 				19F6CBCC0A4E27FBF8BF4A61 /* libPods-TouchXMobile-TouchXMobileTests.a */,
+				1DE7D762C03F4C3D72F4B319 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		6F3D3927E34D7A6871402278 /* TouchXScheduleWidget */ = {
+			isa = PBXGroup;
+			children = (
+				1D64D2F12C768FBAB21800EE /* Info.plist */,
+				4C5C45C90506FA821936B8C9 /* TouchXScheduleWidget.entitlements */,
+				0B9000313B6C4C06DCEAEA5E /* TouchXScheduleWidget.swift */,
+				6784A8DD3B39FB15052846D2 /* TouchXScheduleActivityAttributes.swift */,
+			);
+			name = TouchXScheduleWidget;
+			path = TouchXScheduleWidget;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -124,6 +226,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				6F3D3927E34D7A6871402278 /* TouchXScheduleWidget */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -135,6 +238,7 @@
 			children = (
 				13B07F961A680F5B00A75B9A /* TouchXMobile.app */,
 				00E356EE1AD99517003FC87E /* TouchXMobileTests.xctest */,
+				639FE67D53E04AE2581547D5 /* TouchXScheduleWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -161,7 +265,6 @@
 				00E356EA1AD99517003FC87E /* Sources */,
 				00E356EB1AD99517003FC87E /* Frameworks */,
 				00E356EC1AD99517003FC87E /* Resources */,
-				C59DA0FBD6956966B86A3779 /* [CP] Embed Pods Frameworks */,
 				F6A41C54EA430FDDC6A6ED99 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
@@ -183,17 +286,35 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
-				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				7379DA9A968F6A592AC411C5 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				1C6CD0C8F32CE241A7C622EC /* PBXTargetDependency */,
 			);
 			name = TouchXMobile;
 			productName = TouchXMobile;
 			productReference = 13B07F961A680F5B00A75B9A /* TouchXMobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		700DA18CF701B700797905FF /* TouchXScheduleWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA224BA4CBB691B0E8189921 /* Build configuration list for PBXNativeTarget "TouchXScheduleWidget" */;
+			buildPhases = (
+				3FBE5EB6C616053434EFBBC2 /* Sources */,
+				D287F4C2D346C577B92DA1E5 /* Frameworks */,
+				213C8C40D44D347A87A851AF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TouchXScheduleWidget;
+			productName = TouchXScheduleWidget;
+			productReference = 639FE67D53E04AE2581547D5 /* TouchXScheduleWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -209,6 +330,19 @@
 					};
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
+					};
+					700DA18CF701B700797905FF = {
+						CreatedOnToolsVersion = 16.0;
+						SystemCapabilities = {
+							com.apple.ApplicationGroups.iOS = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -219,6 +353,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -227,6 +362,7 @@
 			targets = (
 				13B07F861A680F5B00A75B9A /* TouchXMobile */,
 				00E356ED1AD99517003FC87E /* TouchXMobileTests */,
+				700DA18CF701B700797905FF /* TouchXScheduleWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -245,6 +381,14 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				167EB39822D69E6D2C3B7FD5 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		213C8C40D44D347A87A851AF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,23 +410,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -e\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
-		};
-		00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
 		};
 		A55EABD7B0C7F3A422A6CC61 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -328,23 +455,6 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		C59DA0FBD6956966B86A3779 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 		E235C05ADACE081382539298 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -353,9 +463,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile/Pods-TouchXMobile-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -370,9 +484,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-TouchXMobile-TouchXMobileTests/Pods-TouchXMobile-TouchXMobileTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -395,7 +513,21 @@
 			buildActionMask = 2147483647;
 			files = (
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
+				13B07FC21A68108700A75B9A /* NativeTabBarController.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
+				265D0481C53AB4DAEC517411 /* TouchXNativeUX.swift in Sources */,
+				CAC2129B562C235868B664F7 /* TouchXNativeUXBridge.mm in Sources */,
+				BF55471B88CE3518563F4EA9 /* TouchXScheduleActivityAttributes.swift in Sources */,
+				7D409D9BF8BC1015677A77CA /* UIKitExtensions.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3FBE5EB6C616053434EFBBC2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A252330BC5E4549EDD71FF7 /* TouchXScheduleWidget.swift in Sources */,
+				427FC89154E2B2A162DA1979 /* TouchXScheduleActivityAttributes.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -406,6 +538,12 @@
 			isa = PBXTargetDependency;
 			target = 13B07F861A680F5B00A75B9A /* TouchXMobile */;
 			targetProxy = 00E356F41AD99517003FC87E /* PBXContainerItemProxy */;
+		};
+		1C6CD0C8F32CE241A7C622EC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = TouchXScheduleWidget;
+			target = 700DA18CF701B700797905FF /* TouchXScheduleWidget */;
+			targetProxy = 286B4A2BD94533C1DA2A773E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -431,7 +569,7 @@
 					"-lc++",
 					"$(inherited)",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.touchx.mobile.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TouchXMobile.app/TouchXMobile";
 			};
@@ -455,7 +593,7 @@
 					"-lc++",
 					"$(inherited)",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.touchx.mobile.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TouchXMobile.app/TouchXMobile";
 			};
@@ -465,11 +603,16 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-TouchXMobile.debug.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = TouchXMobile/TouchXMobile.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2L5YC85FQ7;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = TouchXMobile/Info.plist;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -481,8 +624,9 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.touchx.mobile;
 				PRODUCT_NAME = TouchXMobile;
+				SWIFT_OBJC_BRIDGING_HEADER = "TouchXMobile/TouchXMobile-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -493,10 +637,15 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-TouchXMobile.release.xcconfig */;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = TouchXMobile/TouchXMobile.entitlements;
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2L5YC85FQ7;
 				INFOPLIST_FILE = TouchXMobile/Info.plist;
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -508,8 +657,9 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.touchx.mobile;
 				PRODUCT_NAME = TouchXMobile;
+				SWIFT_OBJC_BRIDGING_HEADER = "TouchXMobile/TouchXMobile-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
@@ -584,7 +734,14 @@
 					"-DFOLLY_CFG_NO_COROUTINES=1",
 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
 				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
+				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				USE_HERMES = false;
 			};
 			name = Debug;
 		};
@@ -649,10 +806,77 @@
 					"-DFOLLY_CFG_NO_COROUTINES=1",
 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
 				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
+				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				USE_HERMES = false;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
+		};
+		EE12643EA32643235BCE47FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = TouchXScheduleWidget/TouchXScheduleWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2L5YC85FQ7;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TouchXScheduleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.touchx.mobile.TouchXScheduleWidget;
+				PRODUCT_NAME = TouchXScheduleWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		EFF13662F581D3C52D95DC5E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = TouchXScheduleWidget/TouchXScheduleWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 2L5YC85FQ7;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TouchXScheduleWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.touchx.mobile.TouchXScheduleWidget;
+				PRODUCT_NAME = TouchXScheduleWidget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 /* End XCBuildConfiguration section */
 
@@ -680,6 +904,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA224BA4CBB691B0E8189921 /* Build configuration list for PBXNativeTarget "TouchXScheduleWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE12643EA32643235BCE47FB /* Release */,
+				EFF13662F581D3C52D95DC5E /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

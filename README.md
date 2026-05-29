@@ -33,7 +33,7 @@ pnpm install
 pnpm dev:backend
 ```
 
-启动 React CMS：
+启动 React CMS 沙盒（仅用于独立开发；MVP / 生产后台统一走 `/nexus`）：
 
 ```bash
 pnpm dev:cms
@@ -85,13 +85,17 @@ pnpm deploy:backend
 
 ## 当前后端入口
 
+路由边界：`/api/**` 只放接口 / JSON / webhook；非 `/api` 路径都是页面。
+
+- 页面首页 / CMS 主页面：`/`（未登录或登录态失效跳 `/nexus/login`）
 - API 基线：`/api/v1/*`
+- API 健康检查：`/api/health`（兼容保留 `/health`）
 - 新 Calendar API：`/api/v1/calendar/*`
-- 管理中台（ScheduleNexus）：`/nexus`
-- Nuxt 内新 CMS 页面：`/nexus/calendar-sources`、`/nexus/personal-events`、`/nexus/reminder-rules`、`/nexus/reminder-candidates`、`/nexus/notification-channels`、`/nexus/imports`
-- 独立 React CMS：`apps/cms`（开发端口默认 5177，代理 `/api` 到后端）
-- 兼容别名：`/admin`（302 到 `/nexus`）
-- 健康检查：`/health`
+- 管理中台兼容路径（ScheduleNexus + 新 CMS 页面）：`/nexus`
+- Nuxt 内新 CMS 页面：`/nexus/calendar-sources`、`/nexus/personal-events`、`/nexus/reminder-rules`、`/nexus/reminder-candidates`、`/nexus/notification-channels`、`/nexus/notification-deliveries`、`/nexus/imports`、`/nexus/audit-logs`
+- 兼容页面别名：`/admin`（302 到 `/nexus`）
+- 独立 React CMS：`apps/cms`（仅开发沙盒，端口默认 5177，代理 `/api` 到后端）
+- 默认本地后台管理员：`admin@schedule.com` / `123456`
 
 ## 产品与架构 Roadmap
 

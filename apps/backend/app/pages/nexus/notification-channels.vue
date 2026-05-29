@@ -4,7 +4,7 @@
       <header class="rx-card-head">
         <div>
           <h2>通知通道重构</h2>
-          <p>目标通道：微信 ClawDBot + 飞书。已接入 NotificationChannel 数据模型与测试投递记录。</p>
+          <p>目标通道：微信 ClawDBot + 飞书。飞书支持自定义机器人 webhook 与企业自建应用两种 provider。</p>
         </div>
         <div>
           <button class="rx-btn rx-btn-ghost" type="button" :disabled="loading" @click="dispatchPending">投递 pending</button>
@@ -76,13 +76,14 @@ import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 type ChannelType = "wechat_clawdbot" | "feishu";
+type FeishuProvider = "webhook_bot" | "tenant_app";
 
 interface ChannelRow {
   id: string;
   type: ChannelType;
   name: string;
   enabled: boolean;
-  config: Record<string, string>;
+  config: Record<string, string | undefined> & { provider?: FeishuProvider };
 }
 
 interface DeliveryRow {
@@ -100,9 +101,11 @@ const errorText = ref("");
 const channels = ref<ChannelRow[]>([]);
 const deliveries = ref<DeliveryRow[]>([]);
 
-const formatConfig = (config: Record<string, string>) => {
+const formatConfig = (config: ChannelRow["config"]) => {
+  const provider = config?.provider === "tenant_app" ? "飞书应用" : config?.provider === "webhook_bot" ? "飞书机器人" : "";
   const active = Object.entries(config || {}).filter(([, value]) => String(value || "").trim());
-  return active.length > 0 ? active.map(([key, value]) => `${key}: ${value}`).join(" / ") : "未配置密钥";
+  const summary = active.length > 0 ? active.map(([key, value]) => `${key}: ${value}`).join(" / ") : "未配置密钥";
+  return provider ? `${provider} / ${summary}` : summary;
 };
 
 const toDisplayDate = (value: unknown) => {

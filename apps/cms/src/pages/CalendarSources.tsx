@@ -15,10 +15,24 @@ interface CalendarSourceRow {
   updatedAt: string;
 }
 
+interface CalendarSourceEventRow {
+  id: string;
+  title: string;
+  eventType: string;
+  location: string;
+  weekday?: number;
+  weekExpr?: string;
+  startTime?: string;
+  endTime?: string;
+  startSection?: number;
+  endSection?: number;
+}
+
 export function CalendarSources() {
   const [items, setItems] = useState<CalendarSourceRow[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [versions, setVersions] = useState<Array<{ id: string; versionNo: number; status: string; createdBy: string; createdAt: string; publishedAt?: string }>>([]);
+  const [events, setEvents] = useState<CalendarSourceEventRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const totals = useMemo(() => ({
@@ -30,7 +44,7 @@ export function CalendarSources() {
     setLoading(true);
     setError("");
     try {
-      const data = await adminApi.get<{ items: CalendarSourceRow[] }>("calendar/sources");
+      const data = await adminApi.listCalendarSources() as { items: CalendarSourceRow[] };
       setItems(data.items || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败");
@@ -43,9 +57,13 @@ export function CalendarSources() {
     setLoading(true);
     setError("");
     try {
-      const data = await adminApi.get<{ versions: Array<{ id: string; versionNo: number; status: string; createdBy: string; createdAt: string; publishedAt?: string }> }>(`calendar/sources/${encodeURIComponent(sourceId)}`);
+      const data = await adminApi.getCalendarSource(sourceId) as {
+        versions: Array<{ id: string; versionNo: number; status: string; createdBy: string; createdAt: string; publishedAt?: string }>;
+        events: CalendarSourceEventRow[];
+      };
       setSelectedSourceId(sourceId);
       setVersions(data.versions || []);
+      setEvents(data.events || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载版本失败");
     } finally {
@@ -95,7 +113,7 @@ export function CalendarSources() {
                 <td>v{item.currentVersionNo || 0} / {item.versionCount}</td>
                 <td>{item.eventCount}</td>
                 <td>{item.subscriptionCount}</td>
-                <td><button className="button ghost" onClick={() => void showVersions(item.id)}>版本</button></td>
+                <td><button className="button ghost" onClick={() => void showVersions(item.id)}>详情</button></td>
               </tr>
             ))}
             {items.length === 0 ? <tr><td colSpan={8} className="muted">暂无数据或未登录</td></tr> : null}
@@ -105,6 +123,11 @@ export function CalendarSources() {
       {selectedSourceId ? <><h2 style={{ marginTop: 18 }}>版本列表</h2><p className="muted">{selectedSourceId}</p><div className="table-wrap"><table><thead><tr><th>版本</th><th>状态</th><th>创建人</th><th>时间</th><th>操作</th></tr></thead><tbody>
         {versions.map((version) => <tr key={version.id}><td><strong>v{version.versionNo}</strong><div className="muted">{version.id}</div></td><td><span className="pill">{version.status}</span></td><td>{version.createdBy || "-"}</td><td>{version.publishedAt || version.createdAt}</td><td><button className="button ghost" disabled={loading || version.status === "published"} onClick={() => void publishVersion(version.versionNo)}>发布</button></td></tr>)}
         {versions.length === 0 ? <tr><td colSpan={5} className="muted">暂无版本</td></tr> : null}
+      </tbody></table></div>
+      <h2 style={{ marginTop: 18 }}>已发布事件</h2>
+      <div className="table-wrap"><table><thead><tr><th>事件</th><th>类型</th><th>时间</th><th>地点</th><th>周次</th></tr></thead><tbody>
+        {events.map((event) => <tr key={event.id}><td><strong>{event.title}</strong><div className="muted">{event.id}</div></td><td><span className="pill">{event.eventType}</span></td><td>{event.startTime || event.startSection ? `${event.startTime || `第${event.startSection}节`} - ${event.endTime || `第${event.endSection}节`}` : "-"}</td><td>{event.location || "-"}</td><td>{event.weekday ? `周${event.weekday}` : "-"} · {event.weekExpr || "全周"}</td></tr>)}
+        {events.length === 0 ? <tr><td colSpan={5} className="muted">暂无已发布事件</td></tr> : null}
       </tbody></table></div></> : null}
     </section>
   );

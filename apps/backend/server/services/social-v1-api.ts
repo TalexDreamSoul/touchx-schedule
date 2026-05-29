@@ -1,4 +1,4 @@
-import { createError, getMethod, getQuery, getRequestURL, readMultipartFormData, setHeader, type H3Event } from "h3";
+import { createError, getHeader, getMethod, getQuery, getRequestURL, readMultipartFormData, setHeader, type H3Event } from "h3";
 import {
   FOOD_CAMPAIGN_OPTION_LIMIT,
   getNexusStore,
@@ -4431,6 +4431,113 @@ export const handleSocialV1Api = async (event: H3Event) => {
       provider: "rules",
       candidates,
       userId: user.userId,
+    };
+  }
+
+  if (method === "POST" && path === "bot/clawdbot/simulate") {
+    const requestUrl = getRequestURL(event);
+    const isLocalSimulation = requestUrl.hostname === "127.0.0.1" || requestUrl.hostname === "localhost";
+    const env = resolveCloudflareEnv(event);
+    const configuredToken = asString(env.TOUCHX_CLAWDBOT_SIM_TOKEN || env.NEXUS_BOT_DELIVERY_TOKEN);
+    const providedToken = asString(getHeader(event, "x-clawdbot-sim-token") || getHeader(event, "x-bot-delivery-token"));
+    if (!isLocalSimulation && (!configuredToken || providedToken !== configuredToken)) {
+      createLegacyError(401, "CLAWDBOT_SIM_TOKEN_REQUIRED", "ClawDBot 模拟接口需要本地访问或有效测试 token");
+    }
+    const body = await readJsonBody<{
+      text?: string;
+      message?: string;
+      studentNo?: string;
+      student_no?: string;
+      nickname?: string;
+      commit?: boolean;
+    }>(event);
+    const text = asString(body.text || body.message);
+    const studentNo = asString(body.studentNo || body.student_no) || "2305100613";
+    if (!text) {
+      createLegacyError(400, "CLAWDBOT_SIM_TEXT_REQUIRED", "请输入要模拟的 ClawDBot 消息");
+    }
+    let user = findUserByStudentNo(store, studentNo) || null;
+    if (!user) {
+      user = {
+        userId: storeHelpers.createId("user"),
+        studentNo,
+        studentId: "",
+        name: "",
+        classLabel: "",
+        nickname: asString(body.nickname) || `ClawDBot ${studentNo}`,
+        avatarUrl: "",
+        wallpaperUrl: "",
+        classIds: [],
+        adminRole: "none",
+        reminderEnabled: true,
+        reminderWindowMinutes: [30, 15],
+        createdAt: storeHelpers.nowIso(),
+        updatedAt: storeHelpers.nowIso(),
+      };
+      store.users.push(user);
+      state.randomCodeByUserId.set(user.userId, randomCodeByStudentNo(user.studentNo));
+      state.bindingTargetUserIdByUserId.set(user.userId, user.userId);
+    }
+    if (asString(body.nickname)) {
+      user.nickname = asString(body.nickname);
+      user.updatedAt = storeHelpers.nowIso();
+    }
+    const intelligence = buildScheduleIntelligence(text);
+    const candidates = buildScheduleCandidateDrafts(text).map((candidate) => ({
+      ...candidate,
+      examDate: extractExamDateFromText(text),
+      ...buildScheduleCandidateConflictPayload(store, user, candidate),
+    }));
+    const first = candidates[0] || null;
+    let eventRecord: UserScheduleEventRecord | null = null;
+    if (body.commit && first) {
+      eventRecord = {
+        id: storeHelpers.createId("user_event"),
+        userId: user.userId,
+        title: first.title,
+        description: first.description,
+        source: first.examLike ? "exam" : "ai",
+        day: first.day,
+        startSection: first.startSection,
+        endSection: Math.max(first.startSection, first.endSection),
+        weekExpr: first.weekExpr,
+        parity: first.parity,
+        tags: first.tags,
+        priorityScore: first.priorityScore,
+        priorityLabel: first.priorityLabel,
+        examDate: first.examDate || "",
+        createdAt: storeHelpers.nowIso(),
+        updatedAt: storeHelpers.nowIso(),
+      };
+      store.userScheduleEvents.push(eventRecord);
+    }
+    const replyLines = [
+      `我识别到 ${candidates.length} 个日程候选：`,
+      ...candidates.slice(0, 3).map((item, index) => {
+        const conflict = Array.isArray(item.conflicts) && item.conflicts.length > 0 ? "（有冲突，建议换时间）" : "";
+        return `${index + 1}. ${item.title} · 周${item.day} · 第${item.startSection}-${item.endSection}节 · ${item.examLike ? "考试/复习" : "日程"}${conflict}`;
+      }),
+      body.commit && eventRecord ? `已模拟确认并创建个人日程：${eventRecord.id}` : "回复“确认”后可创建到个人日程。",
+    ];
+    return {
+      ok: true,
+      provider: "rules",
+      channel: "wechat_clawdbot",
+      user: toLegacyAuthUser(user, user, state),
+      incoming: {
+        text,
+      },
+      intelligence,
+      candidates,
+      committed: Boolean(eventRecord),
+      event: eventRecord,
+      reply: {
+        msgtype: "text",
+        text: {
+          content: replyLines.join("\n"),
+        },
+      },
+      stateRevision: getNexusStoreRevision(),
     };
   }
 

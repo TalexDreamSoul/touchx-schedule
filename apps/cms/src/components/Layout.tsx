@@ -1,6 +1,4 @@
-import type { ReactNode } from "react";
-
-type PageKey = "dashboard" | "calendar-sources" | "personal-events" | "reminder-rules" | "reminder-candidates" | "notification-channels" | "imports" | "roadmap";
+export type PageKey = "dashboard" | "calendar-sources" | "personal-events" | "reminder-rules" | "reminder-candidates" | "notification-channels" | "notification-deliveries" | "imports" | "audit-logs" | "roadmap";
 
 const navItems: Array<{ key: PageKey; label: string }> = [
   { key: "dashboard", label: "总览" },
@@ -9,7 +7,9 @@ const navItems: Array<{ key: PageKey; label: string }> = [
   { key: "reminder-rules", label: "提醒规则" },
   { key: "reminder-candidates", label: "提醒候选" },
   { key: "notification-channels", label: "通知通道" },
+  { key: "notification-deliveries", label: "投递记录" },
   { key: "imports", label: "导入中心" },
+  { key: "audit-logs", label: "审计日志" },
   { key: "roadmap", label: "React Roadmap" },
 ];
 
@@ -18,7 +18,7 @@ export function Layout(props: {
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onNavigate: (page: PageKey) => void;
-  children: ReactNode;
+  children: JSX.Element;
 }) {
   return (
     <div className="app" data-theme={props.theme}>

@@ -69,9 +69,9 @@ export const createSignedSession = (
 ): AuthSessionRecord => {
   const issuedAt = Date.now();
   const expiresAt = issuedAt + Math.max(1, ttlHours) * 60 * 60 * 1000;
-  const studentNo = asString(user.studentNo);
+  const studentNo = asString(user.studentNo) || asString(user.userId);
   if (!studentNo) {
-    throw new Error("SESSION_STUDENT_NO_REQUIRED");
+    throw new Error("SESSION_USER_ID_REQUIRED");
   }
   const payload: SessionTokenPayload = {
     v: SESSION_TOKEN_VERSION,

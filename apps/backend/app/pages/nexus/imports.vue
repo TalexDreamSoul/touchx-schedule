@@ -26,8 +26,28 @@
     <section class="rx-card">
       <header class="rx-card-head">
         <div>
-          <h2>新建候选导入任务</h2>
-          <p>用于验证 ImportCandidateEvent 审核流，后续接 PDF / OCR 解析结果。</p>
+          <h2>上传 PDF 并生成候选</h2>
+          <p>复用现有 PDF 解析队列，任务完成后可在下方转为 ImportCandidateEvent 审核流。</p>
+        </div>
+      </header>
+      <div class="candidate-form upload-form">
+        <input ref="fileInputRef" type="file" accept="application/pdf" multiple @change="onFilesChange" />
+        <input v-model.trim="uploadForm.studentNo" placeholder="学号，可从文件名推断" />
+        <input v-model.trim="uploadForm.term" placeholder="学期，例如 2025-2026-2" />
+        <select v-model="form.targetSourceId">
+          <option value="">默认日程源</option>
+          <option v-for="source in calendarSources" :key="source.id" :value="source.id">{{ source.title }}</option>
+        </select>
+        <button class="rx-btn" type="button" :disabled="loading || selectedFiles.length <= 0" @click="uploadScheduleImport">上传 PDF</button>
+      </div>
+      <p class="rx-muted">已选择 {{ selectedFiles.length }} 个文件。上传完成后，等待旧任务进入终态，再点击“转候选”。</p>
+    </section>
+
+    <section class="rx-card">
+      <header class="rx-card-head">
+        <div>
+          <h2>手动创建候选导入任务</h2>
+          <p>用于快速录入单个候选事件，验证审核和提交链路。</p>
         </div>
       </header>
       <div class="candidate-form">
@@ -140,7 +160,7 @@
 import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
-const { ensureSessionToken, request, goToLogin } = useNexusApi();
+const { ensureSessionToken, request, upload, goToLogin } = useNexusApi();
 const loading = ref(false);
 const errorText = ref("");
 const jobs = ref<any[]>([]);
@@ -151,6 +171,9 @@ const selectedJobId = ref("");
 const storage = ref("unknown");
 const warning = ref("");
 const form = reactive({ title: "", location: "", weekday: 1, startSection: 1, endSection: 1, targetSourceId: "", publishMode: "publish" });
+const uploadForm = reactive({ studentNo: "", term: "2025-2026-2" });
+const selectedFiles = ref<File[]>([]);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 const pendingCandidateCount = computed(() => candidateJobs.value.reduce((sum, item) => sum + Number(item?.candidateSummary?.pending || 0), 0));
 
@@ -162,6 +185,39 @@ const toDisplayDate = (value: unknown) => {
 const formatCandidateSummary = (summary: any) => {
   if (!summary) return "-";
   return `总 ${summary.total || 0} / 待 ${summary.pending || 0} / 收 ${summary.accepted || 0} / 拒 ${summary.rejected || 0} / 修 ${summary.corrected || 0}`;
+};
+
+const onFilesChange = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  selectedFiles.value = Array.from(input.files || []);
+};
+
+const uploadScheduleImport = async () => {
+  if (selectedFiles.value.length <= 0) return;
+  loading.value = true;
+  errorText.value = "";
+  try {
+    const mappings = selectedFiles.value.map((file) => ({
+      fileName: file.name,
+      studentNo: uploadForm.studentNo,
+      term: uploadForm.term,
+    }));
+    const formData = new FormData();
+    selectedFiles.value.forEach((file) => {
+      formData.append("files[]", file, file.name);
+    });
+    formData.append("mappings", JSON.stringify(mappings));
+    await upload<{ jobId: string; totalFiles: number }>("/api/v1/admin/schedule-import/jobs", formData);
+    selectedFiles.value = [];
+    if (fileInputRef.value) {
+      fileInputRef.value.value = "";
+    }
+    await loadData();
+  } catch (error) {
+    errorText.value = error instanceof Error ? error.message : "上传失败";
+  } finally {
+    loading.value = false;
+  }
 };
 
 const loadData = async () => {
@@ -289,6 +345,7 @@ onMounted(async () => {
 
 <style scoped>
 .candidate-form { display: grid; grid-template-columns: minmax(12rem, 1fr) 10rem 6rem 6rem 6rem minmax(12rem, 1fr) 9rem auto; gap: .5rem; }
+.upload-form { grid-template-columns: minmax(14rem, 1fr) 10rem 12rem minmax(12rem, 1fr) auto; margin-bottom: .5rem; }
 .candidate-form input,
 .candidate-form select { border: 1px solid hsl(var(--border)); border-radius: .7rem; padding: .55rem .7rem; background: transparent; color: hsl(var(--foreground)); }
 @media (max-width: 1000px) { .candidate-form { grid-template-columns: 1fr; } }

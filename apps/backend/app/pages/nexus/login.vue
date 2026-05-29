@@ -10,15 +10,15 @@
             </button>
           </div>
           <h1>管理员登录</h1>
-          <p class="head-desc">{{ passwordRequired ? "输入学号与密码进入后台" : "首次初始化：输入默认管理员学号即可进入初始化流程" }}</p>
+          <p class="head-desc">{{ passwordRequired ? "输入账号与密码进入后台" : "首次初始化：输入默认管理员账号即可进入初始化流程" }}</p>
         </header>
 
         <div class="login-body">
           <label class="field">
-            <span>学号</span>
+            <span>账号</span>
             <input
               v-model.trim="studentNo"
-              placeholder="例如 90000001"
+              placeholder="admin@schedule.com"
               autocomplete="username"
               required
             />
@@ -65,8 +65,10 @@ interface LoginEnvelope {
     sessionToken?: string;
     needInit?: boolean;
     bootstrapStudentNo?: string;
+    bootstrapAccountName?: string;
     user?: {
       studentNo?: string;
+      accountName?: string;
     };
   };
   error?: {
@@ -78,6 +80,7 @@ interface BootstrapStatusEnvelope {
   ok: boolean;
   data?: {
     bootstrapStudentNo?: string;
+    bootstrapAccountName?: string;
     passwordInitialized?: boolean;
     requirePassword?: boolean;
   };
@@ -93,8 +96,8 @@ const showPassword = ref(false);
 const pending = ref(false);
 const errorText = ref("");
 const theme = ref<NexusThemeMode>("dark");
-const redirectPath = computed(() => resolveNexusRedirectPath(route.query.redirect, "/nexus"));
-const bootstrapStudentNo = ref("2305100613");
+const redirectPath = computed(() => resolveNexusRedirectPath(route.query.redirect, "/"));
+const bootstrapStudentNo = ref("admin@schedule.com");
 const passwordRequired = ref(true);
 
 const clearSession = () => {
@@ -108,7 +111,7 @@ const toggleTheme = () => {
 
 const onSubmit = async () => {
   if (!studentNo.value.trim()) {
-    errorText.value = "请输入管理员学号";
+    errorText.value = "请输入管理员账号";
     return;
   }
   if (passwordRequired.value && !password.value.trim()) {
@@ -161,7 +164,7 @@ const loadBootstrapStatus = async () => {
     if (!response.ok || !payload.ok) {
       return;
     }
-    const nextBootstrapStudentNo = String(payload?.data?.bootstrapStudentNo || "").trim();
+    const nextBootstrapStudentNo = String(payload?.data?.bootstrapAccountName || payload?.data?.bootstrapStudentNo || "").trim();
     const nextPasswordRequired = Boolean(payload?.data?.requirePassword ?? payload?.data?.passwordInitialized ?? true);
     if (nextBootstrapStudentNo) {
       bootstrapStudentNo.value = nextBootstrapStudentNo;

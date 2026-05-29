@@ -32,3 +32,14 @@ apps/backend/.dev.vars
 .nuxt/
 .output/
 .wrangler/
+
+# React Native local iOS artifacts
+apps/mobile/ios/Pods/
+apps/mobile/ios/build/
+apps/mobile/ios/*.xcworkspace/
+apps/mobile/ios/*.xcodeproj/xcuserdata/
+
+# Miniapp local/private project settings
+apps/miniapp/project.private.config.json
+apps/mobile/ios/.xcode.env
+apps/mobile/ios/.xcode.env.local

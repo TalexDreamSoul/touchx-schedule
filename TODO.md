@@ -121,30 +121,30 @@ RN App 和 Taro 小程序共享 React 体系、业务模型、API、设计 token
 
 ### 4. 新增共享包
 
-- [ ] 拆分 `packages/shared/src/calendar.ts`。
-- [ ] 拆分 `packages/shared/src/notification.ts`。
-- [ ] 拆分 `packages/shared/src/import.ts`。
+- [x] 拆分 `packages/shared/src/calendar.ts`。
+- [x] 拆分 `packages/shared/src/notification.ts`。
+- [x] 拆分 `packages/shared/src/import.ts`。
 - [x] 新增 `packages/calendar-core`。
 - [x] 新增 `packages/api-client`。
 - [x] 新增 `packages/ui-tokens`。
 
 ### 5. Taro 首批页面目标
 
-- [ ] 今日视图：展示今日有效日程。
-- [ ] 周视图：展示周维度日程网格。
-- [ ] 订阅源列表：展示可订阅日程源。
-- [ ] 我的页面：登录态、用户信息、提醒入口。
+- [x] 今日视图：展示今日有效日程，并支持创建 / 完成 / 归档个人 Todo。
+- [x] 周视图：按周展示有效日程网格。
+- [x] 订阅源列表：展示可订阅日程源，并支持登录后订阅已发布源。
+- [x] 我的页面：登录态、用户信息、学号登录入口。
 
 ---
 
 ## 中期迁移计划
 
-- [ ] Taro 接入新 `CalendarSource` API。
+- [x] Taro 接入新 `CalendarSource` API。
 - [ ] 迁移 uni-app 今日页面。
 - [ ] 迁移 uni-app 周课表 / 周日程页面。
-- [ ] 迁移订阅管理。
+- [x] 迁移订阅管理。
 - [ ] 迁移提醒设置。
-- [ ] 迁移个人事项 / Todo。
+- [x] 迁移个人事项 / Todo。
 - [ ] 对比 Taro 与 uni-app：
   - 首屏速度
   - 包体积
@@ -215,3 +215,53 @@ RN App 和 Taro 小程序共享 React 体系、业务模型、API、设计 token
 6. 接入后端 `/api/v1/calendar/*` 兼容 API。
 
 下一步优先：安装新依赖并更新 lockfile，然后把 `apps/cms` 接入登录页、真实路由和更多 CRUD。
+
+当前 V1 收口优先级：
+
+0. 路由边界统一：`/api/**` 只放接口 / JSON / webhook，`/` 直接是 CMS 主页面，登录态异常跳 `/nexus/login`；`/nexus/**`、`/admin/**` 作为兼容页面路径；独立 `apps/cms` 只作为开发沙盒。
+1. Backend + CMS 优先：先稳定 `/api/v1`、React CMS、新 Nexus 分页和管理端闭环，不继续扩大 RN / 小程序迁移范围。
+2. 通知闭环优先：ClawDBot / 飞书 webhook adapter、飞书应用 provider、pending 投递调度、`primary_then_fallback` 备用渠道、投递记录与失败信息。
+3. 管理端闭环：日程源、个人事项、提醒规则、提醒候选、通知渠道、投递记录、导入中心、审计日志。
+4. 导入闭环：新导入中心可上传 PDF 到旧队列，再转换为候选事件；候选可修正、接受 / 拒绝，并提交到日程源或个人事项。
+5. 学生端守底线：Taro 小程序保持账号/学号登录、今日 / 周视图、日程源订阅、个人 Todo 创建 / 编辑 / 完成 / 归档可用。
+6. 验证门槛：focused type-check / build / node tests / Wrangler smoke / `git diff --check`。
+
+V1 暂缓：RN 正式版、Taro 全量替换 uni-app、Docker + PostgreSQL + Redis、完整 React CMS 替换旧 Nexus、教务系统 connector、真实图片 OCR 产品化、非日程主线功能扩展。
+
+Backend + CMS + 通知渠道短期任务：
+
+- [x] 落地飞书 provider 配置模型：`webhook_bot` / `tenant_app`、`receiveIdType`、`defaultReceiveId`。
+- [x] CMS 通知通道页支持飞书机器人 webhook 与企业自建应用配置。
+- [x] 后端飞书 adapter 支持企业自建应用：获取 `tenant_access_token` 后调用飞书消息 API。
+- [x] 飞书机器人签名发送支持 timestamp/sign。
+- [x] reminder candidate 入队统一使用 channel order 策略，`primary_then_fallback` 先投主通道、失败后生成备用通道 delivery。
+- [ ] 飞书应用用户级接收人绑定，不再只依赖全局 `defaultReceiveId`。
+- [ ] 通知投递记录增加手动重试单条 failed delivery 的 CMS 操作。
+- [ ] 为 `/api/v1/admin/notification-*` 增加 API-level 权限和 adapter 回归测试。
+- [ ] 将 `v1-api.ts` 中 notification 路由逐步拆到独立 handler/service。
+
+MVP 快速测试任务：
+
+- [x] 根路径 `/` 改为 CMS 主页面，不再返回 JSON；登录态异常跳 `/nexus/login`；新增 `/api/health` 作为 API 健康检查路径。
+- [x] 默认后台管理员账号统一为 `admin@schedule.com`，默认密码重置为 `123456`。
+
+- [x] 新增 ClawDBot + AI 课程交互模拟接口：`POST /api/v1/bot/clawdbot/simulate`。
+- [x] 模拟接口支持从自然语言提取日程候选、返回机器人 text reply，并可用 `commit=true` 写入个人日程。
+- [x] 模拟接口限制为 localhost，远程调用需 `x-clawdbot-sim-token` / `x-bot-delivery-token`。
+- [ ] 给模拟接口增加一个最小 CMS/脚本入口，方便输入消息并查看 reply/candidates。
+- [ ] 接入真实 ClawDBot webhook 回调：校验 token / 解析用户 / 调用模拟逻辑 / 返回或推送 reply。
+- [ ] 用生产 ClawDBot webhook 做一次真实端到端 smoke。
+
+V1 本地验收证据：
+
+- `apps/miniapp/src` 已无 demo / mock / fallback 样例数据主线，学生端通过 `auth/login`、`auth/me`、`calendar/me/effective`、`calendar/sources`、`calendar/me/personal-events` 读取真实 API。
+- `auth/login` 和 `auth/me` 返回真实登录模式（新账号为 `account_password`，旧学号兼容为 `legacy_student_no`），不再把新 Taro 登录标记为 mock 模式。
+- `apps/backend/server/services/notification-delivery-module.test.mjs` 使用本地 loopback HTTP server 验证 ClawDBot webhook adapter 的真实 HTTP POST。
+- `apps/backend/scripts/smoke-local.sh` 覆盖 `/health`、`/api/v1`、`/nexus/login`、`/nexus/preview`；设置 `SMOKE_STUDENT_NO_LOGIN` 时验证 `auth/login` + `auth/me` 的 legacy 学号兼容登录模式；设置 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 时上传伪 PDF 验证导入队列终态与结构化错误。
+- 最近通过的本地 gate：backend type-check / build、cms type-check / build、miniapp type-check / build:weapp、calendar-core tests、后端 focused node tests、V1 相关 `git diff --check`。
+
+上线前环境验收：
+
+- 使用生产 ClawDBot 或飞书 webhook 配置做一次真实外部投递 smoke。
+- 使用真实 PDF 课表样本验证解析质量，而不是只验证伪 PDF 的队列和错误终态。
+- 复核生产管理员密码、学生学号登录策略和 Cloudflare D1/R2/Queue binding。

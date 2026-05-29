@@ -1,4 +1,4 @@
-import type { ApiEnvelope, CalendarSource, EffectiveCalendarEvent, NotificationChannel } from "@touchx/shared";
+import type { ApiEnvelope, CalendarSource, CalendarSourceEvent, CalendarSourceVersion, EffectiveCalendarEvent, NotificationChannel } from "@touchx/shared";
 
 export interface TouchXApiClientOptions {
   baseUrl?: string;
@@ -10,6 +10,31 @@ export interface ApiRequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
+}
+
+export interface ScheduleImportUploadFile {
+  file: File | Blob;
+  fileName: string;
+  studentNo?: string;
+  term?: string;
+}
+
+export type AdminCalendarSource = CalendarSource & {
+  scheduleId?: string;
+  classId?: string;
+  classLabel?: string;
+  versionCount: number;
+  currentVersionNo: number;
+  eventCount: number;
+  subscriptionCount: number;
+};
+
+export interface CalendarSourceDetail {
+  item: AdminCalendarSource;
+  source: CalendarSource;
+  versions: CalendarSourceVersion[];
+  events: CalendarSourceEvent[];
+  eventCount: number;
 }
 
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, "");
@@ -91,12 +116,48 @@ export class TouchXApiClient {
     return this.request<T>(path, { method: "POST", body });
   }
 
+  async uploadScheduleImportJob(files: ScheduleImportUploadFile[]) {
+    const formData = new FormData();
+    const mappings = files.map((item) => ({
+      fileName: item.fileName,
+      studentNo: item.studentNo || "",
+      term: item.term || "",
+    }));
+    files.forEach((item) => {
+      formData.append("files[]", item.file, item.fileName);
+    });
+    formData.append("mappings", JSON.stringify(mappings));
+    const token = await this.resolveToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await this.fetcher(this.resolveUrl("admin/schedule-import/jobs"), {
+      method: "POST",
+      headers,
+      body: formData,
+      credentials: "omit",
+    });
+    const payload = (await response.json()) as ApiEnvelope<{
+      jobId: string;
+      totalFiles: number;
+    }>;
+    if (!response.ok || !payload.ok) {
+      throw new TouchXApiError(payload.error?.message || `HTTP ${response.status}`, {
+        status: response.status,
+        code: payload.error?.code,
+        details: payload.error?.details,
+      });
+    }
+    return payload.data;
+  }
+
   listCalendarSources() {
-    return this.get<{ items: CalendarSource[]; total: number }>("calendar/sources");
+    return this.get<{ items: AdminCalendarSource[]; total: number }>("calendar/sources");
   }
 
   getCalendarSource(sourceId: string) {
-    return this.get<{ item: CalendarSource }>(`calendar/sources/${encodeURIComponent(sourceId)}`);
+    return this.get<CalendarSourceDetail>(`calendar/sources/${encodeURIComponent(sourceId)}`);
   }
 
   publishCalendarSourceVersion(sourceId: string, versionNo: number) {
@@ -175,6 +236,18 @@ export class TouchXApiClient {
     return this.post("admin/notification-deliveries/dispatch-pending", { limit });
   }
 
+  listNotificationDeliveries(params: { limit?: number; offset?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.limit) {
+      query.set("limit", String(params.limit));
+    }
+    if (params.offset) {
+      query.set("offset", String(params.offset));
+    }
+    const suffix = query.toString();
+    return this.get(`admin/notification-deliveries${suffix ? `?${suffix}` : ""}`);
+  }
+
   listReminderRules() {
     return this.get("admin/reminder-rules");
   }
@@ -234,6 +307,18 @@ export class TouchXApiClient {
 
   getImportJob(jobId: string) {
     return this.get(`admin/import-jobs/${encodeURIComponent(jobId)}`);
+  }
+
+  listAuditLogs(params: { limit?: number; offset?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.limit) {
+      query.set("limit", String(params.limit));
+    }
+    if (params.offset) {
+      query.set("offset", String(params.offset));
+    }
+    const suffix = query.toString();
+    return this.get(`admin/audit${suffix ? `?${suffix}` : ""}`);
   }
 }
 

@@ -19,6 +19,8 @@ export interface ScheduleCalendarEntry extends ScheduleEntryRecord {
   scheduleTitle: string;
   classId: string;
   timezone: string;
+  sourceType?: import("@touchx/shared").CalendarSourceType;
+  eventType?: import("@touchx/shared").CalendarEventType;
 }
 
 export const SCHEDULE_SECTION_TIMES = DEFAULT_SCHEDULE_SECTION_TIMES.map((item) => ({ ...item }));
@@ -239,7 +241,7 @@ const applyEntryPatch = (
   return next;
 };
 
-const buildPatchedEntriesForSubscription = (store: NexusStore, schedule: ScheduleRecord, subscriberUserId: string) => {
+const buildPatchedEntriesForSubscription = (store: NexusStore, schedule: ScheduleRecord, subscriberUserId: string): ScheduleCalendarEntry[] => {
   const subscription = store.scheduleSubscriptions.find(
     (item) => item.subscriberUserId === subscriberUserId && item.sourceScheduleId === schedule.id,
   );
@@ -249,6 +251,8 @@ const buildPatchedEntriesForSubscription = (store: NexusStore, schedule: Schedul
   }
   const classItem = store.classes.find((item) => item.id === schedule.classId) || null;
   const timezone = asString(classItem?.timezone) || SCHEDULE_DEFAULT_TIMEZONE;
+  const sourceType = schedule.sourceType || (schedule.classId === `user:${schedule.createdByUserId}` ? "custom" : "class_schedule");
+  const eventType: import("@touchx/shared").CalendarEventType = sourceType === "class_schedule" ? "course" : "custom";
   const baseEntries = publishedVersion.entries.map((entry) => cloneScheduleEntry(entry));
   if (!subscription) {
     return baseEntries.map((entry) => ({
@@ -257,6 +261,8 @@ const buildPatchedEntriesForSubscription = (store: NexusStore, schedule: Schedul
       scheduleTitle: schedule.title,
       classId: schedule.classId,
       timezone,
+      sourceType,
+      eventType,
     }));
   }
   const patchedById = new Map(baseEntries.map((entry) => [entry.id, entry]));
@@ -309,6 +315,8 @@ const buildPatchedEntriesForSubscription = (store: NexusStore, schedule: Schedul
       scheduleTitle: schedule.title,
       classId: schedule.classId,
       timezone,
+      sourceType,
+      eventType,
     }))
     .sort((left, right) => {
       if (left.day !== right.day) {

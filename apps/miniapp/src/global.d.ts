@@ -8,6 +8,7 @@ declare module "react" {
   export type ReactNode = unknown;
   export function useState<T>(initial: T | (() => T)): [T, (value: T | ((previous: T) => T)) => void];
   export function useEffect(effect: () => void | (() => void), deps?: unknown[]): void;
+  export function useMemo<T>(factory: () => T, deps?: unknown[]): T;
   const React: {
     createElement: (...args: unknown[]) => unknown;
     Fragment: unknown;

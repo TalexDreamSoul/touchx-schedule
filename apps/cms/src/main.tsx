@@ -1,19 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
-import { Layout } from "./components/Layout";
+import { Layout, type PageKey } from "./components/Layout";
 import { Dashboard } from "./pages/Dashboard";
 import { CalendarSources } from "./pages/CalendarSources";
 import { NotificationChannels } from "./pages/NotificationChannels";
 import { PersonalEvents } from "./pages/PersonalEvents";
 import { ReminderRules } from "./pages/ReminderRules";
 import { ReminderCandidates } from "./pages/ReminderCandidates";
+import { NotificationDeliveries } from "./pages/NotificationDeliveries";
 import { Imports } from "./pages/Imports";
+import { AuditLogs } from "./pages/AuditLogs";
 import { Roadmap } from "./pages/Roadmap";
 import { Login } from "./pages/Login";
 import { clearSessionToken, getSessionToken } from "./lib/auth";
-
-type PageKey = "dashboard" | "calendar-sources" | "personal-events" | "reminder-rules" | "reminder-candidates" | "notification-channels" | "imports" | "roadmap";
 
 function App() {
   const [theme, setTheme] = useState<"light" | "dark">(() => (localStorage.getItem("touchx_cms_theme") as "light" | "dark") || "dark");
@@ -26,7 +26,9 @@ function App() {
       case "reminder-rules": return <ReminderRules />;
       case "reminder-candidates": return <ReminderCandidates />;
       case "notification-channels": return <NotificationChannels />;
+      case "notification-deliveries": return <NotificationDeliveries />;
       case "imports": return <Imports />;
+      case "audit-logs": return <AuditLogs />;
       case "roadmap": return <Roadmap />;
       default: return <Dashboard />;
     }

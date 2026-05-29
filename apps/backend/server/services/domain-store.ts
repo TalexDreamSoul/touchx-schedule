@@ -36,6 +36,10 @@ export interface UserRecord extends StudentIdentity {
   wallpaperUrl: string;
   classIds: string[];
   adminRole: AdminRole;
+  accountName?: string;
+  passwordHash?: string;
+  passwordSalt?: string;
+  authProvider?: "legacy_student_no" | "account_password";
   reminderEnabled: boolean;
   reminderWindowMinutes: number[];
   createdAt: string;
@@ -213,6 +217,10 @@ export interface ScheduleRecord {
   classId: string;
   title: string;
   description: string;
+  sourceType?: import("@touchx/shared").CalendarSourceType;
+  visibility?: import("@touchx/shared").CalendarSourceVisibility;
+  ownerType?: import("@touchx/shared").CalendarSourceOwnerType;
+  ownerId?: string;
   publishedVersionNo: number;
   createdByUserId: string;
   createdAt: string;
@@ -391,7 +399,9 @@ export interface PartyGameHeartOpenWordRecord {
 }
 
 export const FOOD_CAMPAIGN_OPTION_LIMIT = 3;
-export const DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO = "2305100613";
+export const DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME = "admin@schedule.com";
+export const DEFAULT_BOOTSTRAP_ADMIN_PASSWORD = "123456";
+export const DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO = DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME;
 
 export interface NexusStore {
   users: UserRecord[];
@@ -920,6 +930,50 @@ const upgradeImportCollections = (store: NexusStore) => {
   if (!Array.isArray(store.importCandidateEvents)) {
     store.importCandidateEvents = [];
   }
+};
+
+const upgradeDefaultAdminAccount = (store: NexusStore) => {
+  if (!Array.isArray(store.users)) {
+    return;
+  }
+  const now = nowIso();
+  let admin =
+    store.users.find((item) => item.accountName === DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME) ||
+    store.users.find((item) => item.studentNo === DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME) ||
+    store.users.find((item) => item.studentNo === "2305100613" && item.adminRole === "super_admin") ||
+    store.users.find((item) => item.adminRole === "super_admin") ||
+    null;
+  if (!admin) {
+    admin = {
+      userId: createId("user"),
+      studentNo: DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME,
+      studentId: "admin001",
+      name: "系统管理员",
+      classLabel: "运营中心",
+      nickname: "NexusAdmin",
+      avatarUrl: "",
+      wallpaperUrl: "",
+      classIds: [],
+      adminRole: "super_admin",
+      accountName: DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME,
+      authProvider: "account_password",
+      reminderEnabled: true,
+      reminderWindowMinutes: [30, 15],
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.users.unshift(admin);
+  }
+  admin.studentNo = DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME;
+  admin.accountName = DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME;
+  admin.authProvider = "account_password";
+  admin.adminRole = "super_admin";
+  admin.nickname = "NexusAdmin";
+  admin.name = "系统管理员";
+  admin.classLabel = "运营中心";
+  admin.studentId = "admin001";
+  admin.classIds = [];
+  admin.updatedAt = now;
 };
 
 const upgradeNotificationCollections = (store: NexusStore) => {
@@ -1573,6 +1627,8 @@ const bootstrapStore = (): NexusStore => {
         userId: adminUserId,
         studentNo: DEFAULT_BOOTSTRAP_ADMIN_STUDENT_NO,
         studentId: "admin001",
+        accountName: DEFAULT_BOOTSTRAP_ADMIN_ACCOUNT_NAME,
+        authProvider: "account_password",
         name: "系统管理员",
         classLabel: "运营中心",
         nickname: "NexusAdmin",
@@ -1839,6 +1895,7 @@ export const getNexusStore = () => {
   if (scoped?.store) {
     normalizeCampaignOptions(scoped.store);
     upgradeHeartOpenWordBank(scoped.store);
+    upgradeDefaultAdminAccount(scoped.store);
     upgradeBotTemplates(scoped.store);
     upgradeNotificationCollections(scoped.store);
     upgradeImportCollections(scoped.store);
@@ -1853,6 +1910,7 @@ export const getNexusStore = () => {
   const store = context[GLOBAL_KEY] as NexusStore;
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
+  upgradeDefaultAdminAccount(store);
   upgradeBotTemplates(store);
   upgradeNotificationCollections(store);
   upgradeImportCollections(store);
@@ -1866,6 +1924,7 @@ export const resetNexusStore = () => {
     const nextStore = bootstrapStore();
     normalizeCampaignOptions(nextStore);
     upgradeHeartOpenWordBank(nextStore);
+    upgradeDefaultAdminAccount(nextStore);
     upgradeBotTemplates(nextStore);
     upgradeNotificationCollections(nextStore);
     upgradeImportCollections(nextStore);
@@ -1879,6 +1938,7 @@ export const resetNexusStore = () => {
   const store = context[GLOBAL_KEY] as NexusStore;
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
+  upgradeDefaultAdminAccount(store);
   upgradeBotTemplates(store);
   upgradeNotificationCollections(store);
   upgradeImportCollections(store);

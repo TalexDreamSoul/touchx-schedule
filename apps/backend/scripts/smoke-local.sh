@@ -67,6 +67,56 @@ if [[ -n "${SMOKE_BOT_DELIVERY_TOKEN:-}" ]]; then
   echo "✅ /api/v1/bot/deliveries/pending -> ${deliveries_code}"
 fi
 
+if [[ -n "${SMOKE_STUDENT_NO_LOGIN:-}" ]]; then
+  student_login_code="$(curl -sS -o /tmp/touchx_student_no_login.json -w "%{http_code}" \
+    -X POST "${BASE_URL}/api/v1/auth/login" \
+    -H "content-type: application/json" \
+    -d "{\"studentNo\":\"${SMOKE_STUDENT_NO_LOGIN}\",\"nickname\":\"Smoke Student\"}")"
+  if [[ "${student_login_code}" != "200" ]]; then
+    echo "❌ /api/v1/auth/login expected 200, got ${student_login_code}" >&2
+    cat /tmp/touchx_student_no_login.json >&2 || true
+    exit 1
+  fi
+  student_login_result="$(python - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("/tmp/touchx_student_no_login.json").read_text())
+data = payload.get("data") or {}
+print(str(data.get("mode") or "") + "\n" + str(data.get("sessionToken") or ""))
+PY
+)"
+  student_login_mode="$(printf '%s\n' "${student_login_result}" | sed -n '1p')"
+  student_login_token="$(printf '%s\n' "${student_login_result}" | sed -n '2p')"
+  if [[ "${student_login_mode}" != "legacy_student_no" || -z "${student_login_token}" ]]; then
+    echo "❌ /api/v1/auth/login expected mode=legacy_student_no and sessionToken" >&2
+    cat /tmp/touchx_student_no_login.json >&2 || true
+    exit 1
+  fi
+
+  student_me_code="$(curl -sS -o /tmp/touchx_student_no_me.json -w "%{http_code}" \
+    "${BASE_URL}/api/v1/auth/me" \
+    -H "authorization: Bearer ${student_login_token}")"
+  if [[ "${student_me_code}" != "200" ]]; then
+    echo "❌ /api/v1/auth/me expected 200, got ${student_me_code}" >&2
+    cat /tmp/touchx_student_no_me.json >&2 || true
+    exit 1
+  fi
+  student_me_mode="$(python - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("/tmp/touchx_student_no_me.json").read_text())
+data = payload.get("data") or {}
+print(str(data.get("mode") or ""))
+PY
+)"
+  if [[ "${student_me_mode}" != "legacy_student_no" ]]; then
+    echo "❌ /api/v1/auth/me expected mode=legacy_student_no, got ${student_me_mode}" >&2
+    cat /tmp/touchx_student_no_me.json >&2 || true
+    exit 1
+  fi
+  echo "✅ /api/v1/auth/login + /api/v1/auth/me -> legacy_student_no"
+fi
+
 if [[ -n "${SMOKE_HEARTBEAT_TOKEN:-}" && -n "${SMOKE_BOT_DELIVERY_TOKEN:-}" ]] && is_local_base_url; then
   enqueue_code="$(curl -sS -o /tmp/touchx_delivery_enqueue.json -w "%{http_code}" \
     -X POST "${BASE_URL}/api/v1/bot/jobs/heartbeat" \
@@ -194,7 +244,8 @@ PY
   fi
 
   terminal_status=""
-  for _ in 1 2 3 4 5; do
+  import_poll_attempts="${SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS:-20}"
+  for ((poll_index = 1; poll_index <= import_poll_attempts; poll_index += 1)); do
     detail_code="$(curl -sS -o /tmp/touchx_schedule_import_detail.json -w "%{http_code}" \
       "${BASE_URL}/api/v1/admin/schedule-import/jobs/${job_id}" \
       -H "authorization: Bearer ${import_token}")"

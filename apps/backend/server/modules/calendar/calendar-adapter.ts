@@ -37,15 +37,18 @@ export const toCalendarSource = (store: NexusStore, schedule: ScheduleRecord): C
   const publishedVersion = store.scheduleVersions.find(
     (item) => item.scheduleId === schedule.id && item.versionNo === schedule.publishedVersionNo && item.status === "published",
   );
+  const sourceType = schedule.sourceType || (schedule.classId === `user:${schedule.createdByUserId}` ? "custom" : "class_schedule");
+  const ownerType = schedule.ownerType || (schedule.classId === `user:${schedule.createdByUserId}` ? "user" : "class");
+  const ownerId = schedule.ownerId || (ownerType === "user" ? schedule.createdByUserId : schedule.classId);
   return {
     id: calendarSourceIdFromScheduleId(schedule.id),
-    type: "class_schedule",
+    type: sourceType,
     title: schedule.title,
     description: schedule.description,
-    ownerType: "class",
-    ownerId: schedule.classId,
+    ownerType,
+    ownerId,
     timezone: asString(classItem?.timezone) || "Asia/Shanghai",
-    visibility: "class_only",
+    visibility: schedule.visibility || (ownerType === "user" ? "private" : "class_only"),
     status: schedule.publishedVersionNo > 0 ? "published" : "draft",
     currentVersionId: publishedVersion ? calendarVersionIdFromScheduleVersion(schedule.id, publishedVersion.versionNo) : "",
     createdBy: schedule.createdByUserId,
@@ -72,17 +75,20 @@ export const toCalendarSourceEvent = (
   options: {
     scheduleId: string;
     versionId: string;
+    eventType?: CalendarSourceEvent["eventType"];
+    sourceType?: string;
   },
 ): CalendarSourceEvent => {
   const startTime = getSectionTimeBySection(entry.startSection)?.start || "";
   const endTime = getSectionTimeBySection(entry.endSection)?.end || "";
+  const eventType = options.eventType || (options.sourceType === "class_schedule" ? "course" : "custom");
   return {
     id: calendarSourceEventIdFromEntryId(entry.id),
     sourceId: calendarSourceIdFromScheduleId(options.scheduleId),
     versionId: options.versionId,
     title: entry.courseName,
-    description: entry.teacher ? `教师：${entry.teacher}` : "",
-    eventType: "course",
+    description: entry.teacher ? `负责人：${entry.teacher}` : "",
+    eventType,
     location: entry.classroom,
     teacherOrOwner: entry.teacher,
     recurrenceType: "weekly",
@@ -93,10 +99,11 @@ export const toCalendarSourceEvent = (
     endTime,
     startSection: entry.startSection,
     endSection: entry.endSection,
-    tags: ["学习", "课程"],
+    tags: eventType === "course" ? ["学习", "课程"] : ["日程"],
     metadata: {
       legacyEntryId: entry.id,
       legacyScheduleId: options.scheduleId,
+      sourceType: options.sourceType || "class_schedule",
     },
   };
 };
@@ -104,13 +111,14 @@ export const toCalendarSourceEvent = (
 export const toCalendarEventFromEffectiveScheduleEntry = (entry: ScheduleCalendarEntry): CalendarSourceEvent => {
   const startTime = getSectionTimeBySection(entry.startSection)?.start || "";
   const endTime = getSectionTimeBySection(entry.endSection)?.end || "";
+  const eventType = entry.eventType || (entry.sourceType === "class_schedule" ? "course" : "custom");
   return {
     id: calendarSourceEventIdFromEntryId(entry.id),
     sourceId: calendarSourceIdFromScheduleId(entry.scheduleId),
     versionId: "",
     title: entry.courseName,
-    description: entry.teacher ? `教师：${entry.teacher}` : "",
-    eventType: "course",
+    description: entry.teacher ? `负责人：${entry.teacher}` : "",
+    eventType,
     location: entry.classroom,
     teacherOrOwner: entry.teacher,
     recurrenceType: "weekly",
@@ -121,13 +129,14 @@ export const toCalendarEventFromEffectiveScheduleEntry = (entry: ScheduleCalenda
     endTime,
     startSection: entry.startSection,
     endSection: entry.endSection,
-    tags: ["学习", "课程"],
+    tags: eventType === "course" ? ["学习", "课程"] : ["日程"],
     metadata: {
       legacyEntryId: entry.id,
       legacyScheduleId: entry.scheduleId,
       scheduleTitle: entry.scheduleTitle,
       classId: entry.classId,
       timezone: entry.timezone,
+      sourceType: entry.sourceType || "class_schedule",
     },
   };
 };
@@ -229,7 +238,13 @@ export const listCalendarSourceEvents = (store: NexusStore, sourceId: string) =>
     return [];
   }
   const versionId = calendarVersionIdFromScheduleVersion(schedule.id, publishedVersion.versionNo);
-  return publishedVersion.entries.map((entry) => toCalendarSourceEvent(entry, { scheduleId: schedule.id, versionId }));
+  const sourceType = schedule.sourceType || (schedule.classId === `user:${schedule.createdByUserId}` ? "custom" : "class_schedule");
+  return publishedVersion.entries.map((entry) => toCalendarSourceEvent(entry, {
+    scheduleId: schedule.id,
+    versionId,
+    sourceType,
+    eventType: sourceType === "class_schedule" ? "course" : "custom",
+  }));
 };
 
 export const getUserCalendarSubscriptions = (store: NexusStore, user: UserRecord) => {

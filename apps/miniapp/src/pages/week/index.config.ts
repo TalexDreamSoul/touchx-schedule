@@ -1,3 +1,8 @@
 export default definePageConfig({
-  navigationBarTitleText: "周视图",
+  navigationBarTitleText: "日程表",
+  navigationBarBackgroundColor: "#f3f4f7",
+  navigationBarTextStyle: "black",
+  backgroundColor: "#f3f4f7",
+  enablePullDownRefresh: true,
+  backgroundTextStyle: "dark",
 });
