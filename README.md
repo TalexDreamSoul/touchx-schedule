@@ -82,6 +82,7 @@ pnpm deploy:backend
 - 后台首页：`/`（未登录或登录态失效跳 `/nexus/login`）
 - API 基线：`/api/v1/*`
 - API 健康检查：`/api/health`（兼容保留 `/health`）
+- ClawDBot webhook：`POST /api/v1/bot/clawdbot/webhook`，需 `x-clawdbot-webhook-token`（或兼容 `x-bot-delivery-token`）匹配环境变量 `TOUCHX_CLAWDBOT_WEBHOOK_TOKEN` / `NEXUS_BOT_DELIVERY_TOKEN`。
 - 新 Calendar API：`/api/v1/calendar/*`
 - 管理中台兼容路径：`/nexus`；旧 `/nexus/[module]` 仅作为模块别名重定向到新页面。
 - 后台页面：`/`、`/nexus/users`、`/nexus/classes`、`/nexus/calendar-sources`、`/nexus/schedules`、`/nexus/personal-events`、`/nexus/imports`、`/nexus/schedule-import`、`/nexus/foods`、`/nexus/media`、`/nexus/bots`、`/nexus/campaigns`、`/nexus/heart-open-word-bank`、`/nexus/reminder-rules`、`/nexus/reminder-candidates`、`/nexus/notification-channels`、`/nexus/notification-deliveries`、`/nexus/preview`、`/nexus/audit-logs`、`/nexus/settings`

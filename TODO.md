@@ -63,7 +63,7 @@ packages/
 - [x] 模拟接口支持从自然语言提取日程候选、返回机器人 text reply，并可用 `commit=true` 写入个人日程。
 - [x] 模拟接口限制为 localhost，远程调用需 `x-clawdbot-sim-token` / `x-bot-delivery-token`。
 - [x] 给模拟接口增加一个最小后台工具入口，方便输入消息并查看 reply/candidates。
-- [ ] 接入真实 ClawDBot webhook 回调：校验 token / 解析用户 / 调用模拟逻辑 / 返回或推送 reply。
+- [x] 接入真实 ClawDBot webhook 回调：校验 token / 解析用户 / 调用模拟逻辑 / 返回 text reply。
 - [ ] 用生产 ClawDBot webhook 做一次真实端到端 smoke。
 
 ## 学生端 / 多端路线

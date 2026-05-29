@@ -1427,6 +1427,52 @@ const findUserByStudentNo = (store: NexusStore, studentNo: string) => {
   return store.users.find((item) => item.studentNo === normalized) || null;
 };
 
+const findClawDBotUser = (
+  store: NexusStore,
+  input: {
+    studentNo?: string;
+    studentId?: string;
+    userId?: string;
+    openId?: string;
+    unionId?: string;
+    externalUserId?: string;
+  },
+) => {
+  const userId = asString(input.userId);
+  if (userId) {
+    const user = store.users.find((item) => item.userId === userId) || null;
+    if (user) return user;
+  }
+  const studentNo = asString(input.studentNo);
+  if (studentNo) {
+    const user = findUserByStudentNo(store, studentNo);
+    if (user) return user;
+  }
+  const studentId = asString(input.studentId);
+  if (studentId) {
+    const user = findUserByStudentId(store, studentId);
+    if (user) return user;
+  }
+  const externalValues = [input.openId, input.unionId, input.externalUserId]
+    .map((item) => asString(item))
+    .filter((item) => item);
+  if (externalValues.length > 0) {
+    const binding =
+      store.userNotificationBindings.find(
+        (item) =>
+          item.channelType === "wechat_clawdbot" &&
+          item.status === "active" &&
+          externalValues.some(
+            (value) => item.externalUserId === value || item.externalOpenId === value || item.externalUnionId === value,
+          ),
+      ) || null;
+    if (binding) {
+      return store.users.find((item) => item.userId === binding.userId) || null;
+    }
+  }
+  return null;
+};
+
 const isPlaceholderIdentityText = (user: Pick<UserRecord, "studentNo" | "studentId">, value: unknown) => {
   const normalized = asString(value);
   if (!normalized) {
@@ -2490,8 +2536,12 @@ const buildScheduleCandidateConflictPayload = (
 };
 
 const resolveCloudflareEnv = (event: H3Event): Record<string, unknown> => {
+  const processEnv = typeof process !== "undefined" ? process.env : {};
   const env = (event.context as { cloudflare?: { env?: Record<string, unknown> } }).cloudflare?.env;
-  return env && typeof env === "object" ? env : {};
+  return {
+    ...processEnv,
+    ...(env && typeof env === "object" ? env : {}),
+  };
 };
 
 const resolveAbsoluteRequestUrl = (event: H3Event, url: string) => {
@@ -2503,6 +2553,203 @@ const resolveAbsoluteRequestUrl = (event: H3Event, url: string) => {
     return value;
   }
   return `${getRequestURL(event).origin}${value}`;
+};
+
+const appendLegacyAudit = (store: NexusStore, action: string, actorUserId: string, payload: Record<string, unknown>) => {
+  store.auditLogs.unshift({
+    id: storeHelpers.createId("audit"),
+    action,
+    actorUserId,
+    payload,
+    createdAt: storeHelpers.nowIso(),
+  });
+  if (store.auditLogs.length > 2000) {
+    store.auditLogs.length = 2000;
+  }
+};
+
+const extractClawDBotText = (payload: unknown) => {
+  if (typeof payload === "string") {
+    return payload;
+  }
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+  const body = payload as Record<string, unknown>;
+  const direct = asString(body.text || body.message || body.content || body.msg || body.keyword);
+  if (direct) {
+    return direct;
+  }
+  const textNode = body.text;
+  if (textNode && typeof textNode === "object") {
+    const textContent = asString((textNode as Record<string, unknown>).content);
+    if (textContent) {
+      return textContent;
+    }
+  }
+  const messageNode = body.message;
+  if (messageNode && typeof messageNode === "object") {
+    const message = messageNode as Record<string, unknown>;
+    const messageText = asString(message.text || message.content || message.message);
+    if (messageText) {
+      return messageText;
+    }
+    const nestedContent = message.content;
+    if (nestedContent && typeof nestedContent === "object") {
+      const nestedText = asString((nestedContent as Record<string, unknown>).text || (nestedContent as Record<string, unknown>).content);
+      if (nestedText) {
+        return nestedText;
+      }
+    }
+  }
+  const eventNode = body.event;
+  if (eventNode && typeof eventNode === "object") {
+    return extractClawDBotText(eventNode);
+  }
+  return "";
+};
+
+const extractClawDBotIdentity = (payload: unknown) => {
+  const result = {
+    studentNo: "",
+    studentId: "",
+    userId: "",
+    openId: "",
+    unionId: "",
+    externalUserId: "",
+    nickname: "",
+  };
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return;
+    }
+    const data = value as Record<string, unknown>;
+    result.studentNo ||= asString(data.studentNo || data.student_no || data.student_no_text);
+    result.studentId ||= asString(data.studentId || data.student_id);
+    result.userId ||= asString(data.userId || data.user_id || data.uid);
+    result.openId ||= asString(data.openId || data.open_id || data.openid || data.fromUserName || data.from_user_name);
+    result.unionId ||= asString(data.unionId || data.union_id || data.unionid);
+    result.externalUserId ||= asString(data.externalUserId || data.external_user_id || data.senderId || data.sender_id);
+    result.nickname ||= asString(data.nickname || data.nickName || data.nick_name || data.name || data.senderName || data.sender_name);
+    [data.user, data.sender, data.from, data.source, data.event].forEach(visit);
+  };
+  visit(payload);
+  return result;
+};
+
+const shouldCommitClawDBotText = (payload: unknown, text: string) => {
+  if (payload && typeof payload === "object") {
+    const body = payload as Record<string, unknown>;
+    if (body.commit === true || body.confirm === true) {
+      return true;
+    }
+    const action = asString(body.action || body.intent).toLowerCase();
+    if (action === "commit" || action === "confirm") {
+      return true;
+    }
+  }
+  return /^(确认|确认创建|创建|加入日程|添加日程|保存|commit|yes)$/i.test(asString(text));
+};
+
+const createClawDBotUser = (store: NexusStore, state: LegacyCompatState, studentNo: string, nickname = "") => {
+  const now = storeHelpers.nowIso();
+  const user: UserRecord = {
+    userId: storeHelpers.createId("user"),
+    studentNo,
+    studentId: "",
+    name: "",
+    classLabel: "",
+    nickname: nickname || `ClawDBot ${studentNo}`,
+    avatarUrl: "",
+    wallpaperUrl: "",
+    classIds: [],
+    adminRole: "none",
+    reminderEnabled: true,
+    reminderWindowMinutes: [30, 15],
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.users.push(user);
+  state.randomCodeByUserId.set(user.userId, randomCodeByStudentNo(user.studentNo));
+  state.bindingTargetUserIdByUserId.set(user.userId, user.userId);
+  return user;
+};
+
+const buildClawDBotScheduleReply = (
+  store: NexusStore,
+  state: LegacyCompatState,
+  input: {
+    user: UserRecord;
+    text: string;
+    nickname?: string;
+    commit?: boolean;
+  },
+) => {
+  const nickname = asString(input.nickname);
+  if (nickname) {
+    input.user.nickname = nickname;
+    input.user.updatedAt = storeHelpers.nowIso();
+  }
+  const intelligence = buildScheduleIntelligence(input.text);
+  const candidates = buildScheduleCandidateDrafts(input.text).map((candidate) => ({
+    ...candidate,
+    examDate: extractExamDateFromText(input.text),
+    ...buildScheduleCandidateConflictPayload(store, input.user, candidate),
+  }));
+  const first = candidates[0] || null;
+  let eventRecord: UserScheduleEventRecord | null = null;
+  if (input.commit && first) {
+    eventRecord = {
+      id: storeHelpers.createId("user_event"),
+      userId: input.user.userId,
+      title: first.title,
+      description: first.description,
+      source: first.examLike ? "exam" : "ai",
+      day: first.day,
+      startSection: first.startSection,
+      endSection: Math.max(first.startSection, first.endSection),
+      weekExpr: first.weekExpr,
+      parity: first.parity,
+      tags: first.tags,
+      priorityScore: first.priorityScore,
+      priorityLabel: first.priorityLabel,
+      examDate: first.examDate || "",
+      createdAt: storeHelpers.nowIso(),
+      updatedAt: storeHelpers.nowIso(),
+    };
+    store.userScheduleEvents.push(eventRecord);
+  }
+  const replyLines = candidates.length > 0
+    ? [
+        `我识别到 ${candidates.length} 个日程候选：`,
+        ...candidates.slice(0, 3).map((item, index) => {
+          const conflict = Array.isArray(item.conflicts) && item.conflicts.length > 0 ? "（有冲突，建议换时间）" : "";
+          return `${index + 1}. ${item.title} · 周${item.day} · 第${item.startSection}-${item.endSection}节 · ${item.examLike ? "考试/复习" : "日程"}${conflict}`;
+        }),
+        input.commit && eventRecord ? `已确认并创建个人日程：${eventRecord.id}` : "回复“确认”后可创建到个人日程。",
+      ]
+    : ["我暂时没有识别到明确日程，请试试：周三下午3点复习数据结构。"];
+  return {
+    ok: true,
+    provider: "rules",
+    channel: "wechat_clawdbot",
+    user: toLegacyAuthUser(input.user, input.user, state),
+    incoming: {
+      text: input.text,
+    },
+    intelligence,
+    candidates,
+    committed: Boolean(eventRecord),
+    event: eventRecord,
+    reply: {
+      msgtype: "text",
+      text: {
+        content: replyLines.join("\n"),
+      },
+    },
+    text: replyLines.join("\n"),
+    stateRevision: getNexusStoreRevision(),
+  };
 };
 
 const extractExamDateFromText = (text: unknown) => {
@@ -4456,88 +4703,53 @@ export const handleSocialV1Api = async (event: H3Event) => {
     if (!text) {
       createLegacyError(400, "CLAWDBOT_SIM_TEXT_REQUIRED", "请输入要模拟的 ClawDBot 消息");
     }
-    let user = findUserByStudentNo(store, studentNo) || null;
+    const user = findUserByStudentNo(store, studentNo) || createClawDBotUser(store, state, studentNo, asString(body.nickname));
+    return buildClawDBotScheduleReply(store, state, {
+      user,
+      text,
+      nickname: body.nickname,
+      commit: body.commit === true,
+    });
+  }
+
+  if (method === "POST" && path === "bot/clawdbot/webhook") {
+    const env = resolveCloudflareEnv(event);
+    const configuredToken = asString(env.TOUCHX_CLAWDBOT_WEBHOOK_TOKEN || env.NEXUS_BOT_DELIVERY_TOKEN || env.TOUCHX_CLAWDBOT_SIM_TOKEN);
+    const providedToken = asString(
+      getHeader(event, "x-clawdbot-webhook-token") ||
+        getHeader(event, "x-clawdbot-sim-token") ||
+        getHeader(event, "x-bot-delivery-token") ||
+        getHeader(event, "x-clawdbot-token"),
+    );
+    if (!configuredToken || providedToken !== configuredToken) {
+      createLegacyError(401, "CLAWDBOT_WEBHOOK_TOKEN_INVALID", "ClawDBot webhook token 无效");
+    }
+    const body = await readJsonBody<unknown>(event);
+    const text = extractClawDBotText(body);
+    if (!text) {
+      createLegacyError(400, "CLAWDBOT_WEBHOOK_TEXT_REQUIRED", "ClawDBot webhook 消息文本为空");
+    }
+    const identity = extractClawDBotIdentity(body);
+    const user = findClawDBotUser(store, identity);
     if (!user) {
-      user = {
-        userId: storeHelpers.createId("user"),
-        studentNo,
-        studentId: "",
-        name: "",
-        classLabel: "",
-        nickname: asString(body.nickname) || `ClawDBot ${studentNo}`,
-        avatarUrl: "",
-        wallpaperUrl: "",
-        classIds: [],
-        adminRole: "none",
-        reminderEnabled: true,
-        reminderWindowMinutes: [30, 15],
-        createdAt: storeHelpers.nowIso(),
-        updatedAt: storeHelpers.nowIso(),
-      };
-      store.users.push(user);
-      state.randomCodeByUserId.set(user.userId, randomCodeByStudentNo(user.studentNo));
-      state.bindingTargetUserIdByUserId.set(user.userId, user.userId);
+      createLegacyError(404, "CLAWDBOT_WEBHOOK_USER_NOT_FOUND", "未找到 ClawDBot 消息对应用户，请先绑定或提供 studentNo");
     }
-    if (asString(body.nickname)) {
-      user.nickname = asString(body.nickname);
-      user.updatedAt = storeHelpers.nowIso();
-    }
-    const intelligence = buildScheduleIntelligence(text);
-    const candidates = buildScheduleCandidateDrafts(text).map((candidate) => ({
-      ...candidate,
-      examDate: extractExamDateFromText(text),
-      ...buildScheduleCandidateConflictPayload(store, user, candidate),
-    }));
-    const first = candidates[0] || null;
-    let eventRecord: UserScheduleEventRecord | null = null;
-    if (body.commit && first) {
-      eventRecord = {
-        id: storeHelpers.createId("user_event"),
-        userId: user.userId,
-        title: first.title,
-        description: first.description,
-        source: first.examLike ? "exam" : "ai",
-        day: first.day,
-        startSection: first.startSection,
-        endSection: Math.max(first.startSection, first.endSection),
-        weekExpr: first.weekExpr,
-        parity: first.parity,
-        tags: first.tags,
-        priorityScore: first.priorityScore,
-        priorityLabel: first.priorityLabel,
-        examDate: first.examDate || "",
-        createdAt: storeHelpers.nowIso(),
-        updatedAt: storeHelpers.nowIso(),
-      };
-      store.userScheduleEvents.push(eventRecord);
-    }
-    const replyLines = [
-      `我识别到 ${candidates.length} 个日程候选：`,
-      ...candidates.slice(0, 3).map((item, index) => {
-        const conflict = Array.isArray(item.conflicts) && item.conflicts.length > 0 ? "（有冲突，建议换时间）" : "";
-        return `${index + 1}. ${item.title} · 周${item.day} · 第${item.startSection}-${item.endSection}节 · ${item.examLike ? "考试/复习" : "日程"}${conflict}`;
-      }),
-      body.commit && eventRecord ? `已模拟确认并创建个人日程：${eventRecord.id}` : "回复“确认”后可创建到个人日程。",
-    ];
+    const targetUser = user as UserRecord;
+    const result = buildClawDBotScheduleReply(store, state, {
+      user: targetUser,
+      text,
+      nickname: identity.nickname,
+      commit: shouldCommitClawDBotText(body, text),
+    });
+    appendLegacyAudit(store, "clawdbot_webhook_message", targetUser.userId, {
+      committed: result.committed,
+      candidateCount: result.candidates.length,
+      openId: identity.openId,
+      externalUserId: identity.externalUserId,
+    });
     return {
-      ok: true,
-      provider: "rules",
-      channel: "wechat_clawdbot",
-      user: toLegacyAuthUser(user, user, state),
-      incoming: {
-        text,
-      },
-      intelligence,
-      candidates,
-      committed: Boolean(eventRecord),
-      event: eventRecord,
-      reply: {
-        msgtype: "text",
-        text: {
-          content: replyLines.join("\n"),
-        },
-      },
-      stateRevision: getNexusStoreRevision(),
+      ...result,
+      webhook: true,
     };
   }
 
