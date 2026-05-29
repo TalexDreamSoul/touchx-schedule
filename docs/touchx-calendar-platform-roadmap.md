@@ -740,7 +740,7 @@ apps/backend/server/modules/calendar/
 - [x] 飞书应用 provider 支持获取 `tenant_access_token` 并调用 `/im/v1/messages` 发送文本消息。
 - [x] 飞书机器人签名发送支持 timestamp/sign 计算。
 - [x] reminder candidate 入队使用统一 `resolveChannelOrder` 处理 `both` / `primary_only` / `primary_then_fallback`。
-- [ ] 飞书应用接收人绑定从全局 `defaultReceiveId` 升级为用户级 binding。
+- [x] 飞书应用接收人绑定从全局 `defaultReceiveId` 升级为用户级 binding。
 - [ ] 旧 `schedule_reminder_deliveries` 逐步迁移为通用 `notification_deliveries`。
 
 验收标准：

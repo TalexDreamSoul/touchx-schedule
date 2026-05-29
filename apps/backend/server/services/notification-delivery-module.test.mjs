@@ -36,7 +36,7 @@ const loadNotificationModule = async () => {
     [
       ["from \"@touchx/shared\";", `from ${JSON.stringify(pathToFileURL(sharedPath).href)};`],
       ["export * from \"./adapters\";", readFileSync(join(import.meta.dirname, "../../../../packages/notification-core/src/adapters.ts"), "utf8")
-        .replace("import type { NotificationChannel, NotificationChannelType } from \"@touchx/shared\";", "")
+        .replace("import type { FeishuProviderType, FeishuReceiveIdType, NotificationChannel, NotificationChannelType } from \"@touchx/shared\";", "")
         .replaceAll("export interface", "interface")
         .replaceAll("export const", "const")
         .concat("\nexport { buildWechatClawDBotWebhookPayload, buildFeishuTenantAccessTokenPayload, buildFeishuTenantAccessTokenUrl, buildFeishuTenantAppMessagePayload, buildFeishuTenantMessageUrl, buildFeishuWebhookPayload, parseFeishuMessageSendResponse, parseFeishuTenantAccessTokenResponse, resolveFeishuProviderType, resolveFeishuReceiveId, validateNotificationChannelReady };\n")],
@@ -276,6 +276,114 @@ test("dispatches a Feishu tenant app delivery through token and message APIs", a
     assert.equal(calls[1].body.receive_id, "ou_payload");
     assert.equal(calls[1].body.msg_type, "text");
     assert.match(JSON.parse(calls[1].body.content).text, /飞书提醒/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("dispatches a Feishu tenant app delivery to a user-level binding", async () => {
+  const delivery = await loadNotificationModule();
+  const store = createStore();
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  store.notificationChannels[1].config = {
+    provider: "tenant_app",
+    appId: "cli_test",
+    appSecret: "secret_test",
+    receiveIdType: "open_id",
+    defaultReceiveId: "ou_default",
+  };
+  store.userNotificationBindings.push({
+    id: "binding-feishu-user-1",
+    userId: "user-1",
+    channelType: "feishu",
+    externalUserId: "user_feishu_1",
+    externalOpenId: "ou_bound_user_1",
+    externalUnionId: "on_union_user_1",
+    status: "active",
+    createdAt: "2026-05-18T00:00:00.000Z",
+    updatedAt: "2026-05-18T00:00:00.000Z",
+  });
+  globalThis.fetch = async (url, init = {}) => {
+    const bodyText = String(init.body || "{}");
+    calls.push({ url: String(url), headers: init.headers || {}, body: JSON.parse(bodyText) });
+    if (String(url).includes("tenant_access_token")) {
+      return Response.json({ code: 0, tenant_access_token: "tenant-token", expire: 7200 });
+    }
+    return Response.json({ code: 0, data: { message_id: "om_bound_message" } });
+  };
+  try {
+    const item = delivery.createNotificationDelivery(store, {
+      userId: "user-1",
+      channelType: "feishu",
+      title: "飞书绑定提醒",
+      body: "用户级 open_id 测试",
+      payload: { source: "test" },
+      dedupeKey: "feishu:user-1:binding-test",
+      scheduledAt: "2026-05-18T00:00:00.000Z",
+    });
+
+    const result = await delivery.dispatchNotificationDelivery(store, item.id);
+
+    assert.equal(result.status, "sent");
+    assert.equal(result.externalMessageId, "om_bound_message");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].body.receive_id, "ou_bound_user_1");
+    assert.notEqual(calls[1].body.receive_id, "ou_default");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("dispatches a Feishu tenant app delivery by union_id binding", async () => {
+  const delivery = await loadNotificationModule();
+  const store = createStore();
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  store.notificationChannels[1].config = {
+    provider: "tenant_app",
+    appId: "cli_test",
+    appSecret: "secret_test",
+    receiveIdType: "union_id",
+    defaultReceiveId: "on_default",
+  };
+  store.userNotificationBindings.push({
+    id: "binding-feishu-user-2",
+    userId: "user-2",
+    channelType: "feishu",
+    externalUserId: "user_feishu_2",
+    externalOpenId: "ou_bound_user_2",
+    externalUnionId: "on_union_user_2",
+    status: "active",
+    createdAt: "2026-05-18T00:00:00.000Z",
+    updatedAt: "2026-05-18T00:00:00.000Z",
+  });
+  globalThis.fetch = async (url, init = {}) => {
+    const bodyText = String(init.body || "{}");
+    calls.push({ url: String(url), headers: init.headers || {}, body: JSON.parse(bodyText) });
+    if (String(url).includes("tenant_access_token")) {
+      return Response.json({ code: 0, tenant_access_token: "tenant-token", expire: 7200 });
+    }
+    return Response.json({ code: 0, data: { message_id: "om_union_message" } });
+  };
+  try {
+    const item = delivery.createNotificationDelivery(store, {
+      userId: "user-2",
+      channelType: "feishu",
+      title: "飞书 union_id 提醒",
+      body: "用户级 union_id 测试",
+      payload: { source: "test" },
+      dedupeKey: "feishu:user-2:union-binding-test",
+      scheduledAt: "2026-05-18T00:00:00.000Z",
+    });
+
+    const result = await delivery.dispatchNotificationDelivery(store, item.id);
+
+    assert.equal(result.status, "sent");
+    assert.equal(result.externalMessageId, "om_union_message");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].url, "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=union_id");
+    assert.equal(calls[1].body.receive_id, "on_union_user_2");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -55,6 +55,32 @@ export const applyQuietHoursToDelivery = (delivery: NotificationDelivery, now = 
   return true;
 };
 
+const resolveUserNotificationBindingPayload = (store: NexusStore, delivery: NotificationDelivery) => {
+  if (delivery.channelType === "feishu" && (delivery.payload?.feishuReceiveId || delivery.payload?.receiveId)) {
+    return {};
+  }
+  const binding = store.userNotificationBindings.find(
+    (item) => item.userId === delivery.userId && item.channelType === delivery.channelType && item.status === "active",
+  ) || null;
+  if (!binding) {
+    return {};
+  }
+  if (delivery.channelType === "feishu") {
+    return {
+      externalUserId: binding.externalUserId,
+      externalOpenId: binding.externalOpenId || "",
+      externalUnionId: binding.externalUnionId || "",
+      notificationBindingId: binding.id,
+    };
+  }
+  return {
+    externalUserId: binding.externalUserId,
+    externalOpenId: binding.externalOpenId || "",
+    externalUnionId: binding.externalUnionId || "",
+    notificationBindingId: binding.id,
+  };
+};
+
 const resolveFallbackChannelType = (store: NexusStore, delivery: NotificationDelivery): NotificationChannelType | "" => {
   if (delivery.payload?.channelStrategy !== "primary_then_fallback") {
     return "";
@@ -162,7 +188,10 @@ export const dispatchNotificationDelivery = async (store: NexusStore, deliveryId
     const result = await adapter.send(channel, {
       title: delivery.title,
       body: delivery.body,
-      payload: delivery.payload,
+      payload: {
+        ...delivery.payload,
+        ...resolveUserNotificationBindingPayload(store, delivery),
+      },
     });
     if (result.ok) {
       delivery.status = "sent";

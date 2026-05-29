@@ -13,7 +13,7 @@
           </button>
         </div>
       </header>
-      <p v-if="errorText" class="rx-muted">{{ errorText }}</p>
+      <p v-if="errorText" class="nexus-alert">{{ errorText }}</p>
       <div class="rx-table-wrap">
         <table class="rx-table">
           <thead>
@@ -46,8 +46,73 @@
     <section class="rx-card">
       <header class="rx-card-head">
         <div>
+          <h2>飞书应用用户级接收人绑定</h2>
+          <p>企业自建应用发送时会优先使用用户绑定的 open_id / user_id / union_id；没有绑定才回退到通道 defaultReceiveId。</p>
+        </div>
+      </header>
+      <div class="nexus-form binding-form">
+        <select v-model="bindingForm.userId">
+          <option value="">选择用户</option>
+          <option v-for="user in users" :key="user.userId" :value="user.userId">
+            {{ userLabel(user) }}
+          </option>
+        </select>
+        <select v-model="bindingForm.channelType">
+          <option value="feishu">飞书</option>
+          <option value="wechat_clawdbot">微信 ClawDBot</option>
+        </select>
+        <input v-model.trim="bindingForm.externalOpenId" placeholder="open_id（飞书 open_id 推荐填这里）" />
+        <input v-model.trim="bindingForm.externalUserId" placeholder="user_id / email / chat_id / fallback ID" />
+        <input v-model.trim="bindingForm.externalUnionId" placeholder="union_id，可空" />
+        <select v-model="bindingForm.status">
+          <option value="active">active</option>
+          <option value="disabled">disabled</option>
+          <option value="expired">expired</option>
+        </select>
+        <button class="rx-btn" type="button" :disabled="loading || !bindingForm.userId" @click="saveBinding">
+          {{ bindingForm.id ? "保存绑定" : "新增绑定" }}
+        </button>
+        <button class="rx-btn rx-btn-ghost" type="button" :disabled="loading" @click="resetBindingForm">清空</button>
+      </div>
+      <div class="rx-table-wrap binding-table">
+        <table class="rx-table">
+          <thead>
+            <tr>
+              <th>用户</th>
+              <th>通道</th>
+              <th>状态</th>
+              <th>externalUserId</th>
+              <th>openId</th>
+              <th>unionId</th>
+              <th>更新</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in bindings" :key="item.id">
+              <td>{{ bindingUserLabel(item) }}</td>
+              <td><span class="rx-pill">{{ item.channelType }}</span></td>
+              <td>{{ item.status }}</td>
+              <td>{{ item.externalUserId || "-" }}</td>
+              <td>{{ item.externalOpenId || "-" }}</td>
+              <td>{{ item.externalUnionId || "-" }}</td>
+              <td>{{ toDisplayDate(item.updatedAt) }}</td>
+              <td>
+                <button class="rx-btn rx-btn-ghost" type="button" :disabled="loading" @click="editBinding(item)">编辑</button>
+                <button class="rx-btn rx-btn-ghost" type="button" :disabled="loading" @click="deleteBinding(item.id)">删除</button>
+              </td>
+            </tr>
+            <tr v-if="bindings.length <= 0"><td colspan="8" class="rx-muted">暂无通知绑定</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="rx-card">
+      <header class="rx-card-head">
+        <div>
           <h2>最近测试投递</h2>
-          <p>当前测试发送先写入 NotificationDelivery，后续接真实 adapter。</p>
+          <p>测试发送会创建 NotificationDelivery 并立即走真实 adapter；飞书企业应用会自动读取用户级绑定。</p>
         </div>
       </header>
       <div class="rx-table-wrap">
@@ -77,6 +142,7 @@ import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 type ChannelType = "wechat_clawdbot" | "feishu";
 type FeishuProvider = "webhook_bot" | "tenant_app";
+type BindingStatus = "active" | "disabled" | "expired";
 
 interface ChannelRow {
   id: string;
@@ -95,11 +161,44 @@ interface DeliveryRow {
   errorMessage?: string;
 }
 
+interface UserRow {
+  userId: string;
+  studentNo: string;
+  studentId?: string;
+  accountName?: string;
+  name?: string;
+  nickname?: string;
+  classLabel?: string;
+}
+
+interface BindingRow {
+  id: string;
+  userId: string;
+  channelType: ChannelType;
+  externalUserId: string;
+  externalOpenId?: string;
+  externalUnionId?: string;
+  status: BindingStatus;
+  updatedAt: string;
+  user?: UserRow | null;
+}
+
 const { ensureSessionToken, request, goToLogin } = useNexusApi();
 const loading = ref(false);
 const errorText = ref("");
 const channels = ref<ChannelRow[]>([]);
 const deliveries = ref<DeliveryRow[]>([]);
+const users = ref<UserRow[]>([]);
+const bindings = ref<BindingRow[]>([]);
+const bindingForm = reactive({
+  id: "",
+  userId: "",
+  channelType: "feishu" as ChannelType,
+  externalUserId: "",
+  externalOpenId: "",
+  externalUnionId: "",
+  status: "active" as BindingStatus,
+});
 
 const formatConfig = (config: ChannelRow["config"]) => {
   const provider = config?.provider === "tenant_app" ? "飞书应用" : config?.provider === "webhook_bot" ? "飞书机器人" : "";
@@ -113,16 +212,42 @@ const toDisplayDate = (value: unknown) => {
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleString("zh-CN") : String(value || "");
 };
 
+const userLabel = (user: UserRow) => {
+  return [user.name || user.nickname || user.accountName || user.studentNo || user.userId, user.classLabel].filter(Boolean).join(" · ");
+};
+
+const bindingUserLabel = (binding: BindingRow) => {
+  if (binding.user) {
+    return userLabel(binding.user);
+  }
+  const user = users.value.find((item) => item.userId === binding.userId) || null;
+  return user ? userLabel(user) : binding.userId;
+};
+
+const resetBindingForm = () => {
+  bindingForm.id = "";
+  bindingForm.userId = "";
+  bindingForm.channelType = "feishu";
+  bindingForm.externalUserId = "";
+  bindingForm.externalOpenId = "";
+  bindingForm.externalUnionId = "";
+  bindingForm.status = "active";
+};
+
 const loadData = async () => {
   loading.value = true;
   errorText.value = "";
   try {
-    const [channelData, deliveryData] = await Promise.all([
+    const [channelData, deliveryData, userData, bindingData] = await Promise.all([
       request<{ items: ChannelRow[] }>("/api/v1/admin/notification-channels"),
       request<{ items: DeliveryRow[] }>("/api/v1/admin/notification-deliveries?limit=20"),
+      request<{ items: UserRow[] }>("/api/v1/admin/users?limit=200&includeGhost=true"),
+      request<{ items: BindingRow[] }>("/api/v1/admin/notification-bindings?limit=200"),
     ]);
     channels.value = channelData.items || [];
     deliveries.value = deliveryData.items || [];
+    users.value = userData.items || [];
+    bindings.value = bindingData.items || [];
   } catch (error) {
     errorText.value = error instanceof Error ? error.message : "加载失败";
   } finally {
@@ -182,6 +307,53 @@ const sendTest = async (type: ChannelType) => {
   }
 };
 
+const editBinding = (item: BindingRow) => {
+  bindingForm.id = item.id;
+  bindingForm.userId = item.userId;
+  bindingForm.channelType = item.channelType;
+  bindingForm.externalUserId = item.externalUserId || "";
+  bindingForm.externalOpenId = item.externalOpenId || "";
+  bindingForm.externalUnionId = item.externalUnionId || "";
+  bindingForm.status = item.status;
+};
+
+const saveBinding = async () => {
+  loading.value = true;
+  errorText.value = "";
+  try {
+    await request("/api/v1/admin/notification-bindings", {
+      method: "POST",
+      body: { ...bindingForm },
+    });
+    resetBindingForm();
+    await loadData();
+  } catch (error) {
+    errorText.value = error instanceof Error ? error.message : "保存绑定失败";
+  } finally {
+    loading.value = false;
+  }
+};
+
+const deleteBinding = async (bindingId: string) => {
+  if (!window.confirm("确认删除该通知绑定？")) {
+    return;
+  }
+  loading.value = true;
+  errorText.value = "";
+  try {
+    await request(`/api/v1/admin/notification-bindings/${encodeURIComponent(bindingId)}/delete`, {
+      method: "POST",
+      body: {},
+    });
+    resetBindingForm();
+    await loadData();
+  } catch (error) {
+    errorText.value = error instanceof Error ? error.message : "删除绑定失败";
+  } finally {
+    loading.value = false;
+  }
+};
+
 onMounted(async () => {
   if (!ensureSessionToken()) {
     await goToLogin();
@@ -190,3 +362,31 @@ onMounted(async () => {
   await loadData();
 });
 </script>
+
+<style scoped>
+.binding-form {
+  grid-template-columns: minmax(12rem, 1.2fr) 9rem minmax(12rem, 1fr) minmax(12rem, 1fr) minmax(12rem, 1fr) 8rem auto auto;
+  align-items: start;
+  margin-top: 1rem;
+}
+
+.binding-table {
+  margin-top: 1rem;
+}
+
+.rx-btn + .rx-btn {
+  margin-left: 0.35rem;
+}
+
+@media (max-width: 1200px) {
+  .binding-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .binding-form {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

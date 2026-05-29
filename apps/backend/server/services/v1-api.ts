@@ -7,6 +7,7 @@ import type {
   CalendarSourceType,
   CalendarSourceVisibility,
   NotificationChannelType,
+  UserNotificationBindingStatus,
   ScheduleConflict,
   SchedulePatch,
   ScheduleSubscription,
@@ -121,6 +122,19 @@ const verifyPassword = (password: string, salt: string, expectedHash: string) =>
     return false;
   }
   return timingSafeEqual(left, right);
+};
+
+const normalizeNotificationChannelType = (value: unknown): NotificationChannelType | "" => {
+  const type = asString(value) as NotificationChannelType;
+  return type === "wechat_clawdbot" || type === "feishu" ? type : "";
+};
+
+const normalizeNotificationBindingStatus = (value: unknown): UserNotificationBindingStatus => {
+  const status = asString(value) as UserNotificationBindingStatus;
+  if (status === "active" || status === "disabled" || status === "expired") {
+    return status;
+  }
+  return "active";
 };
 
 const normalizeReminderOffsets = (value: unknown, fallback: number[] = [30, 15]) => {
@@ -2261,6 +2275,112 @@ export const handleV1Api = async (event: H3Event) => {
     }
     appendAudit("notification_channel_upsert", user.userId, { channelId: channel.id, type: channel.type, enabled: channel.enabled });
     return ok({ item: channel });
+  }
+
+  if (method === "GET" && path === "admin/notification-bindings") {
+    requireAdmin(event);
+    const { limit, offset } = parsePagination(query as Record<string, unknown>);
+    const channelType = normalizeNotificationChannelType(query.channelType);
+    const userId = asString(query.userId);
+    const filtered = store.userNotificationBindings.filter((item) => {
+      if (channelType && item.channelType !== channelType) {
+        return false;
+      }
+      if (userId && item.userId !== userId) {
+        return false;
+      }
+      return true;
+    });
+    const items = filtered.slice(offset, offset + limit).map((item) => {
+      const targetUser = store.users.find((candidate) => candidate.userId === item.userId) || null;
+      return {
+        ...item,
+        user: targetUser
+          ? {
+              userId: targetUser.userId,
+              studentNo: targetUser.studentNo,
+              studentId: targetUser.studentId,
+              accountName: targetUser.accountName || "",
+              name: targetUser.name || "",
+              nickname: targetUser.nickname || "",
+              classLabel: targetUser.classLabel || "",
+            }
+          : null,
+      };
+    });
+    return ok({ items, total: filtered.length, limit, offset });
+  }
+
+  if (method === "POST" && path === "admin/notification-bindings") {
+    const { user } = requireAdmin(event);
+    const body = await readJsonBody<{
+      id?: string;
+      userId?: string;
+      channelType?: NotificationChannelType;
+      externalUserId?: string;
+      externalOpenId?: string;
+      externalUnionId?: string;
+      status?: UserNotificationBindingStatus;
+    }>(event);
+    const targetUserId = asString(body.userId);
+    const targetUser = store.users.find((item) => item.userId === targetUserId) || null;
+    if (!targetUser) {
+      return toApiError(404, "NOTIFICATION_BINDING_USER_NOT_FOUND", "绑定用户不存在");
+    }
+    const channelType = normalizeNotificationChannelType(body.channelType || "feishu");
+    if (!channelType) {
+      return toApiError(400, "NOTIFICATION_BINDING_CHANNEL_INVALID", "通知绑定通道类型不合法");
+    }
+    const externalOpenId = asString(body.externalOpenId);
+    const externalUnionId = asString(body.externalUnionId);
+    const externalUserId = asString(body.externalUserId) || externalOpenId || externalUnionId;
+    if (!externalUserId && !externalOpenId && !externalUnionId) {
+      return toApiError(400, "NOTIFICATION_BINDING_RECEIVE_ID_REQUIRED", "请至少填写一个外部接收人 ID");
+    }
+    const status = normalizeNotificationBindingStatus(body.status);
+    const now = storeHelpers.nowIso();
+    const bindingId = asString(body.id);
+    const existing = store.userNotificationBindings.find(
+      (item) => (bindingId && item.id === bindingId) || (!bindingId && item.userId === targetUser.userId && item.channelType === channelType),
+    ) || null;
+    if (existing) {
+      existing.userId = targetUser.userId;
+      existing.channelType = channelType;
+      existing.externalUserId = externalUserId;
+      existing.externalOpenId = externalOpenId;
+      existing.externalUnionId = externalUnionId;
+      existing.status = status;
+      existing.updatedAt = now;
+      appendAudit("notification_binding_upsert", user.userId, { bindingId: existing.id, targetUserId: targetUser.userId, channelType, status });
+      return ok({ item: existing });
+    }
+    const created = {
+      id: storeHelpers.createId("notification_binding"),
+      userId: targetUser.userId,
+      channelType,
+      externalUserId,
+      externalOpenId,
+      externalUnionId,
+      status,
+      createdAt: now,
+      updatedAt: now,
+    };
+    store.userNotificationBindings.unshift(created);
+    appendAudit("notification_binding_upsert", user.userId, { bindingId: created.id, targetUserId: targetUser.userId, channelType, status });
+    return ok({ item: created });
+  }
+
+  const notificationBindingDeleteMatch = path.match(/^admin\/notification-bindings\/([^/]+)\/delete$/);
+  if (method === "POST" && notificationBindingDeleteMatch) {
+    const { user } = requireAdmin(event);
+    const bindingId = decodeURIComponent(notificationBindingDeleteMatch[1]);
+    const index = store.userNotificationBindings.findIndex((item) => item.id === bindingId);
+    if (index < 0) {
+      return toApiError(404, "NOTIFICATION_BINDING_NOT_FOUND", "通知绑定不存在");
+    }
+    const [removed] = store.userNotificationBindings.splice(index, 1);
+    appendAudit("notification_binding_delete", user.userId, { bindingId: removed.id, targetUserId: removed.userId, channelType: removed.channelType });
+    return ok({ item: removed, deleted: true });
   }
 
   const notificationChannelTestMatch = path.match(/^admin\/notification-channels\/([^/]+)\/test$/);

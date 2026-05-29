@@ -45,7 +45,18 @@ export const resolveFeishuReceiveIdType = (channel: NotificationChannel): Feishu
 
 export const resolveFeishuReceiveId = (channel: NotificationChannel, message: NotificationAdapterMessage) => {
   const payload = message.payload || {};
-  return asString(payload.feishuReceiveId || payload.receiveId || payload.externalOpenId || payload.externalUserId || channel.config.defaultReceiveId);
+  const explicit = asString(payload.feishuReceiveId || payload.receiveId);
+  if (explicit) {
+    return explicit;
+  }
+  const receiveIdType = resolveFeishuReceiveIdType(channel);
+  if (receiveIdType === "union_id") {
+    return asString(payload.externalUnionId || payload.externalUserId || channel.config.defaultReceiveId);
+  }
+  if (receiveIdType === "open_id") {
+    return asString(payload.externalOpenId || payload.externalUserId || channel.config.defaultReceiveId);
+  }
+  return asString(payload.externalUserId || payload.externalOpenId || channel.config.defaultReceiveId);
 };
 
 export const buildWechatClawDBotWebhookPayload = (message: NotificationAdapterMessage) => ({
