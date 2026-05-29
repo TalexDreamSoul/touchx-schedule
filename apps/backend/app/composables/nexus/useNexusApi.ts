@@ -53,6 +53,33 @@ export const useNexusApi = () => {
     return json.data as T;
   };
 
+  const requestRaw = async <T = unknown>(path: string, options: { method?: "GET" | "POST"; body?: unknown } = {}) => {
+    const method = options.method || "GET";
+    const headers: Record<string, string> = {};
+    const token = ensureSessionToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    if (method === "POST") {
+      headers["content-type"] = "application/json";
+    }
+    const response = await fetch(path, {
+      method,
+      headers,
+      credentials: "omit",
+      body: method === "POST" ? JSON.stringify(options.body || {}) : undefined,
+    });
+    const json = (await response.json()) as T & { error?: { code?: string; message?: string } };
+    if (response.status === 401 || String(json?.error?.code || "").includes("AUTH")) {
+      await goToLogin();
+      throw new Error("登录已失效，请重新登录");
+    }
+    if (!response.ok) {
+      throw new Error(String(json?.error?.message || `HTTP ${response.status}`));
+    }
+    return json as T;
+  };
+
   const upload = async <T = unknown>(path: string, formData: FormData) => {
     const headers: Record<string, string> = {};
     const token = ensureSessionToken();
@@ -80,6 +107,7 @@ export const useNexusApi = () => {
     sessionToken,
     ensureSessionToken,
     request,
+    requestRaw,
     upload,
     goToLogin,
   };

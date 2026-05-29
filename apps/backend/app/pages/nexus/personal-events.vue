@@ -1,5 +1,5 @@
 <template>
-  <NexusReactShell title="Personal Events" @refresh="loadData">
+  <NexusAdminShell title="Personal Events" @refresh="loadData">
     <section class="rx-card">
       <header class="rx-card-head">
         <div>
@@ -45,11 +45,11 @@
         </table>
       </div>
     </section>
-  </NexusReactShell>
+  </NexusAdminShell>
 </template>
 
 <script setup lang="ts">
-import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
+import NexusAdminShell from "../../components/nexus/NexusAdminShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 interface PersonalEventRow {

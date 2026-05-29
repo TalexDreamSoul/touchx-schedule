@@ -1,5 +1,5 @@
 <template>
-  <NexusReactShell title="Import Center" @refresh="loadData">
+  <NexusAdminShell title="Import Center" @refresh="loadData">
     <section class="rx-grid">
       <article class="rx-card">
         <span class="rx-pill">Legacy Jobs</span>
@@ -153,11 +153,11 @@
         </table>
       </div>
     </section>
-  </NexusReactShell>
+  </NexusAdminShell>
 </template>
 
 <script setup lang="ts">
-import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
+import NexusAdminShell from "../../components/nexus/NexusAdminShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 const { ensureSessionToken, request, upload, goToLogin } = useNexusApi();

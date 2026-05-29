@@ -1,5 +1,5 @@
 <template>
-  <NexusReactShell title="Notification Channels" @refresh="loadData">
+  <NexusAdminShell title="Notification Channels" @refresh="loadData">
     <section class="rx-card">
       <header class="rx-card-head">
         <div>
@@ -68,11 +68,11 @@
         </table>
       </div>
     </section>
-  </NexusReactShell>
+  </NexusAdminShell>
 </template>
 
 <script setup lang="ts">
-import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
+import NexusAdminShell from "../../components/nexus/NexusAdminShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 type ChannelType = "wechat_clawdbot" | "feishu";

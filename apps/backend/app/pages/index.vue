@@ -1,7 +1,7 @@
 <template>
-  <NexusConsole module-key="overview" />
+  <NexusDashboard />
 </template>
 
 <script setup lang="ts">
-import NexusConsole from "../components/NexusConsole.vue";
+import NexusDashboard from "../components/nexus/NexusDashboard.vue";
 </script>

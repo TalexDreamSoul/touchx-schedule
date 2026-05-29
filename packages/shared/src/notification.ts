@@ -21,7 +21,7 @@ export interface NotificationChannelConfig {
   provider?: FeishuProviderType;
   /** 飞书应用消息接收 ID 类型。 */
   receiveIdType?: FeishuReceiveIdType;
-  /** 飞书应用默认接收 ID；没有用户绑定时用于 CMS 测试或全局通知。 */
+  /** 飞书应用默认接收 ID；没有用户绑定时用于后台测试或全局通知。 */
   defaultReceiveId?: string;
   appId?: string;
   appSecret?: string;

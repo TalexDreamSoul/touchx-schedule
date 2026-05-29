@@ -1,48 +1,34 @@
 <template>
-  <div class="nexus-init" :data-theme="theme">
-    <div class="init-wrap">
-      <form class="init-card" @submit.prevent="onSubmit">
-        <header class="init-head">
-          <div class="head-row">
-            <p class="brand-mark">ScheduleNexus</p>
-            <button class="theme-btn" type="button" @click="toggleTheme">
-              {{ theme === "dark" ? "浅色" : "深色" }}
-            </button>
-          </div>
+  <div class="auth-root" :data-theme="theme">
+    <form class="init-card" @submit.prevent="onSubmit">
+      <header class="init-head">
+        <div>
+          <p class="auth-kicker">Bootstrap</p>
           <h1>首次初始化</h1>
-          <p class="head-desc">管理员账号 {{ bootstrapStudentNo || "未识别" }}，请设置后台登录密码</p>
-        </header>
-
-        <div class="init-body">
-          <label class="field">
-            <span>新密码</span>
-            <input
-              v-model.trim="password"
-              type="password"
-              placeholder="至少 6 位"
-              autocomplete="new-password"
-              required
-            />
-          </label>
-          <label class="field">
-            <span>确认密码</span>
-            <input
-              v-model.trim="confirmPassword"
-              type="password"
-              placeholder="再次输入密码"
-              autocomplete="new-password"
-              required
-            />
-          </label>
-
-          <button type="submit" class="submit-btn" :disabled="pending">
-            {{ pending ? "保存中..." : "完成初始化并进入后台" }}
-          </button>
-
-          <p v-if="errorText" class="error-text">{{ errorText }}</p>
+          <p>管理员账号 {{ bootstrapStudentNo || "未识别" }}，请设置后台登录密码。</p>
         </div>
-      </form>
-    </div>
+        <button class="auth-btn auth-btn-outline" type="button" @click="toggleTheme">
+          {{ theme === "dark" ? "Light" : "Dark" }}
+        </button>
+      </header>
+
+      <div class="init-body">
+        <label class="auth-field">
+          <span>新密码</span>
+          <input v-model.trim="password" type="password" placeholder="至少 6 位" autocomplete="new-password" required />
+        </label>
+        <label class="auth-field">
+          <span>确认密码</span>
+          <input v-model.trim="confirmPassword" type="password" placeholder="再次输入密码" autocomplete="new-password" required />
+        </label>
+
+        <button type="submit" class="auth-submit" :disabled="pending">
+          {{ pending ? "保存中..." : "完成初始化并进入后台" }}
+        </button>
+
+        <p v-if="errorText" class="auth-error">{{ errorText }}</p>
+      </div>
+    </form>
   </div>
 </template>
 
@@ -107,7 +93,7 @@ const loadInitContext = async () => {
     }
     const needInit = Boolean(payload?.data?.needInit);
     if (!needInit) {
-      await navigateTo("/nexus", { replace: true });
+      await navigateTo("/", { replace: true });
       return;
     }
     bootstrapStudentNo.value = String(payload?.data?.bootstrapAccountName || payload?.data?.bootstrapStudentNo || payload?.data?.user?.accountName || payload?.data?.user?.studentNo || "").trim();
@@ -157,7 +143,7 @@ const onSubmit = async () => {
     if (!response.ok || !payload.ok) {
       throw new Error(String(payload?.error?.message || `HTTP ${response.status}`).trim() || "初始化失败");
     }
-    await navigateTo("/nexus", { replace: true });
+    await navigateTo("/", { replace: true });
   } catch (error) {
     errorText.value = error instanceof Error ? error.message : "初始化失败";
   } finally {
@@ -172,147 +158,153 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.nexus-init {
-  min-height: 100vh;
-  transition: background-color 0.2s ease, color 0.2s ease;
-  background: var(--bg);
-  color: var(--text);
-}
-
-.nexus-init[data-theme="dark"] {
-  --bg: #070707;
-  --text: #f5f5f5;
-  --panel: #0f0f0f;
-  --panel-soft: #141414;
-  --border: rgba(255, 255, 255, 0.14);
-  --muted: rgba(255, 255, 255, 0.64);
-  --muted-strong: rgba(255, 255, 255, 0.84);
-  --input-bg: #090909;
-  --input-text: #f6f6f6;
-  --input-border: rgba(255, 255, 255, 0.2);
-  --button-text: #0d0d0d;
-  --button-bg: #fafafa;
-  --error: #ff8d8d;
-}
-
-.nexus-init[data-theme="light"] {
-  --bg: #f4f4f4;
-  --text: #111111;
-  --panel: #fbfbfb;
-  --panel-soft: #f5f5f5;
-  --border: rgba(10, 10, 10, 0.16);
-  --muted: rgba(17, 17, 17, 0.6);
-  --muted-strong: rgba(17, 17, 17, 0.82);
-  --input-bg: #ffffff;
-  --input-text: #111111;
-  --input-border: rgba(10, 10, 10, 0.2);
-  --button-text: #ffffff;
-  --button-bg: #111111;
-  --error: #cb2a2a;
-}
-
-.init-wrap {
+.auth-root {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 1rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --destructive: 0 84.2% 60.2%;
+  --radius: 0.75rem;
+}
+
+.auth-root[data-theme="dark"] {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --destructive: 0 72% 51%;
+}
+
+.auth-root * {
+  box-sizing: border-box;
 }
 
 .init-card {
-  width: 100%;
-  max-width: 27rem;
-  border: 0.0625rem solid var(--border);
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);
+  width: min(100%, 29rem);
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 0.35rem);
+  background: hsl(var(--card));
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.12);
 }
 
 .init-head {
-  display: grid;
-  gap: 0.5rem;
-  border-bottom: 0.0625rem solid var(--border);
-  padding: 1rem;
-}
-
-.head-row {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1.25rem;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
-.brand-mark {
+.auth-kicker,
+.init-head h1,
+.init-head p,
+.auth-error {
   margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.18rem;
-  font-size: 0.625rem;
-  color: var(--muted);
 }
 
-.theme-btn {
-  border: 0.0625rem solid var(--border);
-  background: transparent;
-  color: var(--muted-strong);
-  font-size: 0.6875rem;
-  line-height: 1;
-  padding: 0.375rem 0.625rem;
-  cursor: pointer;
+.auth-kicker {
+  margin-bottom: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .init-head h1 {
-  margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   line-height: 1;
+  letter-spacing: -0.04em;
 }
 
-.head-desc {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--muted);
+.init-head p {
+  margin-top: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .init-body {
   display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: 0.85rem;
+  padding: 1.25rem;
 }
 
-.field {
+.auth-field {
   display: grid;
-  gap: 0.375rem;
+  gap: 0.4rem;
 }
 
-.field span {
-  font-size: 0.75rem;
-  color: var(--muted-strong);
+.auth-field span {
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
-.field input {
+.auth-field input {
   width: 100%;
-  border: 0.0625rem solid var(--input-border);
-  background: var(--input-bg);
-  color: var(--input-text);
-  padding: 0.625rem 0.75rem;
-  font-size: 0.8125rem;
+  min-height: 2.6rem;
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 0.2rem);
+  padding: 0 0.75rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  outline: none;
 }
 
-.submit-btn {
-  width: 100%;
-  border: 0;
-  background: var(--button-bg);
-  color: var(--button-text);
-  padding: 0.625rem 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
+.auth-field input:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.12);
+}
+
+.auth-btn,
+.auth-submit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 2.5rem;
+  border: 1px solid hsl(var(--primary));
+  border-radius: calc(var(--radius) - 0.2rem);
+  padding: 0 0.9rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 550;
   cursor: pointer;
 }
 
-.submit-btn:disabled {
-  opacity: 0.6;
+.auth-btn-outline {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-submit:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
-.error-text {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--error);
+.auth-error {
+  color: hsl(var(--destructive));
+  font-size: 0.875rem;
 }
 </style>

@@ -29,7 +29,7 @@ export const sanitizeNotificationChannelConfig = (value: unknown): NotificationC
   const config: NotificationChannel["config"] = {};
   const setString = (key: keyof NotificationChannel["config"], rawValue: unknown) => {
     const valueText = asString(rawValue);
-    // CMS 列表接口会返回掩码值；保存时如果用户没有重新填写真实密钥，不能用掩码覆盖原密钥。
+    // 后台列表接口会返回掩码值；保存时如果用户没有重新填写真实密钥，不能用掩码覆盖原密钥。
     if (!valueText || valueText.includes("***")) {
       return;
     }
@@ -155,14 +155,14 @@ export const createNotificationTestDelivery = async (
   const delivery = createNotificationDelivery(store, {
     userId: input.userId,
     channelType: channel.type,
-    templateKey: "cms.test",
+    templateKey: "admin.test",
     title: asString(input.title) || "TouchX 测试通知",
     body: asString(input.body) || `${channel.name} 测试消息已创建。`,
     payload: {
-      source: "cms",
+      source: "admin",
       channelId: channel.id,
     },
-    dedupeKey: `cms.test:${channel.type}:${Date.now()}`,
+    dedupeKey: `admin.test:${channel.type}:${Date.now()}`,
   });
   return await dispatchNotificationDelivery(store, delivery.id);
 };

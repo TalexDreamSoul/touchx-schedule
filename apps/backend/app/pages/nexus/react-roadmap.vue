@@ -1,10 +1,10 @@
 <template>
-  <NexusReactShell title="React Roadmap" @refresh="noop">
+  <NexusAdminShell title="Admin Roadmap" @refresh="noop">
     <section class="rx-card">
       <header class="rx-card-head">
         <div>
           <h2>全新项目 Roadmap</h2>
-          <p>CMS 全量 React 化、小程序 Taro React、移动端 React Native CLI。</p>
+          <p>后台 UI 统一为 shadcn 简约风格，小程序 Taro React、移动端 React Native CLI 作为后续路线。</p>
         </div>
         <span class="rx-pill">2026</span>
       </header>
@@ -30,7 +30,7 @@
             </tr>
             <tr>
               <td>Phase 3</td>
-              <td>CMS 新模块拆分，不再堆 NexusConsole</td>
+              <td>后台新模块拆分，不再堆 NexusConsole</td>
               <td><span class="rx-pill">已起步</span></td>
             </tr>
             <tr>
@@ -47,10 +47,10 @@
         </table>
       </div>
     </section>
-  </NexusReactShell>
+  </NexusAdminShell>
 </template>
 
 <script setup lang="ts">
-import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
+import NexusAdminShell from "../../components/nexus/NexusAdminShell.vue";
 const noop = () => {};
 </script>

@@ -53,7 +53,7 @@ packages:
 - 当前 Nitro preset 是 `cloudflare_module`。
 - 状态主要存在 `domain-store.ts` 的大 `NexusStore` 中。
 - D1 中的 `nexus_state.payload` 是大 JSON blob。
-- CMS 页面主要集中在 `NexusConsole.vue`，文件过大，后续必须拆分。
+- 后台已从旧 `NexusConsole.vue` 拆成独立 Nuxt 页面，`/nexus/[module]` 仅保留兼容重定向。
 - 已有课表版本、订阅、patch、冲突、提醒入队、PDF 导入雏形。
 
 ---
@@ -64,8 +64,7 @@ packages:
 
 ```txt
 apps/
-  backend/                 # Nuxt：API + 旧 CMS 管理页面
-  cms/                     # React + Vite 新 CMS，逐步替换 NexusConsole
+  backend/                 # Nuxt：API + 内置后台页面
   microapp/                # 过渡期：uni-app 微信小程序
   mobile/                  # React Native CLI：iOS + Android 原生 App
   miniapp/                 # Taro / React 微信小程序，未来替代 uni-app
@@ -470,13 +469,13 @@ export interface ImportCandidateEvent {
 
 ---
 
-## 8. CMS 重构目标
+## 8. 后台重构目标
 
-当前 `NexusConsole.vue` 需要逐步拆成模块。
+旧 `NexusConsole.vue` 已拆分并删除。
 
-新决策：新增 `apps/cms` 作为 React + Vite 独立 CMS 主路线；`apps/backend/app/components/NexusConsole.vue` 作为迁移期 Legacy CMS 保留。Nuxt 内已先拆出 `/nexus/calendar-sources`、`/nexus/personal-events`、`/nexus/reminder-rules`、`/nexus/reminder-candidates`、`/nexus/notification-channels`、`/nexus/imports` 作为过渡页面，后续同等模块迁到 `apps/cms`。
+新决策：独立 `apps/cms` 已移除，后台统一收敛到 `apps/backend` 内置 Nuxt 页面。`/` 是主 Dashboard，`/nexus/**` 作为后台兼容路径；`/nexus/[module]` 仅保留旧模块别名重定向，新页面统一位于 `apps/backend/app/pages/nexus` 并使用 shadcn 简约风格。
 
-目标 CMS 模块：
+目标后台模块：
 
 ```txt
 Dashboard
@@ -507,6 +506,11 @@ apps/backend/app/
     reminders.vue
     notification-channels.vue
     imports.vue
+    foods.vue
+    media.vue
+    bots.vue
+    campaigns.vue
+    heart-open-word-bank.vue
     audit.vue
   components/nexus/
     layout/
@@ -531,7 +535,7 @@ apps/backend/app/
 ### 9.1 起步架构
 
 ```txt
-backend       # Nuxt API + CMS
+backend       # Nuxt API + 内置后台
 postgres      # 主数据库
 redis         # 队列 / 缓存 / 分布式锁
 worker        # 通知和导入任务 worker，可先合并一个
@@ -669,34 +673,37 @@ apps/backend/server/modules/calendar/
 
 - 旧小程序不受影响。
 - 新 API 可以用通用日程源视角读取当前课表数据。
-- CMS 可以先读取新 API 做“日程源”页面。
+- 后台可以先读取新 API 做“日程源”页面。
 
 ---
 
-## Phase 3：CMS 拆分第一轮
+## Phase 3：后台拆分第一轮
 
-目标：停止继续扩张 `NexusConsole.vue`。
+目标：停止继续扩张并移除 `NexusConsole.vue`。
 
 任务：
 
 - [x] 新增 `/nexus/calendar-sources` 页面。
 - [x] 新增 `/nexus/notification-channels` 页面。
 - [x] 新增 `/nexus/imports` 页面雏形。
-- [x] 新增 React CMS 投递记录页面，支持查看 `NotificationDelivery` 与手动投递 pending。
+- [x] 新增后台投递记录页面，支持查看 `NotificationDelivery` 与手动投递 pending。
 - [x] 新增 Nuxt `/nexus/notification-deliveries` 页面，覆盖 Worker 交付路径。
-- [x] 新增 React CMS / Nuxt 审计日志页面，支持查看关键操作 audit logs。
-- [ ] 抽出通用 CMS layout：
+- [x] 新增 Nuxt 审计日志页面，支持查看关键操作 audit logs。
+- [x] 抽出通用后台 shell：
   - sidebar
   - topbar
   - panel
   - table
   - modal
+- [x] 新增 Nuxt `/nexus/users`、`/nexus/classes`、`/nexus/schedules`、`/nexus/schedule-import`、`/nexus/preview`、`/nexus/settings` 页面。
+- [x] 新增 Nuxt `/nexus/foods`、`/nexus/media`、`/nexus/bots`、`/nexus/campaigns`、`/nexus/heart-open-word-bank` 页面。
+- [x] 删除旧 `NexusConsole.vue`，`/nexus/[module]` 改为兼容重定向。
 - [ ] 把旧 `schedules` 模块逐步替换为 `calendar-sources` 视角。
 
 验收标准：
 
 - 新增模块不再写进 `NexusConsole.vue`。
-- 旧模块仍可使用。
+- 旧 `NexusConsole.vue` 已删除；旧模块路径通过 `/nexus/[module]` 自动重定向。
 - 日程源列表可以展示：源类型、可见性、订阅数、当前版本、事件数。
 
 ---
@@ -718,15 +725,15 @@ apps/backend/server/modules/calendar/
   - `notification-delivery-service.ts`
   - `wechat-clawdbot-adapter.ts`
   - `feishu-adapter.ts`
-- [x] ReminderRule CMS + API 基线。
-- [x] ReminderCandidate 生成与 NotificationDelivery 入队 API / CMS 基线。
+- [x] ReminderRule 后台 + API 基线。
+- [x] ReminderCandidate 生成与 NotificationDelivery 入队 API / 后台基线。
 - [x] 投递策略支持：
   - `both`
   - `primary_then_fallback`
   - `primary_only`
 - [x] 支持 pending delivery 手动 dispatch 与 webhook adapter 基线。
-- [x] CMS 支持配置渠道和测试发送（已接真实 webhook / 飞书应用 adapter）。
-- [x] CMS 支持查看投递记录、失败信息、重试次数与外部消息 ID。
+- [x] 后台支持配置渠道和测试发送（已接真实 webhook / 飞书应用 adapter）。
+- [x] 后台支持查看投递记录、失败信息、重试次数与外部消息 ID。
 - [x] 飞书 provider 支持两种接入方式：
   - 自定义机器人 webhook：`provider=webhook_bot` + `webhookUrl`。
   - 企业自建应用：`provider=tenant_app` + `appId/appSecret` + `receiveIdType/defaultReceiveId`。
@@ -760,7 +767,7 @@ apps/backend/server/modules/calendar/
 - [x] 支持手动来源，并可由导入候选提交为个人事项。
 - [ ] 支持 AI / PDF 直接创建个人事项。
 - [x] 小程序先接入简单 todo 创建与今日视图展示。
-- [x] CMS 先接入简单 todo 创建、完成、归档。
+- [x] 后台先接入简单 todo 创建、完成、归档。
 
 验收标准：
 
@@ -778,7 +785,7 @@ apps/backend/server/modules/calendar/
 
 - [x] 新增 `packages/import-core`。
 - [x] 定义 `ImportJob` 和 `ImportCandidateEvent`。
-- [x] CMS 导入中心兼容读取现有 PDF 导入任务。
+- [x] 后台导入中心兼容读取现有 PDF 导入任务。
 - [x] 旧 PDF 导入可转换为候选事件。
 - [x] 候选事件支持审核、修正、接受 / 拒绝。
 - [x] 候选事件支持提交到日程源或个人事件。
@@ -899,9 +906,9 @@ apps/backend/server/modules/calendar/
 接下来建议按这个顺序做：
 
 ```txt
-1. V1 收口：聚焦 backend + CMS + 通知渠道，不再扩大 RN/小程序迁移范围
+1. V1 收口：聚焦 backend 内置后台 + 通知渠道，不再扩大 RN/小程序迁移范围
 2. 通知渠道优化：完善 ClawDBot + 飞书 webhook / 飞书应用 provider、fallback、审计与 smoke
-3. CMS 管理闭环：通道配置、投递记录、重试/dispatch、导入中心和审计日志
+3. 后台管理闭环：通道配置、投递记录、重试/dispatch、导入中心和审计日志
 4. 后端 API 减债：优先拆 auth/calendar/notification/import handler，保留 /api/v1 外部路径
 5. 安全收口：session secret、logout 撤销策略、CalendarSource 权限、密码哈希
 6. 验证门槛：focused type-check / build / node tests / smoke / git diff --check
@@ -914,7 +921,7 @@ apps/backend/server/modules/calendar/
 - 不要立刻删除旧 Schedule 模型。
 - 不要立刻重写小程序。
 - 不要立刻全量迁移数据库。
-- 不要继续把新 CMS 功能塞进 `NexusConsole.vue`。
+- 不要继续把新后台功能塞进 `NexusConsole.vue`。
 
 ---
 
@@ -941,7 +948,7 @@ apps/backend/server/modules/calendar/
 - [x] `GET /api/v1/calendar/sources`
 - [x] `GET /api/v1/calendar/me/effective`
 
-### Batch 3：CMS 新页面
+### Batch 3：后台新页面
 
 - [x] `/nexus/calendar-sources`
 - [x] sidebar 增加“日程源”入口
@@ -952,8 +959,8 @@ apps/backend/server/modules/calendar/
 - [x] `packages/notification-core`
 - [x] `wechat-clawdbot-adapter`
 - [x] `feishu-adapter`
-- [x] CMS 通知渠道配置页面
-- [x] CMS 投递记录与 pending 手动 dispatch 页面
+- [x] 后台通知渠道配置页面
+- [x] 后台投递记录与 pending 手动 dispatch 页面
 
 ---
 

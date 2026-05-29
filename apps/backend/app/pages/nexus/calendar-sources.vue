@@ -1,5 +1,5 @@
 <template>
-  <NexusReactShell title="Calendar Sources" @refresh="loadData">
+  <NexusAdminShell title="Calendar Sources" @refresh="loadData">
     <section class="rx-grid">
       <article class="rx-card">
         <span class="rx-pill">Sources</span>
@@ -17,9 +17,9 @@
         <p>基于 CalendarSubscription 的新 API 视角。</p>
       </article>
       <article class="rx-card">
-        <span class="rx-pill">Migration</span>
-        <h2>React</h2>
-        <p>新 CMS 页面不再写入旧 NexusConsole。</p>
+        <span class="rx-pill">Admin</span>
+        <h2>shadcn</h2>
+        <p>新后台页面不再写入旧 NexusConsole。</p>
       </article>
     </section>
 
@@ -96,11 +96,11 @@
         </table>
       </div>
     </section>
-  </NexusReactShell>
+  </NexusAdminShell>
 </template>
 
 <script setup lang="ts">
-import NexusReactShell from "../../components/nexus/NexusReactShell.vue";
+import NexusAdminShell from "../../components/nexus/NexusAdminShell.vue";
 import { useNexusApi } from "../../composables/nexus/useNexusApi";
 
 interface CalendarSourceRow {

@@ -1753,6 +1753,31 @@ export const handleV1Api = async (event: H3Event) => {
     });
   }
 
+  if (method === "GET" && path === "admin/dashboard") {
+    requireAdmin(event);
+    const failedDeliveries = store.notificationDeliveries.filter((item) => item.status === "failed").length;
+    const pendingDeliveries = store.notificationDeliveries.filter((item) => item.status === "pending").length;
+    const pendingImports = store.importCandidateEvents.filter((item) => item.status === "pending").length;
+    const publishedSchedules = store.schedules.filter((item) => Number(item.publishedVersionNo || 0) > 0).length;
+    return ok({
+      stats: {
+        users: store.users.length,
+        classes: store.classes.length,
+        calendarSources: store.schedules.length,
+        publishedCalendarSources: publishedSchedules,
+        personalEvents: store.userScheduleEvents.length,
+        notificationChannels: store.notificationChannels.length,
+        pendingDeliveries,
+        failedDeliveries,
+        importJobs: store.importJobs.length,
+        pendingImports,
+        auditLogs: store.auditLogs.length,
+      },
+      recentAuditLogs: store.auditLogs.slice(0, 8),
+      recentDeliveries: store.notificationDeliveries.slice(0, 8),
+    });
+  }
+
   if (method === "GET" && path === "calendar/sources") {
     const viewer = resolveSessionWithUser(event);
     const includePrivate = asString(query.includePrivate).toLowerCase() === "true" || asString(query.include_private) === "1";

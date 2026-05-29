@@ -1,32 +1,44 @@
 <template>
-  <div class="nexus-login" :data-theme="theme">
-    <div class="login-wrap">
-      <form class="login-card" @submit.prevent="onSubmit">
-        <header class="login-head">
-          <div class="head-row">
-            <p class="brand-mark">ScheduleNexus</p>
-            <button class="theme-btn" type="button" @click="toggleTheme">
-              {{ theme === "dark" ? "浅色" : "深色" }}
-            </button>
+  <div class="auth-root" :data-theme="theme">
+    <section class="auth-panel">
+      <div class="auth-aside">
+        <NuxtLink class="auth-brand" to="/">
+          <span>TX</span>
+          <strong>TouchX Admin</strong>
+        </NuxtLink>
+        <div>
+          <p class="auth-kicker">Admin Console</p>
+          <h1>统一后台入口</h1>
+          <p class="auth-copy">/api/** 只提供接口，后台页面统一收敛到 / 与 /nexus/**，UI 逐步统一为 shadcn 简约风格。</p>
+        </div>
+        <div class="auth-route-card">
+          <span>/</span>
+          <span>/nexus/**</span>
+          <span>/api/**</span>
+        </div>
+      </div>
+
+      <form class="auth-card" @submit.prevent="onSubmit">
+        <header class="auth-head">
+          <div>
+            <p class="auth-kicker">Sign in</p>
+            <h2>管理员登录</h2>
+            <p>{{ passwordRequired ? "输入账号与密码进入后台" : "首次初始化：输入默认管理员账号即可进入初始化流程" }}</p>
           </div>
-          <h1>管理员登录</h1>
-          <p class="head-desc">{{ passwordRequired ? "输入账号与密码进入后台" : "首次初始化：输入默认管理员账号即可进入初始化流程" }}</p>
+          <button class="auth-btn auth-btn-outline" type="button" @click="toggleTheme">
+            {{ theme === "dark" ? "Light" : "Dark" }}
+          </button>
         </header>
 
-        <div class="login-body">
-          <label class="field">
+        <div class="auth-body">
+          <label class="auth-field">
             <span>账号</span>
-            <input
-              v-model.trim="studentNo"
-              placeholder="admin@schedule.com"
-              autocomplete="username"
-              required
-            />
+            <input v-model.trim="studentNo" placeholder="admin@schedule.com" autocomplete="username" required />
           </label>
 
-          <label class="field">
+          <label class="auth-field">
             <span>密码</span>
-            <div class="password-box">
+            <div class="auth-password">
               <input
                 v-model.trim="password"
                 :type="showPassword ? 'text' : 'password'"
@@ -34,24 +46,19 @@
                 autocomplete="current-password"
                 :required="passwordRequired"
               />
-              <button class="switch-btn" type="button" @click="showPassword = !showPassword">
-                {{ showPassword ? "隐藏" : "显示" }}
-              </button>
+              <button type="button" @click="showPassword = !showPassword">{{ showPassword ? "隐藏" : "显示" }}</button>
             </div>
           </label>
 
-          <button
-            type="submit"
-            class="submit-btn"
-            :disabled="pending"
-          >
-            {{ pending ? "登录中..." : "进入 ScheduleNexus" }}
+          <button type="submit" class="auth-submit" :disabled="pending">
+            {{ pending ? "登录中..." : "进入后台" }}
           </button>
 
-          <p v-if="errorText" class="error-text">{{ errorText }}</p>
+          <p v-if="errorText" class="auth-error">{{ errorText }}</p>
+          <p class="auth-hint">默认本地账号：{{ bootstrapStudentNo }} / 123456</p>
         </div>
       </form>
-    </div>
+    </section>
   </div>
 </template>
 
@@ -217,178 +224,251 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.nexus-login {
-  min-height: 100vh;
-  transition: background-color 0.2s ease, color 0.2s ease;
-  background: var(--bg);
-  color: var(--text);
-}
-
-.nexus-login[data-theme="dark"] {
-  --bg: #070707;
-  --text: #f5f5f5;
-  --panel: #0f0f0f;
-  --panel-soft: #141414;
-  --border: rgba(255, 255, 255, 0.14);
-  --muted: rgba(255, 255, 255, 0.64);
-  --muted-strong: rgba(255, 255, 255, 0.84);
-  --input-bg: #090909;
-  --input-text: #f6f6f6;
-  --input-border: rgba(255, 255, 255, 0.2);
-  --button-text: #0d0d0d;
-  --button-bg: #fafafa;
-  --error: #ff8d8d;
-}
-
-.nexus-login[data-theme="light"] {
-  --bg: #f4f4f4;
-  --text: #111111;
-  --panel: #fbfbfb;
-  --panel-soft: #f5f5f5;
-  --border: rgba(10, 10, 10, 0.16);
-  --muted: rgba(17, 17, 17, 0.6);
-  --muted-strong: rgba(17, 17, 17, 0.82);
-  --input-bg: #ffffff;
-  --input-text: #111111;
-  --input-border: rgba(10, 10, 10, 0.2);
-  --button-text: #ffffff;
-  --button-bg: #111111;
-  --error: #cb2a2a;
-}
-
-.login-wrap {
+.auth-root {
   min-height: 100vh;
   display: grid;
   place-items: center;
   padding: 1rem;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  --background: 0 0% 100%;
+  --foreground: 240 10% 3.9%;
+  --card: 0 0% 100%;
+  --muted: 240 4.8% 95.9%;
+  --muted-foreground: 240 3.8% 46.1%;
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --primary: 240 5.9% 10%;
+  --primary-foreground: 0 0% 98%;
+  --destructive: 0 84.2% 60.2%;
+  --radius: 0.75rem;
 }
 
-.login-card {
-  width: 100%;
-  max-width: 27rem;
-  border: 0.0625rem solid var(--border);
-  background: linear-gradient(180deg, var(--panel) 0%, var(--panel-soft) 100%);
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15);
+.auth-root[data-theme="dark"] {
+  --background: 240 10% 3.9%;
+  --foreground: 0 0% 98%;
+  --card: 240 10% 3.9%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --primary: 0 0% 98%;
+  --primary-foreground: 240 5.9% 10%;
+  --destructive: 0 72% 51%;
 }
 
-.login-head {
+.auth-root * {
+  box-sizing: border-box;
+}
+
+.auth-panel {
+  width: min(100%, 62rem);
+  min-height: 36rem;
   display: grid;
-  gap: 0.5rem;
-  border-bottom: 0.0625rem solid var(--border);
-  padding: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(23rem, 0.8fr);
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) + 0.35rem);
+  overflow: hidden;
+  background: hsl(var(--card));
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.12);
 }
 
-.head-row {
+.auth-aside {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
+  gap: 2rem;
+  padding: 2rem;
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.42);
 }
 
-.brand-mark {
-  margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.18rem;
-  font-size: 0.625rem;
-  color: var(--muted);
-}
-
-.theme-btn {
-  border: 0.0625rem solid var(--border);
-  background: transparent;
-  color: var(--muted-strong);
-  font-size: 0.6875rem;
-  line-height: 1;
-  padding: 0.375rem 0.625rem;
-  cursor: pointer;
-}
-
-.login-head h1 {
-  margin: 0;
-  font-size: 1.25rem;
-  line-height: 1;
-}
-
-.head-desc {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
-.login-body {
-  display: grid;
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
   gap: 0.75rem;
-  padding: 1rem;
+  color: hsl(var(--foreground));
+  text-decoration: none;
 }
 
-.field {
+.auth-brand span {
   display: grid;
-  gap: 0.25rem;
+  place-items: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: calc(var(--radius) - 0.2rem);
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 700;
 }
 
-.field span {
-  font-size: 0.6875rem;
-  color: var(--muted-strong);
+.auth-kicker {
+  margin: 0 0 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.field input {
+.auth-aside h1,
+.auth-head h2,
+.auth-head p,
+.auth-copy,
+.auth-hint,
+.auth-error {
+  margin: 0;
+}
+
+.auth-aside h1 {
+  max-width: 20rem;
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+  letter-spacing: -0.07em;
+}
+
+.auth-copy {
+  max-width: 28rem;
+  margin-top: 1rem;
+  color: hsl(var(--muted-foreground));
+  line-height: 1.7;
+}
+
+.auth-route-card {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.auth-route-card span {
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  background: hsl(var(--background));
+  font-size: 0.75rem;
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.25rem;
+  padding: 2rem;
+}
+
+.auth-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.auth-head h2 {
+  font-size: 1.5rem;
+  letter-spacing: -0.04em;
+}
+
+.auth-head p,
+.auth-hint {
+  margin-top: 0.4rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.auth-body {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.auth-field span {
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.auth-field input {
   width: 100%;
-  height: 2.5rem;
-  border: 0.0625rem solid var(--input-border);
-  background: var(--input-bg);
-  color: var(--input-text);
-  font-size: 0.8125rem;
-  line-height: 1;
+  min-height: 2.6rem;
+  border: 1px solid hsl(var(--input));
+  border-radius: calc(var(--radius) - 0.2rem);
   padding: 0 0.75rem;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   outline: none;
 }
 
-.field input:focus {
-  border-color: var(--muted-strong);
+.auth-field input:focus {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.12);
 }
 
-.password-box {
+.auth-password {
   position: relative;
 }
 
-.password-box .switch-btn {
+.auth-password input {
+  padding-right: 4rem;
+}
+
+.auth-password button {
   position: absolute;
-  right: 0.375rem;
-  top: 0.375rem;
-  border: 0.0625rem solid var(--input-border);
-  background: transparent;
-  color: var(--muted-strong);
-  height: 1.75rem;
-  min-width: 2.75rem;
-  font-size: 0.6875rem;
+  right: 0.35rem;
+  top: 0.35rem;
+  height: calc(100% - 0.7rem);
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 0.3rem);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
   cursor: pointer;
 }
 
-.submit-btn {
-  height: 2.5rem;
-  border: 0.0625rem solid var(--button-bg);
-  background: var(--button-bg);
-  color: var(--button-text);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  line-height: 1;
+.auth-btn,
+.auth-submit {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 2.5rem;
+  border: 1px solid hsl(var(--primary));
+  border-radius: calc(var(--radius) - 0.2rem);
+  padding: 0 0.9rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-weight: 550;
   cursor: pointer;
 }
 
-.submit-btn:disabled {
-  opacity: 0.6;
+.auth-btn-outline {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-submit:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
-.error-text {
-  margin: 0;
-  color: var(--error);
-  font-size: 0.75rem;
-  line-height: 1.3;
+.auth-error {
+  color: hsl(var(--destructive));
+  font-size: 0.875rem;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .nexus-login {
-    transition: none;
+@media (max-width: 820px) {
+  .auth-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-aside {
+    display: none;
   }
 }
 </style>
