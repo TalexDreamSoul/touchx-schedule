@@ -58,6 +58,36 @@ pnpm build:microapp
 pnpm build:miniapp
 ```
 
+V1 本地收口 gate：
+
+```bash
+pnpm --filter @touchx/backend verify:v1-local
+```
+
+该 gate 会同时跑 `smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries` 和 `smoke:data-boundaries`，防止 `/api/v1` 入口重新回到大 handler，防止后台页面绕过共享 Nexus shell 或回流旧 `NexusConsole`，防止 miniapp/mobile 重新复制 API wrapper，也防止 V1 收口阶段提前引入 PostgreSQL / Redis / Docker Compose。
+
+V1 发版前本地 gate（包含小程序构建）：
+
+```bash
+pnpm verify:v1-release
+```
+
+该 gate 会先跑 `@touchx/backend` 的 `verify:v1-local`，再跑 `@touchx/miniapp build:weapp`，用于发版前确认 Taro 小程序当前主线路线仍可构建。
+
+V1 当前收口功能、剩余生产验收项和建议提交批次见 `docs/v1-closeout-status.md`。
+
+Cloudflare 生产资源只读复核（需要已登录 Wrangler，不会写资源）：
+
+```bash
+pnpm --filter @touchx/backend smoke:cloudflare-live
+```
+
+V1 生产验收聚合 gate（需要真实生产 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道和真实 PDF 样本）：
+
+```bash
+pnpm --filter @touchx/backend verify:v1-production
+```
+
 ## Cloudflare 部署（Nuxt 后端）
 
 `wrangler.toml` 位于 `apps/backend/wrangler.toml`（按 workspace 隔离，不放根目录）。
@@ -84,6 +114,8 @@ pnpm deploy:backend
 - API 健康检查：`/api/health`（兼容保留 `/health`）
 - ClawDBot webhook：`POST /api/v1/bot/clawdbot/webhook`，需 `x-clawdbot-webhook-token`（或兼容 `x-bot-delivery-token`）匹配环境变量 `TOUCHX_CLAWDBOT_WEBHOOK_TOKEN` / `NEXUS_BOT_DELIVERY_TOKEN`。
 - 通知绑定：后台 `/nexus/notification-channels` 可维护用户级飞书 / ClawDBot 绑定；飞书企业应用发送时优先使用用户绑定的 open_id / user_id / union_id，未绑定再回退 `defaultReceiveId`。
+- 提醒投递迁移：默认使用通用 `notificationDeliveries`，heartbeat 与机器人 pending/ack 均走统一通知投递记录；仅显式设置 `NEXUS_REMINDER_DELIVERY_QUEUE=legacy` 时回退旧 D1 `schedule_reminder_deliveries`。
+- 跨端 API：`apps/miniapp` 与 `apps/mobile` 都通过 `@touchx/api-client` 调用核心 API；端侧只保留 Taro 上传、Taro storage、React Native Settings 和 `TOUCHX_API_BASE_URL` / `TARO_APP_TOUCHX_API_BASE_URL` 环境覆盖等平台适配。
 - 新 Calendar API：`/api/v1/calendar/*`
 - 管理中台兼容路径：`/nexus`；旧 `/nexus/[module]` 仅作为模块别名重定向到新页面。
 - 后台页面：`/`、`/nexus/users`、`/nexus/classes`、`/nexus/calendar-sources`、`/nexus/schedules`、`/nexus/personal-events`、`/nexus/imports`、`/nexus/schedule-import`、`/nexus/foods`、`/nexus/media`、`/nexus/bots`、`/nexus/campaigns`、`/nexus/heart-open-word-bank`、`/nexus/reminder-rules`、`/nexus/reminder-candidates`、`/nexus/notification-channels`、`/nexus/notification-deliveries`、`/nexus/preview`、`/nexus/audit-logs`、`/nexus/settings`
@@ -95,3 +127,5 @@ pnpm deploy:backend
 TouchX 后续将从“课表系统”升级为“通用可订阅日程平台”：支持通用日程源、个人覆盖、Todo、PDF / 教务系统导入、微信 ClawDBot + 飞书双渠道提醒、React Native App，以及 Docker 服务器部署。
 
 详细规划见：[`docs/touchx-calendar-platform-roadmap.md`](docs/touchx-calendar-platform-roadmap.md)
+
+小程序路线决策见：[`docs/miniapp-route-decision.md`](docs/miniapp-route-decision.md)

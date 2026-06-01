@@ -40,6 +40,7 @@ Nuxt 3 + Nitro + Cloudflare Worker，一体承载 **API + ScheduleNexus 管理�
 - `NEXUS_HEARTBEAT_TOKEN`：心跳接口令牌（用于 Cron/外部任务无登录态触发）。
 - `NEXUS_HEARTBEAT_TIMEZONE`：心跳时区（默认 `Asia/Shanghai`）。
 - `NEXUS_BOT_DELIVERY_TOKEN`：机器人投递接口令牌（用于企业微信机器人拉取待发送消息并回执）。
+- `NEXUS_REMINDER_DELIVERY_QUEUE`：提醒投递队列模式。默认 `notification`，heartbeat 与机器人 pending/ack 走通用 `notificationDeliveries`；仅设为 `legacy` 时回退旧 D1 `schedule_reminder_deliveries`。
 - `NEXUS_DEV_HOST`：本地 dev host（默认 `0.0.0.0`）。
 - `NEXUS_DEV_PORT`：本地 dev/preview 端口（默认 `9986`）。
 
@@ -71,7 +72,8 @@ cp .dev.vars.example .dev.vars
 - 当前统一产出两类提醒：
   - `next_day_digest`
   - `pre_class_reminder`
-- 所有提醒都会进入 D1 `schedule_reminder_deliveries` 待发送表，带 `dedupeKey`、`dueAt`、接收人、模板与 payload。
+- 默认情况下，heartbeat 会把提醒写入通用 `notificationDeliveries`，并带 `payload.sourceQueue=notification`；机器人 `pending/ack` 会从通用队列拉取和回执，后台 `/nexus/notification-deliveries` 可按来源筛选这些记录。
+- 当 `NEXUS_REMINDER_DELIVERY_QUEUE=legacy` 时，提醒会回退进入 D1 `schedule_reminder_deliveries` 待发送表，保留旧 `dedupeKey`、`dueAt`、接收人、模板与 payload 兼容路径。
 - Cloudflare Worker 已挂 `scheduled` 钩子，`wrangler.toml` 中的 cron 会直接触发同一套 heartbeat 逻辑；`/api/v1/bot/jobs/heartbeat` 保留为调试入口。
 
 鉴权方式二选一：
@@ -146,6 +148,29 @@ pnpm --filter @touchx/backend type-check
 pnpm --filter @touchx/backend build
 ```
 
+V1 本地收口 gate：
+
+```bash
+pnpm --filter @touchx/backend verify:v1-local
+```
+
+该 gate 包含 `smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries` 和 `smoke:data-boundaries`，会约束 `server/services/v1-api.ts` / `server/services/social-v1-api.ts` 的入口行数预算、模块委托边界和上传解析归属，也会检查后台页面继续复用 `NexusAdminShell` / `NexusDashboard`、不回流旧 `NexusConsole`，检查 `apps/miniapp` / `apps/mobile` 继续复用 `@touchx/api-client`，并固定 V1 阶段继续使用 D1 `nexus_state.payload` 严格持久化而不提前引入 PostgreSQL / Redis / Docker Compose，避免 V1 handler、后台 UI、端侧 API wrapper 或基础设施范围重新膨胀。
+
+V1 生产验收 gate（需要真实生产凭据和真实 PDF 样本）：
+
+```bash
+TOUCHX_SMOKE_AUTH_TOKEN=... \
+TOUCHX_SMOKE_STUDENT_NO=2305100613 \
+TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN=... \
+TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu \
+SMOKE_SCHEDULE_IMPORT_STUDENT_NO=2305100613 \
+SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
+SMOKE_REAL_PDF_MIN_ENTRIES=8 \
+pnpm --filter @touchx/backend verify:v1-production
+```
+
+该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝指向 localhost / 127.0.0.1 / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
+
 ## 运行时自检（防回归）
 
 启动本地服务后执行：
@@ -169,6 +194,71 @@ pnpm --filter @touchx/backend smoke:local
 
 - 当同时提供 `SMOKE_HEARTBEAT_TOKEN` 和 `SMOKE_BOT_DELIVERY_TOKEN` 时，脚本会在本地执行一次真实入队、重复去重验证，以及一条投递 ack。
 - 当提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 时，脚本会以 mock 用户会话跑一次单文件 PDF 导入，并验证任务进入终态且失败场景带 `errorCode`。
+- 当同时提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_PATH` 时，脚本会额外调用用户侧 PDF 预览接口验证真实 PDF 至少解析出 `SMOKE_REAL_PDF_MIN_ENTRIES` 条课程。本地默认 1 条，`verify:v1-production` 会强制提升到至少 8 条；可用 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 校验 PDF 内学号，生产聚合 gate 默认使用 `TOUCHX_SMOKE_STUDENT_NO` 校验。
+
+真实 PDF 样本验收示例：
+
+```bash
+SMOKE_SCHEDULE_IMPORT_STUDENT_NO=2305100613 \
+SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
+SMOKE_REAL_PDF_MIN_ENTRIES=8 \
+SMOKE_REAL_PDF_EXPECT_STUDENT_NO=2305100613 \
+pnpm --filter @touchx/backend smoke:local
+```
+
+Cloudflare 配置静态验收：
+
+```bash
+pnpm --filter @touchx/backend smoke:cloudflare-config
+```
+
+该脚本不访问 Cloudflare，只检查 `wrangler.toml` 内必须的 D1/R2/Queue binding、queue producer/consumer 一致性、Cron 表达式，以及 D1 migration 文件是否存在；真实资源是否已创建仍需 `wrangler whoami` 后用 Cloudflare 账号复核。
+
+Cloudflare 真实资源只读验收：
+
+```bash
+pnpm --filter @touchx/backend smoke:cloudflare-live
+```
+
+该脚本需要本机已登录 Cloudflare Wrangler，只执行只读检查：`whoami`、D1 列表、R2 bucket 列表/详情、Queue 列表/详情、Worker deployment 列表，以及 D1 远端未应用 migration 检查；不会创建、更新、删除或部署任何资源。它不放入默认 `verify:v1-local`，避免本地开发机必须持有生产 Cloudflare 凭证。
+
+生产 smoke：
+
+```bash
+pnpm --filter @touchx/backend smoke:production
+```
+
+默认验证健康检查、受保护接口鉴权、bootstrap 管理员密码初始化，以及弱 fallback session token 被拒绝；不会发送外部通知，也不会调用入站 webhook。要执行真实 ClawDBot / 飞书外部投递 smoke，必须显式开启并提供管理员 token：
+
+```bash
+TOUCHX_SMOKE_EXTERNAL_DELIVERY=1 \
+TOUCHX_SMOKE_AUTH_TOKEN=... \
+TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu \
+pnpm --filter @touchx/backend smoke:production
+```
+
+可选变量：
+
+- `TOUCHX_SMOKE_BASE_URL`：生产 API 地址，默认 `https://schedule-backend.tagzxia.com`。
+- `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO`：校验生产 bootstrap 管理员账号/学号是否符合预期。
+- `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD`：用于生成弱 fallback session token 的候选默认管理员密码，默认 `123456`。
+- `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=1`：跳过弱 fallback session token 拒绝检查，仅用于临时排障；生产验收不建议跳过。
+- `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。
+- `TOUCHX_SMOKE_AUTH_LOGOUT=1`：额外验证 admin logout 撤销当前 token。该检查会让传入 token 失效，默认关闭。
+- `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1`：显式开启真实 ClawDBot webhook 入站 smoke；该检查会发送不 commit 的测试消息并要求至少解析出一个候选。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT`：ClawDBot webhook smoke 文本，默认 `周三下午3点复习数据结构`。
+- `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE=1`：可选只读检查；需要管理员 token，验证生产已有 `sourceQueue=notification` 的通用通知投递记录。
+- `TOUCHX_SMOKE_EXTERNAL_DELIVERY=1`：显式开启真实外部通知投递 smoke。
+- `TOUCHX_SMOKE_NOTIFICATION_CHANNELS`：逗号或空格分隔的通知通道列表；完整生产验收必须同时包含 `wechat_clawdbot` 和 `feishu`。`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仍可用于单通道排障。
+- `TOUCHX_SMOKE_NOTIFICATION_TITLE` / `TOUCHX_SMOKE_NOTIFICATION_BODY`：测试消息内容。
+
+生产完整验收建议直接跑：
+
+```bash
+pnpm --filter @touchx/backend verify:v1-production
+```
 
 ## Cloudflare 部署
 
@@ -210,6 +300,7 @@ pnpm --filter @touchx/backend exec wrangler secret put NEXUS_SESSION_TOKEN_SECRE
 pnpm --filter @touchx/backend exec wrangler secret put NEXUS_HEARTBEAT_TOKEN
 pnpm --filter @touchx/backend exec wrangler secret put NEXUS_HEARTBEAT_TIMEZONE
 pnpm --filter @touchx/backend exec wrangler secret put NEXUS_BOT_DELIVERY_TOKEN
+pnpm --filter @touchx/backend exec wrangler secret put NEXUS_REMINDER_DELIVERY_QUEUE
 ```
 
 ## GitHub 自动部署

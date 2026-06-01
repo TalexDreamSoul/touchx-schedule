@@ -1,7 +1,7 @@
 # TouchX 通用日程平台重构 Roadmap
 
-> 状态：规划落地稿  
-> 当前日期：2026-05-17  
+> 状态：规划落地稿，2026-06-01 补充 V1 收口状态
+> 当前日期：2026-06-01
 > 目标：把 TouchX 从“课表系统”升级为“通用可订阅日程平台 + 多端 App + 多渠道提醒 + 可 Docker 部署的服务端”。
 
 ---
@@ -741,7 +741,7 @@ apps/backend/server/modules/calendar/
 - [x] 飞书机器人签名发送支持 timestamp/sign 计算。
 - [x] reminder candidate 入队使用统一 `resolveChannelOrder` 处理 `both` / `primary_only` / `primary_then_fallback`。
 - [x] 飞书应用接收人绑定从全局 `defaultReceiveId` 升级为用户级 binding。
-- [ ] 旧 `schedule_reminder_deliveries` 逐步迁移为通用 `notification_deliveries`。
+- [x] 本地默认 reminder delivery 已迁移为通用 `notification_deliveries`，旧 `schedule_reminder_deliveries` 仅作为显式 `legacy` fallback 保留。
 
 验收标准：
 
@@ -907,14 +907,17 @@ apps/backend/server/modules/calendar/
 
 ```txt
 1. V1 收口：聚焦 backend 内置后台 + 通知渠道，不再扩大 RN/小程序迁移范围
-2. 通知渠道优化：完善 ClawDBot + 飞书 webhook / 飞书应用 provider、fallback、审计与 smoke
-3. 后台管理闭环：通道配置、投递记录、重试/dispatch、导入中心和审计日志
-4. 后端 API 减债：优先拆 auth/calendar/notification/import handler，保留 /api/v1 外部路径
-5. 安全收口：session secret、logout 撤销策略、CalendarSource 权限、密码哈希
+2. 外部验收：用生产 ClawDBot / 飞书配置跑真实投递 smoke，用真实 PDF 样本跑解析质量门禁
+3. 安全收口：本地已补 logout 撤销策略与 CalendarSource 私有详情权限；生产 session secret / 管理员密码已纳入 smoke 门禁
+4. 数据收敛：将 notification queue 默认模式灰度到生产，确认旧 schedule_reminder_deliveries 不再承载新投递
+5. 小程序迁移：apps/miniapp 继续补齐 parity gates，apps/microapp V1 仍保留线上稳定参照
 6. 验证门槛：focused type-check / build / node tests / smoke / git diff --check
-7. 共享层收敛：miniapp/mobile API wrapper 后续再向 @touchx/api-client 收敛
-8. Docker + PostgreSQL 迁移留到 V1 后
+7. V1 后：Docker + PostgreSQL + Redis 迁移、RN 正式版、教务系统 connector
 ```
+
+截至 2026-06-01，后端 `/api/v1/*` 主入口已完成 handler/service 拆分，`v1-api.ts` 主要保留入口校验、兼容路由委托、统一分发和 error boundary，当前约 508 行，并由 `smoke:api-boundaries` 固定行数预算和模块委托边界。旧兼容 `social-v1-api.ts` 已按子域拆分，`/api/v1/notifications*`、ClawDBot simulate / webhook、AI chat / OCR preview-confirm / schedule parse-commit、`social/circles*`、`social/me` / users search / subscription requests / subscriptions、`social/subscribe*`、social activity / free-heatmap / smart lead、food candidate / admin food candidate 非上传路由、`social/food-campaigns*`、auth/profile/bind-student/upload/schedules-student 等账号资料尾部路由、`ai/attachments` / `social/food-candidates/evidence` 上传边界，以及 exams/calendar/today brief/theme images/schedule corrections 尾部接口已迁入 legacy handlers。legacy 共享状态、持久化 snapshot hydrate / serialize、通知绑定兼容判断已迁入 `legacy-state`，用户查找、绑定目标、展示名、ClawDBot 用户创建 helper 已迁入 `legacy-user-utils`，社交订阅边同步、可见性、通知去重、候选日程冲突 helper 已迁入 `legacy-social-utils`，error/auth/session/env/url/audit/exam date/path 运行时 helper 已迁入 `legacy-runtime-utils`，`social-v1-api.ts` 收敛到约 318 行。后台页面已统一复用 `NexusAdminShell` / `NexusDashboard`，共享 `.rx-*` 基础类和旧 `NexusConsole` 不回流由 `smoke:admin-ui-boundaries` 固化。`apps/miniapp` 与 `apps/mobile` 核心 API wrapper 已收敛到 `@touchx/api-client`，API base URL 均支持运行时或环境变量覆盖，解析优先级已由 `api-client` focused tests 覆盖；通知提醒本地默认写入通用 `notificationDeliveries`，旧 `schedule_reminder_deliveries` 仅在显式 `NEXUS_REMINDER_DELIVERY_QUEUE=legacy` 时作为兼容 fallback；logout 撤销态与 CalendarSource 私有详情权限已补 focused 回归，旧 D1 payload 缺少新增顶层集合字段时会统一补齐，已存在但损坏的 D1 payload 会中止请求以避免被 bootstrap 覆盖，生产 smoke 脚本已增加 bootstrap 管理员密码初始化、弱 fallback session token 拒绝检查、ClawDBot webhook 入站门禁、ClawDBot + 飞书双通道外部投递门禁、真实 PDF 解析质量门禁和 opt-in logout 撤销门禁，生产聚合 gate 会先跑本地真实 PDF smoke 并拒绝非本地 `SMOKE_BASE_URL`，同时拒绝本地/私网 `TOUCHX_SMOKE_BASE_URL`，避免导入 smoke 误写生产数据或把本地/内网 API 当生产验收，Cloudflare 配置静态 smoke 已覆盖 D1/R2/Queue binding、Cron 和 migration 文件。最近本地 gate：`pnpm --filter @touchx/backend verify:v1-local` 通过，覆盖 backend type-check、后端 node tests 231/231、api-client tests、calendar-core tests、miniapp / mobile type-check、`smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries`、`smoke:data-boundaries`、`smoke:cloudflare-config`、`bash -n apps/backend/scripts/smoke-*.sh`、`git diff --check`；`pnpm --filter @touchx/miniapp build:weapp` 已通过，根命令 `pnpm verify:v1-release` 用于发版前串起本地 gate 和 Taro 小程序构建。
+
+V1 收口功能清单、生产验收材料、验收命令和建议提交批次见 `docs/v1-closeout-status.md`。
 
 短期不要做：
 

@@ -12,6 +12,7 @@
     "build:backend": "pnpm --filter @touchx/backend build",
     "preview:backend": "pnpm --filter @touchx/backend preview",
     "deploy:backend": "pnpm --filter @touchx/backend run deploy",
+    "verify:v1-release": "pnpm --filter @touchx/backend verify:v1-local && pnpm --filter @touchx/miniapp build:weapp",
     "type-check": "pnpm -r --if-present type-check"
   },
   "devDependencies": {
