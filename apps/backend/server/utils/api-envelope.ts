@@ -74,6 +74,11 @@ const resolveSession = (event: H3Event, token: string): ResolvedSessionWithHint 
   if (!signedSession) {
     return null;
   }
+  const store = getNexusStore();
+  const registeredSession = store.sessions.find((item) => item.token === token) || null;
+  if (registeredSession && (registeredSession.revokedAt || registeredSession.expiresAt <= Date.now())) {
+    return null;
+  }
   return {
     session: signedSession.session,
     studentNoHint: signedSession.studentNo,

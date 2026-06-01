@@ -1,5 +1,5 @@
 import { withNexusStateScopeByDb } from "../services/nexus-state-manager";
-import { resolveReminderDbFromEnv, runReminderHeartbeat } from "../services/reminder-delivery-service";
+import { resolveReminderDbFromEnv, resolveReminderDeliveryQueue, runReminderHeartbeat } from "../services/reminder-delivery-service";
 
 export default defineNitroPlugin((nitroApp) => {
   nitroApp.hooks.hook("cloudflare:scheduled", async (payload) => {
@@ -26,6 +26,7 @@ export default defineNitroPlugin((nitroApp) => {
           timezone: String(runtimeConfig.heartbeatTimezone || "Asia/Shanghai"),
           caller: "scheduled",
           actorUserId: "system_cron",
+          deliveryQueue: resolveReminderDeliveryQueue(runtimeConfig.reminderDeliveryQueue),
         });
       },
     );

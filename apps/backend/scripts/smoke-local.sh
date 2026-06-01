@@ -288,6 +288,47 @@ PY
     exit 1
   fi
   echo "✅ /api/v1/admin/schedule-import/jobs -> ${import_code} (${terminal_status})"
+
+  if [[ -n "${SMOKE_REAL_PDF_PATH:-}" ]]; then
+    if [[ ! -f "${SMOKE_REAL_PDF_PATH}" ]]; then
+      echo "❌ SMOKE_REAL_PDF_PATH does not exist: ${SMOKE_REAL_PDF_PATH}" >&2
+      exit 1
+    fi
+    real_pdf_file_name="$(basename "${SMOKE_REAL_PDF_PATH}")"
+    real_pdf_code="$(curl -sS -o /tmp/touchx_real_pdf_preview.json -w "%{http_code}" \
+      -X POST "${BASE_URL}/api/v1/calendar/me/pdf-import/preview" \
+      -H "authorization: Bearer ${import_token}" \
+      -F "file=@${SMOKE_REAL_PDF_PATH};filename=${real_pdf_file_name};type=application/pdf")"
+    if [[ "${real_pdf_code}" != "200" ]]; then
+      echo "❌ /api/v1/calendar/me/pdf-import/preview expected 200, got ${real_pdf_code}" >&2
+      cat /tmp/touchx_real_pdf_preview.json >&2 || true
+      exit 1
+    fi
+    real_pdf_result="$(python - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("/tmp/touchx_real_pdf_preview.json").read_text())
+data = payload.get("data") or {}
+entries = data.get("previewEntries") or []
+print(str(data.get("total") or len(entries)))
+print(str(data.get("parsedStudentNo") or ""))
+PY
+)"
+    real_pdf_total="$(printf '%s\n' "${real_pdf_result}" | sed -n '1p')"
+    real_pdf_student_no="$(printf '%s\n' "${real_pdf_result}" | sed -n '2p')"
+    min_real_pdf_entries="${SMOKE_REAL_PDF_MIN_ENTRIES:-1}"
+    if [[ "${real_pdf_total}" -lt "${min_real_pdf_entries}" ]]; then
+      echo "❌ real PDF preview expected at least ${min_real_pdf_entries} entries, got ${real_pdf_total}" >&2
+      cat /tmp/touchx_real_pdf_preview.json >&2 || true
+      exit 1
+    fi
+    if [[ -n "${SMOKE_REAL_PDF_EXPECT_STUDENT_NO:-}" && "${real_pdf_student_no}" != "${SMOKE_REAL_PDF_EXPECT_STUDENT_NO}" ]]; then
+      echo "❌ real PDF parsedStudentNo expected ${SMOKE_REAL_PDF_EXPECT_STUDENT_NO}, got ${real_pdf_student_no:-empty}" >&2
+      cat /tmp/touchx_real_pdf_preview.json >&2 || true
+      exit 1
+    fi
+    echo "✅ /api/v1/calendar/me/pdf-import/preview real PDF -> ${real_pdf_total} entries"
+  fi
 fi
 
 if [[ "${SMOKE_SOCIAL_P0:-}" == "1" ]] && is_local_base_url; then

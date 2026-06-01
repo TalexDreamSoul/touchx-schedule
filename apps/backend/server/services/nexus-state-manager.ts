@@ -11,12 +11,12 @@ import {
   hydrateLegacyCompatState,
   serializeLegacyCompatState,
   type LegacyCompatStateSnapshot,
-} from "./social-v1-api";
+} from "../modules/legacy/legacy-state";
 import {
   hydrateAdminAuthState,
   serializeAdminAuthState,
   type AdminAuthStateSnapshot,
-} from "./v1-api";
+} from "../modules/auth/auth-service";
 
 export interface D1PreparedStatementLike {
   bind: (...values: unknown[]) => D1PreparedStatementLike;
@@ -45,6 +45,19 @@ interface LoadedState {
   revision: number;
   payload: PersistedStatePayload;
 }
+
+type StatePayloadError = Error & {
+  code?: string;
+  statusCode?: number;
+  statusMessage?: string;
+  data?: {
+    ok: false;
+    error: {
+      code: string;
+      message: string;
+    };
+  };
+};
 
 const STATE_ROW_ID = 1;
 const LOCK_ROW_ID = 1;
@@ -95,23 +108,50 @@ const parsePersistedStatePayload = (raw: unknown): PersistedStatePayload | null 
   };
 };
 
+const createStatePayloadError = (code: string, message: string) => {
+  const error = new Error(message) as StatePayloadError;
+  error.code = code;
+  error.statusCode = 503;
+  error.statusMessage = message;
+  error.data = {
+    ok: false,
+    error: {
+      code,
+      message,
+    },
+  };
+  return error;
+};
+
 const loadPersistedState = async (db: D1DatabaseLike): Promise<LoadedState | null> => {
   const row = await db
     .prepare("SELECT revision, payload FROM nexus_state WHERE id = ?")
     .bind(STATE_ROW_ID)
     .first<PersistedStateRow>();
-  if (!row || typeof row.payload !== "string" || !row.payload.trim()) {
+  if (!row) {
     return null;
+  }
+  if (typeof row.payload !== "string" || !row.payload.trim()) {
+    throw createStatePayloadError(
+      "NEXUS_STATE_PAYLOAD_EMPTY",
+      "nexus_state.payload exists but is empty; refusing to bootstrap over persisted state",
+    );
   }
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(row.payload);
   } catch (error) {
-    return null;
+    throw createStatePayloadError(
+      "NEXUS_STATE_PAYLOAD_INVALID_JSON",
+      "nexus_state.payload is not valid JSON; refusing to bootstrap over persisted state",
+    );
   }
   const payload = parsePersistedStatePayload(parsed);
   if (!payload) {
-    return null;
+    throw createStatePayloadError(
+      "NEXUS_STATE_PAYLOAD_INVALID_SHAPE",
+      "nexus_state.payload has an unsupported shape; refusing to bootstrap over persisted state",
+    );
   }
   return {
     revision: Math.max(0, Number(row.revision || 0)),

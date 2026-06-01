@@ -52,6 +52,7 @@ export interface AuthSessionRecord {
   role: "admin" | "user";
   expiresAt: number;
   createdAt: string;
+  revokedAt?: string;
 }
 
 export interface SocialSubscriptionRequestRecord {
@@ -923,13 +924,54 @@ const createDefaultNotificationChannels = (createdAt: string): NotificationChann
   ];
 };
 
-const upgradeImportCollections = (store: NexusStore) => {
-  if (!Array.isArray(store.importJobs)) {
-    store.importJobs = [];
-  }
-  if (!Array.isArray(store.importCandidateEvents)) {
-    store.importCandidateEvents = [];
-  }
+const ensureStoreCollections = (store: NexusStore) => {
+  const collectionKeys = [
+    "users",
+    "classes",
+    "classMembers",
+    "schedules",
+    "scheduleVersions",
+    "scheduleSubscriptions",
+    "socialSubscriptionRequests",
+    "socialSubscriptionEdges",
+    "socialCircles",
+    "socialCircleMembers",
+    "socialActivities",
+    "socialActivityInvitations",
+    "socialNotifications",
+    "userScheduleEvents",
+    "scheduleCorrections",
+    "schedulePatches",
+    "scheduleConflicts",
+    "sessions",
+    "locationGrids",
+    "foodItems",
+    "foodCampaigns",
+    "foodCampaignVotes",
+    "foodPricingRules",
+    "foodPricingRuleVersions",
+    "foodPricingOverrideVersions",
+    "mediaAssets",
+    "botTemplates",
+    "botJobs",
+    "notificationChannels",
+    "notificationDeliveries",
+    "reminderRules",
+    "userNotificationBindings",
+    "importJobs",
+    "importCandidateEvents",
+    "auditLogs",
+    "partyGameRooms",
+    "partyGameMembers",
+    "partyGameStates",
+    "partyGameEvents",
+    "partyGameHeartOpenWords",
+  ] as const;
+  collectionKeys.forEach((key) => {
+    if (!Array.isArray(store[key])) {
+      store[key] = [] as never;
+    }
+  });
 };
 
 const upgradeDefaultAdminAccount = (store: NexusStore) => {
@@ -1893,12 +1935,12 @@ export const setGlobalNexusStore = (store: NexusStore, revision = 0) => {
 export const getNexusStore = () => {
   const scoped = nexusStoreScopeStorage.getStore();
   if (scoped?.store) {
+    ensureStoreCollections(scoped.store);
     normalizeCampaignOptions(scoped.store);
     upgradeHeartOpenWordBank(scoped.store);
     upgradeDefaultAdminAccount(scoped.store);
     upgradeBotTemplates(scoped.store);
     upgradeNotificationCollections(scoped.store);
-    upgradeImportCollections(scoped.store);
     upgradeSocialCollaborationCollections(scoped.store);
     return scoped.store;
   }
@@ -1908,12 +1950,12 @@ export const getNexusStore = () => {
     context[GLOBAL_REVISION_KEY] = 0;
   }
   const store = context[GLOBAL_KEY] as NexusStore;
+  ensureStoreCollections(store);
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeDefaultAdminAccount(store);
   upgradeBotTemplates(store);
   upgradeNotificationCollections(store);
-  upgradeImportCollections(store);
   upgradeSocialCollaborationCollections(store);
   return store;
 };
@@ -1922,12 +1964,12 @@ export const resetNexusStore = () => {
   const scoped = nexusStoreScopeStorage.getStore();
   if (scoped) {
     const nextStore = bootstrapStore();
+    ensureStoreCollections(nextStore);
     normalizeCampaignOptions(nextStore);
     upgradeHeartOpenWordBank(nextStore);
     upgradeDefaultAdminAccount(nextStore);
     upgradeBotTemplates(nextStore);
     upgradeNotificationCollections(nextStore);
-    upgradeImportCollections(nextStore);
     upgradeSocialCollaborationCollections(nextStore);
     scoped.store = nextStore;
     return scoped.store;
@@ -1936,12 +1978,12 @@ export const resetNexusStore = () => {
   context[GLOBAL_KEY] = bootstrapStore();
   context[GLOBAL_REVISION_KEY] = Number(context[GLOBAL_REVISION_KEY] || 0) + 1;
   const store = context[GLOBAL_KEY] as NexusStore;
+  ensureStoreCollections(store);
   normalizeCampaignOptions(store);
   upgradeHeartOpenWordBank(store);
   upgradeDefaultAdminAccount(store);
   upgradeBotTemplates(store);
   upgradeNotificationCollections(store);
-  upgradeImportCollections(store);
   upgradeSocialCollaborationCollections(store);
   return store;
 };

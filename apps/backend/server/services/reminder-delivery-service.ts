@@ -14,10 +14,12 @@ import {
   toDateTimeParts,
   zonedDateTimeToUtc,
 } from "./schedule-calendar";
-import { isLegacyNotifyBoundUser } from "./social-v1-api";
+import { isLegacyNotifyBoundUser } from "../modules/legacy/legacy-state";
+import { createNotificationDelivery } from "../modules/notification/notification-delivery-service";
 
 export type ReminderType = "next_day_digest" | "pre_class_reminder";
 export type ReminderDeliveryStatus = "pending" | "delivering" | "sent" | "failed";
+export type ReminderDeliveryQueue = "legacy" | "notification";
 
 export interface ReminderDeliveryItem {
   id: string;
@@ -45,6 +47,7 @@ export interface ReminderHeartbeatOptions {
   runNextDay?: boolean;
   actorUserId?: string;
   caller?: "cron" | "admin" | "scheduled";
+  deliveryQueue?: ReminderDeliveryQueue;
 }
 
 export interface ReminderHeartbeatResult {
@@ -103,6 +106,11 @@ interface ReminderCandidate {
   payload: Record<string, unknown>;
 }
 
+export interface PullNotificationReminderDeliveriesOptions {
+  limit?: number;
+  now?: Date;
+}
+
 const BOT_DELIVERY_TOKEN_HEADER = "x-bot-delivery-token";
 const HEARTBEAT_WINDOW_START_HOUR = 8;
 const HEARTBEAT_WINDOW_END_HOUR = 23;
@@ -111,6 +119,10 @@ const HEARTBEAT_BUCKET_MS = HEARTBEAT_BUCKET_MINUTES * 60 * 1000;
 const DELIVERY_STALE_MS = 30 * 60 * 1000;
 
 const asString = (value: unknown) => String(value || "").trim();
+
+export const resolveReminderDeliveryQueue = (value: unknown): ReminderDeliveryQueue => {
+  return asString(value) === "legacy" ? "legacy" : "notification";
+};
 
 const toInt = (value: unknown, fallback = 0) => {
   const parsed = Number(value);
@@ -263,6 +275,11 @@ const isUserEligibleForReminder = (store: NexusStore, user: UserRecord) => {
     return false;
   }
   return isLegacyNotifyBoundUser(store, user.userId);
+};
+
+const resolveReminderNotificationChannelType = (store: NexusStore) => {
+  const enabled = store.notificationChannels.find((item) => item.enabled) || null;
+  return enabled?.type || "wechat_clawdbot";
 };
 
 const formatCourseSummary = (courses: Array<{ courseName: string; startTime: string }>) => {
@@ -447,6 +464,33 @@ const insertReminderCandidate = async (db: D1DatabaseLike, candidate: ReminderCa
   return Number(result?.meta?.changes || 0) > 0;
 };
 
+const enqueueNotificationReminderCandidate = (store: NexusStore, candidate: ReminderCandidate) => {
+  const channelType = resolveReminderNotificationChannelType(store);
+  const dedupeKey = `${candidate.dedupeKey}|${channelType}`;
+  const existing = store.notificationDeliveries.find((item) => item.dedupeKey === dedupeKey && item.status !== "cancelled") || null;
+  if (existing) {
+    return false;
+  }
+  const rendered = renderReminderDelivery(store, candidate.templateKey, candidate.payload);
+  createNotificationDelivery(store, {
+    userId: candidate.recipientUserId,
+    channelType,
+    templateKey: candidate.templateKey,
+    title: rendered.renderedTitle,
+    body: rendered.renderedBody,
+    payload: {
+      ...candidate.payload,
+      reminderType: candidate.reminderType,
+      studentNo: candidate.studentNo,
+      sourceQueue: "notification",
+      legacyDedupeKey: candidate.dedupeKey,
+    },
+    scheduledAt: candidate.dueAt,
+    dedupeKey,
+  });
+  return true;
+};
+
 const hydrateDeliveryItem = (store: NexusStore, row: ReminderDeliveryRow): ReminderDeliveryItem => {
   const payload = parseJsonRecord(row.payload);
   const templateKey = asString(row.template_key);
@@ -504,8 +548,11 @@ export const requireBotDeliveryToken = (event: H3Event, configuredToken: string)
 };
 
 export const runReminderHeartbeat = async (db: D1DatabaseLike, options: ReminderHeartbeatOptions = {}): Promise<ReminderHeartbeatResult> => {
-  await ensureReminderDeliveryTable(db);
   const store = getNexusStore();
+  const deliveryQueue = resolveReminderDeliveryQueue(options.deliveryQueue);
+  if (deliveryQueue === "legacy") {
+    await ensureReminderDeliveryTable(db);
+  }
   const now = options.now || (options.nowIso ? new Date(options.nowIso) : new Date());
   if (!Number.isFinite(now.getTime())) {
     throw new Error("HEARTBEAT_NOW_INVALID");
@@ -556,7 +603,10 @@ export const runReminderHeartbeat = async (db: D1DatabaseLike, options: Reminder
 
   if (!options.dryRun) {
     for (const candidate of [...digestCandidates, ...preClassCandidates]) {
-      const inserted = await insertReminderCandidate(db, candidate);
+      const inserted =
+        deliveryQueue === "notification"
+          ? enqueueNotificationReminderCandidate(store, candidate)
+          : await insertReminderCandidate(db, candidate);
       if (!inserted) {
         duplicate += 1;
         continue;
@@ -577,6 +627,7 @@ export const runReminderHeartbeat = async (db: D1DatabaseLike, options: Reminder
     `digest=${options.dryRun ? digestCandidates.length : nextDayDigest}`,
     `preClass=${options.dryRun ? preClassCandidates.length : preClassReminder}`,
     `duplicate=${duplicate}`,
+    `deliveryQueue=${deliveryQueue}`,
     `dryRun=${options.dryRun === true ? "true" : "false"}`,
   ].join(";");
   const job: BotJobRecord = {
@@ -667,6 +718,79 @@ export const pullPendingReminderDeliveries = async (
     );
   }
   return items;
+};
+
+export const pullPendingNotificationReminderDeliveries = (
+  store: NexusStore,
+  options: PullNotificationReminderDeliveriesOptions = {},
+): ReminderDeliveryItem[] => {
+  const now = options.now || new Date();
+  const limit = Math.max(1, Math.min(100, toInt(options.limit, 20)));
+  const items = store.notificationDeliveries
+    .filter((item) => item.status === "pending")
+    .filter((item) => asString(item.payload?.sourceQueue) === "notification")
+    .filter((item) => asString(item.payload?.reminderType) === "next_day_digest" || asString(item.payload?.reminderType) === "pre_class_reminder")
+    .filter((item) => {
+      const scheduledAt = Date.parse(item.scheduledAt);
+      return !Number.isFinite(scheduledAt) || scheduledAt <= now.getTime();
+    })
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.scheduledAt);
+      const rightTime = Date.parse(right.scheduledAt);
+      return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+    })
+    .slice(0, limit);
+  return items.map((item) => {
+    const nowIso = storeHelpers.nowIso();
+    item.status = "sending";
+    item.attemptCount += 1;
+    item.updatedAt = nowIso;
+    return {
+      id: item.id,
+      reminderType: asString(item.payload.reminderType) as ReminderType,
+      dueAt: item.scheduledAt,
+      recipientUserId: item.userId,
+      studentNo: asString(item.payload.studentNo),
+      templateKey: item.templateKey,
+      payload: { ...item.payload },
+      renderedTitle: item.title,
+      renderedBody: item.body,
+      status: "delivering",
+      attemptCount: item.attemptCount,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    };
+  });
+};
+
+export const ackNotificationReminderDelivery = (
+  store: NexusStore,
+  deliveryId: string,
+  payload: {
+    success?: boolean;
+    status?: "sent" | "failed";
+    externalMessageId?: string;
+    errorMessage?: string;
+  },
+) => {
+  const delivery = store.notificationDeliveries.find((item) => item.id === deliveryId) || null;
+  if (!delivery) {
+    return false;
+  }
+  const nextStatus = payload.status || (payload.success === false ? "failed" : "sent");
+  if (delivery.status === nextStatus) {
+    return true;
+  }
+  if (delivery.status !== "sending") {
+    return false;
+  }
+  const nowIso = storeHelpers.nowIso();
+  delivery.status = nextStatus;
+  delivery.externalMessageId = asString(payload.externalMessageId);
+  delivery.errorMessage = asString(payload.errorMessage);
+  delivery.sentAt = nextStatus === "sent" ? nowIso : "";
+  delivery.updatedAt = nowIso;
+  return true;
 };
 
 export const ackReminderDelivery = async (

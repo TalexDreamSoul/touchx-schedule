@@ -57,6 +57,7 @@ export default defineNuxtConfig({
     heartbeatToken: process.env.NEXUS_HEARTBEAT_TOKEN || "",
     heartbeatTimezone: process.env.NEXUS_HEARTBEAT_TIMEZONE || "Asia/Shanghai",
     botDeliveryToken: process.env.NEXUS_BOT_DELIVERY_TOKEN || "",
+    reminderDeliveryQueue: process.env.NEXUS_REMINDER_DELIVERY_QUEUE || "notification",
     public: {
       appName: "TouchX Backend + ScheduleNexus",
       apiProxyMode: "native-v1",

@@ -49,19 +49,162 @@ const loadClawDBotModule = async () => {
       ["import legacyFoodsSeedData from \"../data/legacy/foods.seed.json\";", "const legacyFoodsSeedData = [];"],
     ],
   );
+  const legacyNotificationPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-notification-handler.ts"),
+    "legacy-notification-handler.mjs",
+    [["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)]],
+  );
+  const legacyAccountPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-account-handler.ts"),
+    "legacy-account-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/schedule-calendar\"", JSON.stringify(pathToFileURL(calendarPath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,\""],
+    ],
+  );
+  const legacyClawDBotPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-clawdbot-handler.ts"),
+    "legacy-clawdbot-handler.mjs",
+    [
+      ["from \"h3\";", "from \"data:text/javascript,export const getHeader=(event,name)=>event.headers?.[String(name).toLowerCase()]||'';export const getRequestURL=(event)=>new URL(event.url||'http://127.0.0.1/api/v1/bot/clawdbot/webhook');\";"],
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildScheduleCandidateDrafts=(text)=>[{title:String(text).includes('数据结构')?'复习数据结构':'日程候选',description:String(text),day:3,startSection:7,endSection:8,weekExpr:'1-18',parity:'all',tags:['ai'],priorityScore:70,priorityLabel:'normal',examLike:false}];export const buildScheduleIntelligence=(text)=>({summary:String(text)});\""],
+    ],
+  );
+  const legacyAiSchedulePath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-ai-schedule-handler.ts"),
+    "legacy-ai-schedule-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildScheduleCandidateDrafts=(text)=>[{title:String(text).includes('数据结构')?'复习数据结构':'日程候选',description:String(text),day:3,startSection:7,endSection:8,weekExpr:'1-18',parity:'all',tags:['ai'],priorityScore:70,priorityLabel:'normal',examLike:false}];export const buildScheduleIntelligence=(text)=>({examLike:false,repeatWeekdays:[1],suggestedStartSection:1,suggestedEndSection:1,tags:['ai'],priorityScore:70,priorityLabel:'normal'});\""],
+      ["\"../../services/ai-provider\"", "\"data:text/javascript,export const requestAiChatCompletion=async()=>'';export const resolveAiProviderConfig=()=>({enabled:false,reason:'AI_PROVIDER_DISABLED'});\""],
+      ["\"../../services/schedule-import-service\"", "\"data:text/javascript,export const confirmScheduleImportPreviewEntries=async()=>({});\""],
+      ["\"../../services/schedule-import-preview\"", "\"data:text/javascript,export const normalizeAiScheduleOcrPreview=()=>({previewEntries:[]});\""],
+    ],
+  );
+  const legacyCirclePath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-circle-handler.ts"),
+    "legacy-circle-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"@touchx/shared\"", "\"data:text/javascript,\""],
+    ],
+  );
+  const legacySocialRelationPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-social-relation-handler.ts"),
+    "legacy-social-relation-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildSocialRelationStatus=()=>({});export const normalizeVisibilityScope=(v)=>v||'hidden';export const pickStrongerVisibilityScope=(a)=>a;export const resolveEffectiveVisibilityScope=()=> 'detail';\""],
+      ["\"./legacy-circle-handler\"", JSON.stringify(pathToFileURL(legacyCirclePath).href)],
+    ],
+  );
+  const legacySocialActivityPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-social-activity-handler.ts"),
+    "legacy-social-activity-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildActivitySplitDraft=()=>({});export const buildActivitySnapshotPosterSvg=()=>'';export const canUseSocialAccess=()=>true;export const resolveNextActivityStatus=(v)=>v;\""],
+    ],
+  );
+  const legacyFoodCandidatePath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-food-candidate-handler.ts"),
+    "legacy-food-candidate-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/food-utils\"", "\"data:text/javascript,export const estimateFoodCaloriesKcal=()=>0;export const normalizeCaloriesKcal=(v,f=0)=>Number(v||f||0);export const resolveExerciseEquivalentMinutes=()=>0;\""],
+    ],
+  );
+  const legacyFoodCampaignPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-food-campaign-handler.ts"),
+    "legacy-food-campaign-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/food-utils\"", "\"data:text/javascript,export const normalizeCaloriesKcal=(v,f=0)=>Number(v||f||0);export const resolveExerciseEquivalentMinutes=()=>0;\""],
+    ],
+  );
+  const legacyUploadPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-upload-handler.ts"),
+    "legacy-upload-handler.mjs",
+    [
+      ["from \"h3\";", "from \"data:text/javascript,export const readMultipartFormData=async(event)=>event.multipartFormData||[];\";"],
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["from \"../../utils/media-storage\";", "from \"data:text/javascript,export const buildR2MediaId=()=>'';export const resolveImageExtension=()=>'';export const resolveImageMimeType=()=>'';export const resolveMediaBucket=()=>null;\";"],
+    ],
+  );
+  const legacyCompanionPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-companion-handler.ts"),
+    "legacy-companion-handler.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/schedule-calendar\"", JSON.stringify(pathToFileURL(calendarPath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildExamCountdownState=()=>({daysRemaining:null,status:'unknown'});export const resolveCalendarViewKey=()=> 'personal';export const sortDailyPriorityItems=(v)=>v;\""],
+    ],
+  );
+  const legacyStatePath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-state.ts"),
+    "legacy-state.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/food-utils\"", "\"data:text/javascript,export const normalizeCaloriesKcal=(v,f=0)=>Number(v||f||0);\""],
+    ],
+  );
+  const legacyUserUtilsPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-user-utils.ts"),
+    "legacy-user-utils.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"./legacy-state\"", JSON.stringify(pathToFileURL(legacyStatePath).href)],
+    ],
+  );
+  const legacySocialUtilsPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-social-utils.ts"),
+    "legacy-social-utils.mjs",
+    [
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../services/schedule-calendar\"", JSON.stringify(pathToFileURL(calendarPath).href)],
+      ["\"../../services/social-collaboration-core\"", "\"data:text/javascript,export const buildSocialRelationStatus=()=>({});export const normalizeVisibilityScope=(v)=>v||'hidden';export const pickStrongerVisibilityScope=(a)=>a;export const resolveEffectiveVisibilityScope=()=> 'detail';\""],
+      ["\"./legacy-state\"", JSON.stringify(pathToFileURL(legacyStatePath).href)],
+      ["\"./legacy-user-utils\"", JSON.stringify(pathToFileURL(legacyUserUtilsPath).href)],
+    ],
+  );
+  const legacyRuntimeUtilsPath = transpileModuleToTemp(
+    join(import.meta.dirname, "../modules/legacy/legacy-runtime-utils.ts"),
+    "legacy-runtime-utils.mjs",
+    [
+      [
+        "import { createError, getRequestURL, type H3Event } from \"h3\";",
+        "const createError = (payload) => { const error = new Error(payload?.statusMessage || payload?.message || 'h3 error'); Object.assign(error, payload); throw error; }; const getRequestURL = (event) => new URL(event.url || 'http://127.0.0.1/api/v1/bot/clawdbot/webhook');",
+      ],
+      ["\"../../services/domain-store\"", JSON.stringify(pathToFileURL(domainStorePath).href)],
+      ["\"../../utils/api-envelope\"", "\"data:text/javascript,export const getBearerToken=()=>'';export const normalizeRoutePath=(event)=>{const p=new URL(event.url||'http://127.0.0.1/api/v1/').pathname;if(p==='/api/v1')return '';if(p.startsWith('/api/v1/'))return p.slice('/api/v1/'.length);return p.startsWith('/')?p.slice(1):p};export const resolveSessionWithUser=()=>null;\""],
+      ["\"../../utils/session-token\"", "\"data:text/javascript,export const createSignedSession=()=>'';\""],
+      ["\"../../services/schedule-calendar\"", JSON.stringify(pathToFileURL(calendarPath).href)],
+    ],
+  );
   const socialPath = transpileModuleToTemp(
     join(import.meta.dirname, "social-v1-api.ts"),
     "social-v1-api.mjs",
     [
       ["from \"./domain-store\";", `from ${JSON.stringify(pathToFileURL(domainStorePath).href)};`],
+      ["\"../modules/legacy/legacy-account-handler\"", JSON.stringify(pathToFileURL(legacyAccountPath).href)],
+      ["\"../modules/legacy/legacy-ai-schedule-handler\"", JSON.stringify(pathToFileURL(legacyAiSchedulePath).href)],
+      ["\"../modules/legacy/legacy-clawdbot-handler\"", JSON.stringify(pathToFileURL(legacyClawDBotPath).href)],
+      ["\"../modules/legacy/legacy-circle-handler\"", JSON.stringify(pathToFileURL(legacyCirclePath).href)],
+      ["\"../modules/legacy/legacy-companion-handler\"", JSON.stringify(pathToFileURL(legacyCompanionPath).href)],
+      ["\"../modules/legacy/legacy-food-campaign-handler\"", JSON.stringify(pathToFileURL(legacyFoodCampaignPath).href)],
+      ["\"../modules/legacy/legacy-food-candidate-handler\"", JSON.stringify(pathToFileURL(legacyFoodCandidatePath).href)],
+      ["\"../modules/legacy/legacy-notification-handler\"", JSON.stringify(pathToFileURL(legacyNotificationPath).href)],
+      ["\"../modules/legacy/legacy-runtime-utils\"", JSON.stringify(pathToFileURL(legacyRuntimeUtilsPath).href)],
+      ["\"../modules/legacy/legacy-social-utils\"", JSON.stringify(pathToFileURL(legacySocialUtilsPath).href)],
+      ["\"../modules/legacy/legacy-social-activity-handler\"", JSON.stringify(pathToFileURL(legacySocialActivityPath).href)],
+      ["\"../modules/legacy/legacy-social-relation-handler\"", JSON.stringify(pathToFileURL(legacySocialRelationPath).href)],
+      ["\"../modules/legacy/legacy-state\"", JSON.stringify(pathToFileURL(legacyStatePath).href)],
+      ["\"../modules/legacy/legacy-upload-handler\"", JSON.stringify(pathToFileURL(legacyUploadPath).href)],
+      ["\"../modules/legacy/legacy-user-utils\"", JSON.stringify(pathToFileURL(legacyUserUtilsPath).href)],
       ["from \"./schedule-calendar\";", `from ${JSON.stringify(pathToFileURL(calendarPath).href)};`],
-      ["import { confirmScheduleImportPreviewEntries } from \"./schedule-import-service\";", "const confirmScheduleImportPreviewEntries = async () => ({});"],
-      ["import { normalizeAiScheduleOcrPreview } from \"./schedule-import-preview\";", "const normalizeAiScheduleOcrPreview = () => ({});"],
-      ["import { requestAiChatCompletion, resolveAiProviderConfig } from \"./ai-provider\";", "const requestAiChatCompletion = async () => ({}); const resolveAiProviderConfig = () => ({ enabled: false });"],
-      [
-        "import { createError, getHeader, getMethod, getQuery, getRequestURL, readMultipartFormData, setHeader, type H3Event } from \"h3\";",
-        "const createError = (payload) => { const error = new Error(payload?.statusMessage || payload?.message || 'h3 error'); Object.assign(error, payload); throw error; }; const getHeader = (event, name) => event.headers?.[String(name).toLowerCase()] || ''; const getMethod = (event) => event.method || 'GET'; const getQuery = (event) => event.query || {}; const getRequestURL = (event) => new URL(event.url || 'http://127.0.0.1/api/v1/bot/clawdbot/webhook'); const readMultipartFormData = async () => []; const setHeader = () => {};",
-      ],
+      ["import { getMethod, getQuery, setHeader, type H3Event } from \"h3\";", "const getMethod = (event) => event.method || 'GET'; const getQuery = (event) => event.query || {}; const setHeader = () => {};"],
       [
         "from \"../utils/api-envelope\";",
         "from \"data:text/javascript,export const getBearerToken=()=>'';export const normalizeRoutePath=(event)=>{const p=new URL(event.url||'http://127.0.0.1/api/v1/').pathname;if(p==='/api/v1')return '';if(p.startsWith('/api/v1/'))return p.slice('/api/v1/'.length);return p.startsWith('/')?p.slice(1):p};export const readJsonBody=async(event)=>event.body||{};export const resolveSessionWithUser=()=>null;\";",
