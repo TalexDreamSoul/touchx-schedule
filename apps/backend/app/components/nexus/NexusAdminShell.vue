@@ -522,6 +522,28 @@ onMounted(() => {
   letter-spacing: -0.055em;
 }
 
+:deep(.side-stack) {
+  display: grid;
+  gap: 1rem;
+  align-self: start;
+}
+
+:deep(.compact-head) {
+  margin-bottom: 0.75rem;
+}
+
+:deep(.selected-row) {
+  background: hsl(var(--muted) / 0.55);
+}
+
+:deep(.action-cell) {
+  white-space: nowrap;
+}
+
+:deep(.action-cell .rx-btn + .rx-btn) {
+  margin-left: 0.35rem;
+}
+
 :deep(.rx-table-wrap),
 :deep(.nexus-table-wrap) {
   overflow: auto;
@@ -561,7 +583,8 @@ onMounted(() => {
 :deep(.nexus-form),
 :deep(.rule-form),
 :deep(.candidate-form),
-:deep(.personal-form) {
+:deep(.personal-form),
+:deep(.filter-row) {
   display: grid;
   gap: 0.625rem;
 }
@@ -574,7 +597,9 @@ onMounted(() => {
 :deep(.candidate-form input),
 :deep(.candidate-form select),
 :deep(.personal-form input),
-:deep(.personal-form select) {
+:deep(.personal-form select),
+:deep(.filter-row input),
+:deep(.filter-row select) {
   min-height: 2.5rem;
   width: 100%;
   border: 1px solid hsl(var(--input));
@@ -593,9 +618,20 @@ onMounted(() => {
 :deep(.rule-form select:focus),
 :deep(.candidate-form input:focus),
 :deep(.candidate-form select:focus),
-:deep(.personal-form input:focus) {
+:deep(.personal-form input:focus),
+:deep(.personal-form select:focus),
+:deep(.filter-row input:focus),
+:deep(.filter-row select:focus) {
   border-color: hsl(var(--ring));
   box-shadow: 0 0 0 2px hsl(var(--ring) / 0.12);
+}
+
+:deep(.check-row) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.875rem;
 }
 
 :deep(.nexus-alert) {

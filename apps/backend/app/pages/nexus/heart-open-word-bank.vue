@@ -328,52 +328,14 @@ onMounted(async () => {
   gap: 1rem;
 }
 
-.side-stack {
-  display: grid;
-  gap: 1rem;
-  align-self: start;
-}
-
 .filter-row {
-  display: grid;
   grid-template-columns: minmax(14rem, 1fr) 10rem 9rem 9rem auto;
-  gap: 0.5rem;
   margin-bottom: 1rem;
-}
-
-.filter-row input,
-.filter-row select {
-  min-height: 2.5rem;
-  border: 1px solid hsl(var(--input));
-  border-radius: calc(var(--radius) - 0.25rem);
-  padding: 0.55rem 0.75rem;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-}
-
-.compact-head {
-  margin-bottom: 0.75rem;
-}
-
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
 }
 
 .punishment-cell {
   max-width: 22rem;
   white-space: normal;
-}
-
-.selected-row {
-  background: hsl(var(--muted) / 0.55);
-}
-
-.action-cell {
-  white-space: nowrap;
 }
 
 @media (max-width: 1180px) {

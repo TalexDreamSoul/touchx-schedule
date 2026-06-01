@@ -344,9 +344,18 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.candidate-form { display: grid; grid-template-columns: minmax(12rem, 1fr) 10rem 6rem 6rem 6rem minmax(12rem, 1fr) 9rem auto; gap: .5rem; }
-.upload-form { grid-template-columns: minmax(14rem, 1fr) 10rem 12rem minmax(12rem, 1fr) auto; margin-bottom: .5rem; }
-.candidate-form input,
-.candidate-form select { border: 1px solid hsl(var(--border)); border-radius: .7rem; padding: .55rem .7rem; background: transparent; color: hsl(var(--foreground)); }
-@media (max-width: 1000px) { .candidate-form { grid-template-columns: 1fr; } }
+.candidate-form {
+  grid-template-columns: minmax(12rem, 1fr) 10rem 6rem 6rem 6rem minmax(12rem, 1fr) 9rem auto;
+}
+
+.upload-form {
+  grid-template-columns: minmax(14rem, 1fr) 10rem 12rem minmax(12rem, 1fr) auto;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 1000px) {
+  .candidate-form {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

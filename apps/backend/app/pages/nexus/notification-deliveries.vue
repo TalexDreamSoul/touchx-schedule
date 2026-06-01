@@ -13,6 +13,21 @@
           </button>
         </div>
       </header>
+      <div class="filter-row">
+        <select v-model="statusFilter" :disabled="loading" @change="loadData">
+          <option value="all">全部状态</option>
+          <option value="pending">pending</option>
+          <option value="sending">sending</option>
+          <option value="sent">sent</option>
+          <option value="failed">failed</option>
+          <option value="cancelled">cancelled</option>
+        </select>
+        <select v-model="sourceQueueFilter" :disabled="loading" @change="loadData">
+          <option value="all">全部来源</option>
+          <option value="notification">提醒 notification 队列</option>
+          <option value="standard">标准通知队列</option>
+        </select>
+      </div>
       <p v-if="errorText" class="rx-muted">{{ errorText }}</p>
       <div class="rx-table-wrap">
         <table class="rx-table">
@@ -21,6 +36,7 @@
               <th>标题</th>
               <th>用户</th>
               <th>通道</th>
+              <th>来源</th>
               <th>状态</th>
               <th>计划时间</th>
               <th>重试</th>
@@ -34,6 +50,7 @@
               <td><strong>{{ item.title }}</strong><div class="rx-muted">{{ item.templateKey }}</div></td>
               <td>{{ item.userId }}</td>
               <td><span class="rx-pill">{{ item.channelType }}</span></td>
+              <td><span class="rx-pill">{{ toSourceLabel(item) }}</span></td>
               <td>{{ item.status }}</td>
               <td>{{ toDisplayDate(item.scheduledAt || item.createdAt) }}</td>
               <td>{{ item.attemptCount || 0 }}</td>
@@ -45,7 +62,7 @@
                 </button>
               </td>
             </tr>
-            <tr v-if="deliveries.length <= 0"><td colspan="9" class="rx-muted">暂无投递记录</td></tr>
+            <tr v-if="deliveries.length <= 0"><td colspan="10" class="rx-muted">暂无投递记录</td></tr>
           </tbody>
         </table>
       </div>
@@ -64,6 +81,7 @@ interface DeliveryRow {
   templateKey: string;
   title: string;
   status: string;
+  payload?: Record<string, unknown>;
   scheduledAt: string;
   createdAt: string;
   attemptCount: number;
@@ -75,17 +93,31 @@ const { ensureSessionToken, request, goToLogin } = useNexusApi();
 const loading = ref(false);
 const errorText = ref("");
 const deliveries = ref<DeliveryRow[]>([]);
+const statusFilter = ref("all");
+const sourceQueueFilter = ref("all");
 
 const toDisplayDate = (value: unknown) => {
   const parsed = Date.parse(String(value || ""));
   return Number.isFinite(parsed) ? new Date(parsed).toLocaleString("zh-CN") : String(value || "");
 };
 
+const toSourceLabel = (item: DeliveryRow) => {
+  const sourceQueue = String(item.payload?.sourceQueue || "");
+  return sourceQueue === "notification" ? "reminder" : "standard";
+};
+
 const loadData = async () => {
   loading.value = true;
   errorText.value = "";
   try {
-    const data = await request<{ items: DeliveryRow[] }>("/api/v1/admin/notification-deliveries?limit=80");
+    const query = new URLSearchParams({ limit: "80" });
+    if (statusFilter.value !== "all") {
+      query.set("status", statusFilter.value);
+    }
+    if (sourceQueueFilter.value !== "all") {
+      query.set("sourceQueue", sourceQueueFilter.value);
+    }
+    const data = await request<{ items: DeliveryRow[] }>(`/api/v1/admin/notification-deliveries?${query.toString()}`);
     deliveries.value = data.items || [];
   } catch (error) {
     errorText.value = error instanceof Error ? error.message : "加载失败";

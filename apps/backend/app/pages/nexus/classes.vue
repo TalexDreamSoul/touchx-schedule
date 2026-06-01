@@ -261,32 +261,6 @@ onMounted(async () => {
   gap: 1rem;
 }
 
-.side-stack {
-  display: grid;
-  gap: 1rem;
-  align-self: start;
-}
-
-.action-cell {
-  white-space: nowrap;
-}
-
-.action-cell .rx-btn + .rx-btn {
-  margin-left: 0.35rem;
-}
-
-.compact-head {
-  margin-bottom: 0.75rem;
-}
-
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
-}
-
 @media (max-width: 1080px) {
   .classes-layout {
     grid-template-columns: 1fr;

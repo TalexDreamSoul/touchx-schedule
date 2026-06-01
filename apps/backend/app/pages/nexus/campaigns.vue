@@ -324,32 +324,6 @@ onMounted(async () => {
   align-items: start;
 }
 
-.side-stack {
-  display: grid;
-  gap: 1rem;
-  align-self: start;
-}
-
-.compact-head {
-  margin-bottom: 0.75rem;
-}
-
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
-}
-
-.selected-row {
-  background: hsl(var(--muted) / 0.55);
-}
-
-.action-cell {
-  white-space: nowrap;
-}
-
 .json-box {
   max-height: 32rem;
   overflow: auto;

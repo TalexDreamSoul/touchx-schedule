@@ -108,6 +108,8 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.candidate-form { display: flex; gap: .5rem; margin-bottom: 1rem; }
-.candidate-form input { border: 1px solid hsl(var(--border)); border-radius: .7rem; padding: .55rem .7rem; background: transparent; color: hsl(var(--foreground)); }
+.candidate-form {
+  display: flex;
+  margin-bottom: 1rem;
+}
 </style>

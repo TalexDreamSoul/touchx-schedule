@@ -151,16 +151,7 @@ onMounted(async () => {
 
 <style scoped>
 .personal-form {
-  display: grid;
   grid-template-columns: minmax(12rem, 1fr) 10rem 7rem 7rem auto;
-  gap: 0.5rem;
-}
-.personal-form input {
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.7rem;
-  padding: 0.55rem 0.7rem;
-  background: transparent;
-  color: hsl(var(--foreground));
 }
 @media (max-width: 900px) {
   .personal-form { grid-template-columns: 1fr; }

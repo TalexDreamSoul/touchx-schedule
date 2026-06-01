@@ -778,31 +778,13 @@ onMounted(async () => {
   min-width: 0;
 }
 
-.side-stack {
-  display: grid;
-  gap: 1rem;
-  align-self: start;
-}
-
 .filter-row {
-  display: grid;
   grid-template-columns: 12rem minmax(14rem, 1fr) auto auto;
-  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
 .candidate-filter-row {
   grid-template-columns: 10rem minmax(14rem, 1fr) auto auto;
-}
-
-.filter-row input,
-.filter-row select {
-  min-height: 2.5rem;
-  border: 1px solid hsl(var(--input));
-  border-radius: calc(var(--radius) - 0.25rem);
-  padding: 0.55rem 0.75rem;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
 }
 
 .inline-form {
@@ -824,20 +806,8 @@ onMounted(async () => {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.compact-head {
-  margin-bottom: 0.75rem;
-}
-
 .left-actions {
   justify-content: flex-start;
-}
-
-.action-cell {
-  white-space: nowrap;
-}
-
-.selected-row {
-  background: hsl(var(--muted) / 0.55);
 }
 
 .raw-preview {

@@ -201,10 +201,6 @@ onMounted(async () => {
   align-self: start;
 }
 
-.compact-head {
-  margin-bottom: 0.75rem;
-}
-
 .nexus-input.compact {
   min-height: 2.25rem;
   width: min(16rem, 100%);
@@ -213,14 +209,6 @@ onMounted(async () => {
   padding: 0.45rem 0.75rem;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
-}
-
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
 }
 
 @media (max-width: 1080px) {

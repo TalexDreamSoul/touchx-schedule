@@ -193,14 +193,6 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.875rem;
-}
-
 @media (max-width: 1080px) {
   .preview-grid,
   .preview-form {

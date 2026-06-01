@@ -144,18 +144,8 @@ onMounted(async () => {
 
 <style scoped>
 .rule-form {
-  display: grid;
   grid-template-columns: 10rem minmax(12rem, 1fr) 8rem minmax(12rem, 1fr) 13rem auto;
-  gap: 0.5rem;
   margin-bottom: 1rem;
-}
-.rule-form input,
-.rule-form select {
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.7rem;
-  padding: 0.55rem 0.7rem;
-  background: transparent;
-  color: hsl(var(--foreground));
 }
 @media (max-width: 1000px) {
   .rule-form { grid-template-columns: 1fr; }
