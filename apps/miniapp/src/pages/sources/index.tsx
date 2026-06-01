@@ -6,6 +6,7 @@ import {
   listCalendarSources,
   listMyCalendarSubscriptions,
   subscribeCalendarSource,
+  upsertCalendarSource,
   type CalendarSourceRow,
   type CalendarSubscriptionRow,
 } from "../../lib/api";
@@ -96,25 +97,22 @@ export default function SourcesPage() {
     setLoading(true);
     try {
       const type = customTypeOptions[customTypeIndex] || "custom";
-      await import("../../lib/api").then(({ request }) => request("calendar/sources", {
-        method: "POST",
-        body: {
-          title: `${customTitle.trim()}合集`,
-          description: "小程序自定义发布",
-          type: type === "activity" ? "club_activity" : type === "exam" ? "exam_schedule" : "manual_collection",
-          visibility: "public",
-          events: [{
-            title: customTitle.trim(),
-            eventType: type,
-            weekday: 1,
-            startSection: 1,
-            endSection: 1,
-            weekExpr: "1-25",
-            location: customLocation.trim(),
-          }],
-          publish: true,
-        },
-      }));
+      await upsertCalendarSource({
+        title: `${customTitle.trim()}合集`,
+        description: "小程序自定义发布",
+        type: type === "activity" ? "club_activity" : type === "exam" ? "exam_schedule" : "manual_collection",
+        visibility: "public",
+        events: [{
+          title: customTitle.trim(),
+          eventType: type,
+          weekday: 1,
+          startSection: 1,
+          endSection: 1,
+          weekExpr: "1-25",
+          location: customLocation.trim(),
+        }],
+        publish: true,
+      });
       setCustomTitle("");
       setCustomLocation("");
       setShowPublish(false);

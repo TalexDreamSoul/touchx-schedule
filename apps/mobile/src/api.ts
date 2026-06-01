@@ -1,115 +1,30 @@
-export const TOUCHX_API_BASE_URL = "https://schedule.wc1.tagzxia.com/api/v1";
+import { createTouchXApiClient, resolveTouchXApiBaseUrl, type ApiRequestOptions } from "@touchx/api-client";
+import type {
+  CalendarSettings,
+  CalendarSourceRow,
+  CalendarSubscriptionRow,
+  EffectiveCalendarItem,
+  NotificationBindingRow,
+  PersonalEventRow,
+  ReminderRuleRow,
+  TouchXAuthSession,
+  TouchXUser,
+} from "@touchx/api-client";
 
-export interface ApiEnvelope<T> {
-  ok: boolean;
-  data?: T;
-  error?: { code?: string; message?: string; details?: unknown };
-}
-
-export interface MiniappUser {
-  userId: string;
-  accountName?: string;
-  studentNo: string;
-  studentId?: string;
-  name?: string;
-  nickname?: string;
-  classLabel?: string;
-  avatarUrl?: string;
-  adminRole?: string;
-  reminderEnabled?: boolean;
-  reminderWindowMinutes?: number[];
-}
-
-export interface AuthSession {
-  sessionToken: string;
-  expiresAt: number;
-  mode?: string;
-  user: MiniappUser;
-}
-
-export interface EffectiveCalendarItem {
-  id: string;
-  originType?: string;
-  originId?: string;
-  sourceId?: string;
-  title: string;
-  description?: string;
-  eventType?: "course" | "exam" | "todo" | "activity" | "holiday" | "deadline" | "custom";
-  date?: string;
-  weekday?: number;
-  weekExpr?: string;
-  parity?: string;
-  startTime?: string;
-  endTime?: string;
-  startSection?: number;
-  endSection?: number;
-  location?: string;
-  tags?: string[];
-  reminderEnabled?: boolean;
-  metadata?: Record<string, unknown>;
-}
-
-export interface PersonalEventRow {
-  id: string;
-  title: string;
-  description?: string;
-  source?: string;
-  day?: number;
-  weekday?: number;
-  weekExpr?: string;
-  startSection?: number;
-  endSection?: number;
-  examDate?: string;
-  priorityLabel?: "low" | "normal" | "high";
-  tags?: string[];
-  updatedAt?: string;
-}
-
-export interface CalendarSourceRow {
-  id: string;
-  title: string;
-  description?: string;
-  type: string;
-  status: string;
-  eventCount?: number;
-  subscriptionCount?: number;
-  classLabel?: string;
-  ownerId?: string;
-  currentVersionNo?: number;
-}
-
-export interface CalendarSubscriptionRow {
-  id: string;
-  sourceId: string;
-  sourceTitle?: string;
-  sourceType?: string;
-  visibility?: string;
-  classLabel?: string;
-}
-
-export interface ReminderRuleRow {
-  id: string;
-  targetType: "subscription" | "source_event" | "personal_event" | "global";
-  targetId: string;
-  enabled: boolean;
-  offsetMinutes: number;
-  templateKey: string;
-  channelStrategy: "both" | "primary_then_fallback" | "primary_only";
-  quietHoursRespect: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-export interface NotificationBindingRow {
-  id: string;
-  userId: string;
-  channelType: "wechat_clawdbot" | "feishu";
-  externalUserId: string;
-  externalOpenId?: string;
-  status: "active" | "disabled" | "expired";
-  createdAt?: string;
-  updatedAt?: string;
-}
+export const TOUCHX_API_BASE_URL = resolveTouchXApiBaseUrl({
+  envKeys: ["REACT_NATIVE_TOUCHX_API_BASE_URL"],
+});
+export type MiniappUser = TouchXUser;
+export type AuthSession = TouchXAuthSession;
+export type {
+  CalendarSettings,
+  CalendarSourceRow,
+  CalendarSubscriptionRow,
+  EffectiveCalendarItem,
+  NotificationBindingRow,
+  PersonalEventRow,
+  ReminderRuleRow,
+};
 
 const TOKEN_KEY = "touchx_mobile_session_token_v1";
 const USER_KEY = "touchx_mobile_user_v1";
@@ -179,106 +94,86 @@ export const clearAuthState = () => {
   writeSetting(USER_KEY, "");
 };
 
-const buildQueryString = (params: Record<string, string | number | undefined>) => {
-  const pairs = Object.entries(params)
-    .filter(([, value]) => value !== undefined && value !== "")
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
-  return pairs.length > 0 ? `?${pairs.join("&")}` : "";
-};
+const apiClient = createTouchXApiClient({
+  baseUrl: TOUCHX_API_BASE_URL,
+  token: getSessionToken,
+  fetcher: fetch,
+});
 
-export async function request<T>(path: string, options: { method?: "GET" | "POST" | "PATCH"; body?: unknown; auth?: boolean } = {}) {
-  const method = options.method || "GET";
-  const headers: Record<string, string> = {
-    ...(method !== "GET" && options.body !== undefined ? { "content-type": "application/json" } : {}),
-    ...(options.auth !== false && sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-  };
-  const response = await fetch(`${TOUCHX_API_BASE_URL}/${path.replace(/^\/+/, "")}`, {
-    method,
-    headers,
-    body: method === "GET" || options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  const payload = (await response.json()) as ApiEnvelope<T>;
-  if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.error?.message || `请求失败 ${response.status}`);
-  }
-  return payload.data as T;
+export function request<T>(path: string, options: ApiRequestOptions = {}) {
+  return apiClient.request<T>(path, options);
 }
 
 export function register(input: { accountName: string; password: string; confirmPassword?: string; name?: string; nickname?: string }) {
-  return request<AuthSession>("auth/register", { method: "POST", auth: false, body: input });
+  return apiClient.register(input);
 }
 
 export function login(input: { accountName?: string; username?: string; password?: string; studentNo?: string; name?: string; nickname?: string; classLabel?: string }) {
-  return request<AuthSession>("auth/login", { method: "POST", auth: false, body: input });
+  return apiClient.login(input);
 }
 
 export function updateAuthProfile(input: { nickname?: string; name?: string; avatarUrl?: string; wallpaperUrl?: string; password?: string; oldPassword?: string }) {
-  return request<{ user: MiniappUser }>("auth/profile", { method: "POST", body: input });
+  return apiClient.updateAuthProfile(input);
 }
 
 export function getAuthMe() {
-  return request<{ mode?: string; role?: string; expiresAt?: number; user: MiniappUser }>("auth/me");
+  return apiClient.getAuthMe();
 }
 
 export function logout() {
-  return request<{ loggedOut?: boolean }>("auth/logout", { method: "POST" });
+  return apiClient.logout();
 }
 
 export function listMyEffectiveCalendar(params: { week?: number; date?: string } = {}) {
-  return request<{ week?: number; items: EffectiveCalendarItem[]; total: number }>(
-    `calendar/me/effective${buildQueryString({ week: params.week, date: params.date })}`,
-  );
+  return apiClient.listMyEffectiveCalendar(params) as Promise<{ week?: number; items: EffectiveCalendarItem[]; total: number }>;
 }
 
 export function listCalendarSources() {
-  return request<{ items: CalendarSourceRow[]; total: number }>("calendar/sources", { auth: false });
+  return apiClient.request<{ items: CalendarSourceRow[]; total: number }>("calendar/sources", { auth: false });
 }
 
 export function subscribeCalendarSource(sourceId: string) {
-  return request<{ subscription: CalendarSubscriptionRow; duplicated?: boolean }>(
-    `calendar/sources/${encodeURIComponent(sourceId)}/subscribe`,
-    { method: "POST" },
-  );
+  return apiClient.subscribeCalendarSource(sourceId);
 }
 
 export function cancelCalendarSubscription(subscriptionId: string) {
-  return request<{ cancelled: boolean; subscriptionId: string }>(`calendar/me/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, { method: "POST" });
+  return apiClient.cancelCalendarSubscription(subscriptionId);
 }
 
 export function listMyCalendarSubscriptions() {
-  return request<{ items: CalendarSubscriptionRow[]; total: number }>("calendar/me/subscriptions");
+  return apiClient.listMyCalendarSubscriptions();
 }
 
 export function listMyReminderRules() {
-  return request<{ items: ReminderRuleRow[]; total: number }>("calendar/me/reminder-rules");
+  return apiClient.listMyReminderRules();
 }
 
 export function upsertMyReminderRule(input: Partial<ReminderRuleRow>) {
-  return request<{ item: ReminderRuleRow }>("calendar/me/reminder-rules", { method: "POST", body: input });
+  return apiClient.upsertMyReminderRule(input);
 }
 
 export function getCalendarSettings() {
-  return request<{ reminderEnabled: boolean; reminderWindowMinutes: number[]; defaultViewMode?: string; showWeekends?: boolean; syncToSystemCalendar?: boolean }>("calendar/me/settings");
+  return apiClient.getCalendarSettings() as Promise<CalendarSettings>;
 }
 
 export function updateCalendarSettings(input: { reminderEnabled?: boolean; reminderWindowMinutes?: number[]; nickname?: string }) {
-  return request<{ user: MiniappUser }>("calendar/me/settings", { method: "POST", body: input });
+  return apiClient.updateCalendarSettings(input);
 }
 
 export function listNotificationBindings() {
-  return request<{ items: NotificationBindingRow[]; total: number }>("calendar/me/notification-bindings");
+  return apiClient.listNotificationBindings();
 }
 
 export function createWechatClawDBotBindingQr() {
-  return request<{ bindingToken: string; expiresAt: string; qrPayload: string; qrImageUrl: string; binding?: NotificationBindingRow }>("calendar/me/notification-bindings/wechat-clawdbot/qr", { method: "POST" });
+  return apiClient.createWechatClawDBotBindingQr();
 }
 
 export function unbindWechatClawDBot() {
-  return request<{ unbound: boolean }>("calendar/me/notification-bindings/wechat-clawdbot/unbind", { method: "POST" });
+  return apiClient.unbindWechatClawDBot();
 }
 
 export function listPersonalEvents() {
-  return request<{ items: PersonalEventRow[]; total: number }>("calendar/me/personal-events");
+  return apiClient.listPersonalEvents();
 }
 
 export function createPersonalEvent(input: {
@@ -293,15 +188,15 @@ export function createPersonalEvent(input: {
   priority?: "low" | "normal" | "high";
   tags?: string[];
 }) {
-  return request<{ item: PersonalEventRow }>("calendar/me/personal-events", { method: "POST", body: input });
+  return apiClient.createPersonalEvent(input);
 }
 
 export function markPersonalEventDone(eventId: string) {
-  return request<{ item: PersonalEventRow }>(`calendar/me/personal-events/${encodeURIComponent(eventId)}/done`, { method: "POST" });
+  return apiClient.markPersonalEventDone(eventId);
 }
 
 export function archivePersonalEvent(eventId: string) {
-  return request<{ item: PersonalEventRow }>(`calendar/me/personal-events/${encodeURIComponent(eventId)}/delete`, { method: "POST" });
+  return apiClient.archivePersonalEvent(eventId);
 }
 
 export function upsertCalendarSource(input: {
@@ -313,5 +208,5 @@ export function upsertCalendarSource(input: {
   publish?: boolean;
   events?: unknown[];
 }) {
-  return request<{ item: CalendarSourceRow }>("calendar/sources", { method: "POST", body: input });
+  return apiClient.upsertCalendarSource(input);
 }

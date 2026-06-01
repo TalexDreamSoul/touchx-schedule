@@ -6,10 +6,20 @@ export interface TouchXApiClientOptions {
   fetcher?: typeof fetch;
 }
 
+export interface TouchXApiBaseUrlOptions {
+  defaultBaseUrl?: string;
+  envKeys?: string[];
+  runtime?: typeof globalThis & {
+    __TOUCHX_API_BASE_URL__?: string;
+    process?: { env?: Record<string, string | undefined> };
+  };
+}
+
 export interface ApiRequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
+  auth?: boolean;
 }
 
 export interface ScheduleImportUploadFile {
@@ -37,7 +47,117 @@ export interface CalendarSourceDetail {
   eventCount: number;
 }
 
+export interface TouchXUser {
+  userId: string;
+  accountName?: string;
+  studentNo: string;
+  studentId?: string;
+  name?: string;
+  nickname?: string;
+  classLabel?: string;
+  avatarUrl?: string;
+  adminRole?: string;
+  reminderEnabled?: boolean;
+  reminderWindowMinutes?: number[];
+}
+
+export interface TouchXAuthSession {
+  sessionToken: string;
+  expiresAt: number;
+  mode?: string;
+  user: TouchXUser;
+}
+
+export interface CalendarSourceRow {
+  id: string;
+  title: string;
+  description?: string;
+  type: string;
+  status: string;
+  eventCount?: number;
+  subscriptionCount?: number;
+  classLabel?: string;
+  ownerId?: string;
+  currentVersionNo?: number;
+}
+
+export interface CalendarSubscriptionRow {
+  id: string;
+  sourceId: string;
+  sourceTitle?: string;
+  sourceType?: string;
+  visibility?: string;
+  classLabel?: string;
+}
+
+export interface ReminderRuleRow {
+  id: string;
+  targetType: "subscription" | "source_event" | "personal_event" | "global";
+  targetId: string;
+  enabled: boolean;
+  offsetMinutes: number;
+  templateKey: string;
+  channelStrategy: "both" | "primary_then_fallback" | "primary_only";
+  quietHoursRespect: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NotificationBindingRow {
+  id: string;
+  userId: string;
+  channelType: "wechat_clawdbot" | "feishu";
+  externalUserId: string;
+  externalOpenId?: string;
+  externalUnionId?: string;
+  status: "active" | "disabled" | "expired";
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PersonalEventRow {
+  id: string;
+  title: string;
+  description?: string;
+  source?: string;
+  day?: number;
+  weekday?: number;
+  weekExpr?: string;
+  startSection?: number;
+  endSection?: number;
+  examDate?: string;
+  priorityLabel?: "low" | "normal" | "high";
+  tags?: string[];
+  updatedAt?: string;
+}
+
+export interface CalendarSettings {
+  reminderEnabled: boolean;
+  reminderWindowMinutes: number[];
+  defaultViewMode?: string;
+  showWeekends?: boolean;
+  syncToSystemCalendar?: boolean;
+}
+
+export type EffectiveCalendarItem = EffectiveCalendarEvent;
+
+export const DEFAULT_TOUCHX_API_BASE_URL = "https://schedule.wc1.tagzxia.com/api/v1";
+
 const trimSlashes = (value: string) => value.replace(/^\/+|\/+$/g, "");
+const normalizeConfigValue = (value: unknown) => String(value || "").trim();
+
+export const resolveTouchXApiBaseUrl = (options: TouchXApiBaseUrlOptions = {}) => {
+  const runtime = options.runtime || (globalThis as TouchXApiBaseUrlOptions["runtime"]);
+  const env = runtime?.process?.env || {};
+  const keys = ["TOUCHX_API_BASE_URL", ...(options.envKeys || [])];
+  const globalOverride = normalizeConfigValue(runtime?.__TOUCHX_API_BASE_URL__);
+  if (globalOverride) return globalOverride;
+  for (const key of keys) {
+    const value = normalizeConfigValue(env[key]);
+    if (value) return value;
+  }
+  return normalizeConfigValue(options.defaultBaseUrl) || DEFAULT_TOUCHX_API_BASE_URL;
+};
 
 export class TouchXApiError extends Error {
   status: number;
@@ -84,7 +204,7 @@ export class TouchXApiClient {
     const headers: Record<string, string> = {
       ...(options.headers || {}),
     };
-    const token = await this.resolveToken();
+    const token = options.auth === false ? "" : await this.resolveToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -116,6 +236,26 @@ export class TouchXApiClient {
     return this.request<T>(path, { method: "POST", body });
   }
 
+  register(input: { accountName: string; password: string; confirmPassword?: string; name?: string; nickname?: string }) {
+    return this.request<TouchXAuthSession>("auth/register", { method: "POST", body: input, auth: false });
+  }
+
+  login(input: { accountName?: string; username?: string; password?: string; studentNo?: string; name?: string; nickname?: string; classLabel?: string }) {
+    return this.request<TouchXAuthSession>("auth/login", { method: "POST", body: input, auth: false });
+  }
+
+  updateAuthProfile(input: { nickname?: string; name?: string; avatarUrl?: string; wallpaperUrl?: string; password?: string; oldPassword?: string }) {
+    return this.post<{ user: TouchXUser }>("auth/profile", input);
+  }
+
+  getAuthMe() {
+    return this.get<{ mode?: string; role?: string; expiresAt?: number; user: TouchXUser }>("auth/me");
+  }
+
+  logout() {
+    return this.post<{ loggedOut?: boolean }>("auth/logout", {});
+  }
+
   async uploadScheduleImportJob(files: ScheduleImportUploadFile[]) {
     const formData = new FormData();
     const mappings = files.map((item) => ({
@@ -124,7 +264,8 @@ export class TouchXApiClient {
       term: item.term || "",
     }));
     files.forEach((item) => {
-      formData.append("files[]", item.file, item.fileName);
+      const appendFile = formData.append as (name: string, value: Blob, fileName?: string) => void;
+      appendFile.call(formData, "files[]", item.file, item.fileName);
     });
     formData.append("mappings", JSON.stringify(mappings));
     const token = await this.resolveToken();
@@ -153,7 +294,19 @@ export class TouchXApiClient {
   }
 
   listCalendarSources() {
-    return this.get<{ items: AdminCalendarSource[]; total: number }>("calendar/sources");
+    return this.get<{ items: CalendarSourceRow[]; total: number }>("calendar/sources");
+  }
+
+  upsertCalendarSource(input: {
+    sourceId?: string;
+    title: string;
+    description?: string;
+    type?: string;
+    visibility?: string;
+    publish?: boolean;
+    events?: unknown[];
+  }) {
+    return this.post<{ item: CalendarSourceRow }>("calendar/sources", input);
   }
 
   getCalendarSource(sourceId: string) {
@@ -177,11 +330,35 @@ export class TouchXApiClient {
   }
 
   listMyCalendarSubscriptions() {
-    return this.get("calendar/me/subscriptions");
+    return this.get<{ items: CalendarSubscriptionRow[]; total: number }>("calendar/me/subscriptions");
   }
 
   subscribeCalendarSource(sourceId: string) {
-    return this.post(`calendar/sources/${encodeURIComponent(sourceId)}/subscribe`, {});
+    return this.post<{ subscription: CalendarSubscriptionRow; duplicated?: boolean }>(`calendar/sources/${encodeURIComponent(sourceId)}/subscribe`, {});
+  }
+
+  cancelCalendarSubscription(subscriptionId: string) {
+    return this.post<{ cancelled: boolean; subscriptionId: string }>(`calendar/me/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {});
+  }
+
+  listMyReminderRules() {
+    return this.get<{ items: ReminderRuleRow[]; total: number }>("calendar/me/reminder-rules");
+  }
+
+  upsertMyReminderRule(input: Partial<ReminderRuleRow>) {
+    return this.post<{ item: ReminderRuleRow }>("calendar/me/reminder-rules", input);
+  }
+
+  deleteMyReminderRule(ruleId: string) {
+    return this.post<{ item?: ReminderRuleRow }>(`calendar/me/reminder-rules/${encodeURIComponent(ruleId)}/delete`, {});
+  }
+
+  getCalendarSettings() {
+    return this.get<CalendarSettings>("calendar/me/settings");
+  }
+
+  updateCalendarSettings(input: { reminderEnabled?: boolean; reminderWindowMinutes?: number[]; nickname?: string }) {
+    return this.post<{ user: TouchXUser }>("calendar/me/settings", input);
   }
 
   listReminderCandidates(params: { week?: number; date?: string } = {}) {
@@ -201,23 +378,60 @@ export class TouchXApiClient {
   }
 
   listPersonalEvents() {
-    return this.get("calendar/me/personal-events");
+    return this.get<{ items: PersonalEventRow[]; total: number }>("calendar/me/personal-events");
   }
 
-  createPersonalEvent(body: unknown) {
-    return this.post("calendar/me/personal-events", body);
+  createPersonalEvent(body: {
+    title: string;
+    description?: string;
+    eventType?: "todo" | "exam" | "activity";
+    date?: string;
+    weekday?: number;
+    startSection?: number;
+    endSection?: number;
+    weekExpr?: string;
+    priority?: "low" | "normal" | "high";
+    tags?: string[];
+  }) {
+    return this.post<{ item: PersonalEventRow }>("calendar/me/personal-events", body);
   }
 
-  updatePersonalEvent(eventId: string, body: unknown) {
-    return this.request(`calendar/me/personal-events/${encodeURIComponent(eventId)}`, { method: "PATCH", body });
+  updatePersonalEvent(eventId: string, body: {
+    title?: string;
+    description?: string;
+    eventType?: "todo" | "exam" | "activity";
+    date?: string;
+    weekday?: number;
+    startSection?: number;
+    endSection?: number;
+    weekExpr?: string;
+    priority?: "low" | "normal" | "high";
+    tags?: string[];
+  }) {
+    return this.request<{ item: PersonalEventRow }>(`calendar/me/personal-events/${encodeURIComponent(eventId)}`, { method: "PATCH", body });
   }
 
   markPersonalEventDone(eventId: string) {
-    return this.post(`calendar/me/personal-events/${encodeURIComponent(eventId)}/done`, {});
+    return this.post<{ item: PersonalEventRow }>(`calendar/me/personal-events/${encodeURIComponent(eventId)}/done`, {});
   }
 
   archivePersonalEvent(eventId: string) {
-    return this.post(`calendar/me/personal-events/${encodeURIComponent(eventId)}/delete`, {});
+    return this.post<{ item: PersonalEventRow }>(`calendar/me/personal-events/${encodeURIComponent(eventId)}/delete`, {});
+  }
+
+  listNotificationBindings() {
+    return this.get<{ items: NotificationBindingRow[]; total: number }>("calendar/me/notification-bindings");
+  }
+
+  createWechatClawDBotBindingQr() {
+    return this.post<{ bindingToken: string; expiresAt: string; qrPayload: string; qrImageUrl: string; binding?: NotificationBindingRow }>(
+      "calendar/me/notification-bindings/wechat-clawdbot/qr",
+      {},
+    );
+  }
+
+  unbindWechatClawDBot() {
+    return this.post<{ unbound: boolean }>("calendar/me/notification-bindings/wechat-clawdbot/unbind", {});
   }
 
   listNotificationChannels() {
@@ -236,13 +450,19 @@ export class TouchXApiClient {
     return this.post("admin/notification-deliveries/dispatch-pending", { limit });
   }
 
-  listNotificationDeliveries(params: { limit?: number; offset?: number } = {}) {
+  listNotificationDeliveries(params: { limit?: number; offset?: number; status?: string; sourceQueue?: string } = {}) {
     const query = new URLSearchParams();
     if (params.limit) {
       query.set("limit", String(params.limit));
     }
     if (params.offset) {
       query.set("offset", String(params.offset));
+    }
+    if (params.status) {
+      query.set("status", params.status);
+    }
+    if (params.sourceQueue) {
+      query.set("sourceQueue", params.sourceQueue);
     }
     const suffix = query.toString();
     return this.get(`admin/notification-deliveries${suffix ? `?${suffix}` : ""}`);
