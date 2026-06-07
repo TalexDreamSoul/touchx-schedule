@@ -902,7 +902,7 @@ apps/backend/server/modules/calendar/
 - `apps/miniapp` 可以独立完成学生核心日程、订阅、导入、通知和 profile 流程。
 - `apps/microapp` 的归档或替换有清晰证据，而不是按技术偏好强行切换。
 
-## Phase 8.2：桌面版 / Web 工作台细化
+### Phase 8.2：桌面版 / Web 工作台细化
 
 目标：让桌面体验先服务管理和运营效率，再评估学生端 Web/PWA。
 
