@@ -8,8 +8,10 @@
 - 后台 UI 统一按 shadcn 风格推进：简约、低饱和、token 化、黑白灰为主。
 - 微信小程序 / 多小程序：`apps/miniapp` Taro + React 作为未来小程序主路线。
 - iOS / Android 原生 App：`apps/mobile` React Native CLI / 原生 RN 工程，不使用 Expo。
+- 桌面版短期定义为 `apps/backend` 内置 Nexus Web 工作台；不新增 Electron / Tauri 工程。
 - 旧 uni-app 小程序：`apps/microapp` 短期保留，作为线上稳定版本和迁移参照。
-- 跨端共享逻辑：放在 `packages/*`，不要绑定具体 UI 平台。
+- 跨端共享逻辑：放在 `packages/*`，不要绑定具体 UI 平台；UI 层按 Web/RN/Taro/uni-app 分端实现。
+- 整体主题以 `packages/ui-tokens` 为语义源头，端侧只做平台映射和必要布局差异。
 
 目标架构：
 
@@ -112,11 +114,15 @@ packages/
 - [x] 保持 `apps/microapp` 不动，作为线上稳定版本和迁移参照。
 - [ ] Taro 稳定后，将 `apps/microapp` 归档或替换。
 - [x] RN App 接入共享包和新 Calendar API。
+- [ ] 将 `apps/miniapp` 主题变量逐步映射到 `packages/ui-tokens`，避免端侧颜色继续发散。
+- [ ] 为 `apps/miniapp` 补齐 profile、通知绑定、PDF 导入和自定义日程源发布 parity gates。
+- [ ] 评估学生端 Web/PWA 前，先完成 miniapp/RN 核心流程稳定和共享 API / token 收敛。
 
 ## V1 暂缓
 
 - RN 正式版。
 - Taro 全量替换 uni-app。
+- 独立桌面客户端（Electron / Tauri）。
 - Docker + PostgreSQL + Redis。
 - 教务系统 connector。
 - 真实图片 OCR 产品化。

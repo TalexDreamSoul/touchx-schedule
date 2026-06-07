@@ -129,7 +129,7 @@ React Native CLI / 原生 RN 工程适合后续目标：
 所以“小程序 RN 化”不能理解成把 RN App 直接编译成微信小程序。可行路线是：
 
 1. **短期**：继续保留 `apps/microapp` 的 uni-app，保证现有微信小程序稳定。
-2. **中期**：新增 `apps/miniapp-react`，使用 Taro / React 小程序技术栈。
+2. **中期**：继续建设现有 `apps/miniapp`，使用 Taro / React 小程序技术栈。
 3. **长期**：RN App 和 React 小程序共享：
    - 领域模型：`packages/shared`
    - 日程计算：`packages/calendar-core`
@@ -143,6 +143,26 @@ React Native CLI / 原生 RN 工程适合后续目标：
 ```txt
 共享核心逻辑 + 分端高质量 UI
 ```
+
+### 4.4 桌面版与跨平台边界
+
+TouchX 的桌面版短期不单独启动 Electron / Tauri 工程，先把桌面体验定义为 `apps/backend` 内置 Nexus Web 管理台：
+
+- **桌面后台**：面向管理员、运营和导入审核，继续走 Nuxt 页面，保持 `/`、`/nexus/**` 和 `/api/**` 的页面 / API 边界。
+- **桌面学生端**：V1 不新增单独工程；如需要浏览器访问学生日程，优先复用 Calendar API 和 `@touchx/api-client` 做轻量 Web/PWA 页面，而不是复制小程序逻辑。
+- **跨平台共享层**：只共享领域模型、日程计算、API SDK、通知模型、导入模型和设计 token；不共享具体 UI 组件。
+- **平台 UI 层**：后台 Web 使用 shadcn 风格的密集工作台；RN 使用 iOS / Android 原生交互；Taro 小程序使用微信生态轻量入口；旧 uni-app 只作为迁移参照。
+
+这条边界避免“一套 UI 编译所有端”的高复杂度，同时保证业务规则、接口契约和主题语义是一套。
+
+### 4.5 设计主题映射
+
+整体设计主题以 `packages/ui-tokens` 为源头，分为两层：
+
+1. **语义 token**：`background`、`foreground`、`card`、`muted`、`border`、`primary`、`destructive` 和 `calendarEventColors`，由所有端引用或映射。
+2. **平台表现 token**：后台映射为 shadcn 黑白灰工作台；iOS 映射为 Liquid Glass / native stack / bottom tabs；Android 映射为 elevation / ripple / state layer；小程序映射为轻量卡片、周视图和微信控件约束。
+
+后续新增端侧样式时优先从 token 映射，端内只保留平台必要的布局尺寸、状态反馈和组件限制。若端侧需要新增颜色，先判断是否应进入 `packages/ui-tokens`，避免 miniapp、mobile、Nexus 各自发散。
 
 ---
 
@@ -864,6 +884,40 @@ apps/backend/server/modules/calendar/
 
 - 明确是否用 Taro / React 替代 uni-app。
 - 明确哪些 UI 可以与 RN 共享设计，哪些必须分端实现。
+
+### Phase 8.1：小程序 parity 收口
+
+目标：把 `apps/miniapp` 从 PoC 推到可替代 `apps/microapp` 的主线候选。
+
+任务：
+
+- [ ] 今日 / 周视图覆盖真实 API 的 loading、empty、error、未登录、已登录状态。
+- [ ] 个人资料、通知绑定、PDF 导入和自定义日程源发布全部通过真实 API 闭环。
+- [ ] 对 `apps/microapp` 高频入口建立 Taro 对应页，不能覆盖的入口写入 V1 defer 决策。
+- [ ] 小程序主题统一从 `packages/ui-tokens` 映射出页面变量，端侧只保留微信小程序布局差异。
+- [ ] 每次替换判断前运行 `pnpm verify:v1-release` 并补一次 WeChat DevTools 手工 smoke。
+
+验收标准：
+
+- `apps/miniapp` 可以独立完成学生核心日程、订阅、导入、通知和 profile 流程。
+- `apps/microapp` 的归档或替换有清晰证据，而不是按技术偏好强行切换。
+
+## Phase 8.2：桌面版 / Web 工作台细化
+
+目标：让桌面体验先服务管理和运营效率，再评估学生端 Web/PWA。
+
+任务：
+
+- [x] Nexus 后台统一收敛到 `apps/backend` 内置 Nuxt 页面。
+- [x] 后台页面复用 `NexusAdminShell` / `NexusDashboard`，共享 `.rx-*` 基础类由 smoke gate 固化。
+- [ ] 将 Calendar Source 版本、订阅、用户覆盖、导入候选和通知投递继续拆成高密度工作台页面。
+- [ ] 对导入审核、通知失败重试、用户订阅排查补批量操作和审计入口。
+- [ ] 学生 Web/PWA 只在 miniapp/RN 核心流程稳定后评估，优先复用 `@touchx/api-client` 和 `packages/ui-tokens`。
+
+验收标准：
+
+- 桌面版管理台是可重复运营的工作界面，不是移动端页面放大版。
+- 新后台功能不得回流旧 `NexusConsole`，不得绕过 `/api/**` 和 `/nexus/**` 边界。
 
 ---
 

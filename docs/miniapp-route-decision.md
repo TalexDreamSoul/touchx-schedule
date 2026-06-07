@@ -32,6 +32,23 @@ Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these ga
 4. `pnpm --filter @touchx/miniapp type-check` and `pnpm --filter @touchx/miniapp build:weapp` pass. For V1 release readiness, run `pnpm verify:v1-release` so the backend local gate and Taro build are checked together.
 5. Manual WeChat DevTools smoke covers first load, login, today, week, subscription, profile, PDF import, and notification binding.
 
+## Theme And Cross-Platform Fit
+
+`apps/miniapp` should share semantics with React Native and Nexus, but keep a WeChat-native UI layer:
+
+- Use `@touchx/api-client` for all core API calls; do not reintroduce local `/api/v1` wrappers.
+- Map colors and event semantics from `packages/ui-tokens`; keep page-specific CSS variables only for WeChat layout, spacing, and component limitations.
+- Keep schedule, profile, import, notification, and social view-model logic close to shared packages or small app-level hooks; do not port uni-app page internals wholesale.
+- Treat `apps/microapp` as a behavior reference, not a visual template. Taro pages should match core states and outcomes while following the current TouchX low-saturation, tokenized theme.
+
+## Replacement Ladder
+
+Replacement should happen in three steps:
+
+1. **Shadow route**: ship `apps/miniapp` for internal testing while `apps/microapp` remains production fallback.
+2. **Primary route**: after parity gates pass, new student schedule work lands in `apps/miniapp`; `apps/microapp` only receives critical production fixes.
+3. **Archive route**: archive or remove `apps/microapp` only after one release cycle with no critical regression in login, today/week, subscription, import, notification binding, and profile.
+
 ## V1 Recommendation
 
 For V1, keep shipping fixes to `apps/microapp` only when needed for production stability. New student schedule work should target `apps/miniapp` and shared packages first, while avoiding feature expansion outside the V1 schedule and notification scope.
