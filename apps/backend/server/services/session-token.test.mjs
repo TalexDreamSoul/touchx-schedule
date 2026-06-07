@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import test from "node:test";
+import test, { after } from "node:test";
 import ts from "typescript";
+
+const tempDirs = [];
+const user = {
+  userId: "user-1",
+  studentNo: "2300000001",
+};
 
 const transpileModuleToTemp = (sourcePath, fileName) => {
   const source = readFileSync(sourcePath, "utf8");
@@ -16,7 +22,9 @@ const transpileModuleToTemp = (sourcePath, fileName) => {
       strict: true,
     },
   }).outputText;
-  const tmpFile = join(mkdtempSync(join(tmpdir(), "touchx-session-token-")), fileName);
+  const tmpDir = mkdtempSync(join(tmpdir(), "touchx-session-token-"));
+  tempDirs.push(tmpDir);
+  const tmpFile = join(tmpDir, fileName);
   writeFileSync(tmpFile, transpiled, "utf8");
   return tmpFile;
 };
@@ -46,18 +54,43 @@ const createWeakToken = (secret, overrides = {}) => {
   return `txs1.${payloadBase64}.${signature}`;
 };
 
+after(() => {
+  tempDirs.forEach((dir) => rmSync(dir, { recursive: true, force: true }));
+});
+
 test("session tokens do not use predictable password or static fallback secrets", async () => {
   const sessionToken = await loadSessionToken({
     sessionTokenSecret: "",
     adminLoginPassword: "123456",
   });
-  const user = {
-    userId: "user-1",
-    studentNo: "2300000001",
-  };
   const session = sessionToken.createSignedSession({}, user, "admin", 1);
 
   assert.equal(sessionToken.resolveSignedSession({}, session.token)?.session.userId, user.userId);
   assert.equal(sessionToken.resolveSignedSession({}, createWeakToken("fallback:123456")), null);
   assert.equal(sessionToken.resolveSignedSession({}, createWeakToken("touchx-session-fallback-secret")), null);
+});
+
+test("configured session token secret remains stable across module instances", async () => {
+  const runtimeConfig = {
+    sessionTokenSecret: "strong-configured-session-secret",
+    adminLoginPassword: "123456",
+  };
+  const firstSessionToken = await loadSessionToken(runtimeConfig);
+  const secondSessionToken = await loadSessionToken(runtimeConfig);
+  const session = firstSessionToken.createSignedSession({}, user, "admin", 1);
+
+  assert.equal(secondSessionToken.resolveSignedSession({}, session.token)?.session.userId, user.userId);
+});
+
+test("runtime fallback session token secrets are module-local", async () => {
+  const runtimeConfig = {
+    sessionTokenSecret: "",
+    adminLoginPassword: "123456",
+  };
+  const firstSessionToken = await loadSessionToken(runtimeConfig);
+  const secondSessionToken = await loadSessionToken(runtimeConfig);
+  const session = firstSessionToken.createSignedSession({}, user, "admin", 1);
+
+  assert.equal(firstSessionToken.resolveSignedSession({}, session.token)?.session.userId, user.userId);
+  assert.equal(secondSessionToken.resolveSignedSession({}, session.token), null);
 });
