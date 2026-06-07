@@ -3,6 +3,7 @@ import {
   DEFAULT_SCHEDULE_TERM_META,
   DEFAULT_SCHEDULE_WEEKDAY_LABELS,
 } from "@touchx/shared";
+import { calendarEventColors } from "@touchx/ui-tokens";
 import type { EffectiveCalendarItem, PersonalEventRow } from "./api";
 
 export const sectionTimes = DEFAULT_SCHEDULE_SECTION_TIMES.map((item) => ({ ...item }));
@@ -30,13 +31,7 @@ export const eventTypeClassNames: Record<string, string> = {
 };
 
 export const eventTypeColors: Record<string, string> = {
-  course: "#2f55c8",
-  exam: "#d24747",
-  todo: "#8e57de",
-  activity: "#159b57",
-  holiday: "#d9a511",
-  deadline: "#cf6f17",
-  custom: "#64748b",
+  ...calendarEventColors,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;

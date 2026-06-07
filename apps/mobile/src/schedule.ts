@@ -1,27 +1,14 @@
+import {
+  DEFAULT_SCHEDULE_SECTION_TIMES,
+  DEFAULT_SCHEDULE_TERM_META,
+  DEFAULT_SCHEDULE_WEEKDAY_LABELS,
+} from "@touchx/shared";
+import { calendarEventColors } from "@touchx/ui-tokens";
 import type { EffectiveCalendarItem, PersonalEventRow } from "./api";
 
-export const sectionTimes = [
-  { section: 1, start: "08:30", end: "09:15", part: "上午" },
-  { section: 2, start: "09:20", end: "10:05", part: "上午" },
-  { section: 3, start: "10:25", end: "11:10", part: "上午" },
-  { section: 4, start: "11:15", end: "12:00", part: "上午" },
-  { section: 5, start: "14:30", end: "15:15", part: "下午" },
-  { section: 6, start: "15:20", end: "16:05", part: "下午" },
-  { section: 7, start: "16:25", end: "17:10", part: "下午" },
-  { section: 8, start: "17:15", end: "18:00", part: "下午" },
-  { section: 9, start: "19:00", end: "19:45", part: "晚上" },
-  { section: 10, start: "19:50", end: "20:35", part: "晚上" },
-  { section: 11, start: "20:40", end: "21:25", part: "晚上" },
-] as const;
-
-export const termMeta = {
-  name: "2025-2026-2",
-  week1Monday: "2026-03-02",
-  maxWeek: 25,
-  timezone: "Asia/Shanghai",
-} as const;
-
-export const weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"] as const;
+export const sectionTimes = DEFAULT_SCHEDULE_SECTION_TIMES.map((item) => ({ ...item }));
+export const termMeta = { ...DEFAULT_SCHEDULE_TERM_META };
+export const weekdayLabels = [...DEFAULT_SCHEDULE_WEEKDAY_LABELS];
 
 export const eventTypeLabels: Record<string, string> = {
   course: "课程",
@@ -34,13 +21,7 @@ export const eventTypeLabels: Record<string, string> = {
 };
 
 export const eventTypeColors: Record<string, string> = {
-  course: "#2f55c8",
-  exam: "#d24747",
-  todo: "#8e57de",
-  activity: "#159b57",
-  holiday: "#d9a511",
-  deadline: "#cf6f17",
-  custom: "#64748b",
+  ...calendarEventColors,
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
