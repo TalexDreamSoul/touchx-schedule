@@ -106,6 +106,29 @@ test("production smoke rejects weak fallback session secrets by default", () => 
   assert.match(script, /request_admin_bootstrap_status[\s\S]*request_session_secret_security[\s\S]*request_protected/);
 });
 
+test("production smoke rejects malformed opt-in flags before network checks", () => {
+  [
+    "TOUCHX_SMOKE_AUTH_LOGOUT",
+    "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK",
+    "TOUCHX_SMOKE_EXTERNAL_DELIVERY",
+    "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE",
+    "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK",
+  ].forEach((name) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        [name]: "true",
+      },
+    });
+    assert.notEqual(result.status, 0, name);
+    assert.match(result.stderr, new RegExp(`${name} must be empty or 1`), name);
+    assert.doesNotMatch(result.stdout, /ok \/health/, name);
+  });
+});
+
 test("production smoke rejects malformed supplied tokens before network checks", () => {
   [
     {

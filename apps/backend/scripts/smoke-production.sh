@@ -41,8 +41,22 @@ reject_raw_token_env() {
   reject_known_nonproduction_env "${name}"
 }
 
+require_empty_or_one_flag() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" && "${value}" != "1" ]]; then
+    echo "${name} must be empty or 1" >&2
+    exit 1
+  fi
+}
+
 reject_raw_token_env "TOUCHX_SMOKE_AUTH_TOKEN"
 reject_raw_token_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
+require_empty_or_one_flag "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK"
+require_empty_or_one_flag "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE"
+require_empty_or_one_flag "TOUCHX_SMOKE_EXTERNAL_DELIVERY"
+require_empty_or_one_flag "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK"
+require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"
 
 request() {
   local path="$1"
