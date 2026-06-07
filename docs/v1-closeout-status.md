@@ -78,6 +78,8 @@ SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
+其中 `TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`。
+
 生产 gate 需要覆盖：
 
 - 使用真实 webhook token 的 ClawDBot webhook 入站 smoke。

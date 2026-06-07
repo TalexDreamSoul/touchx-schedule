@@ -82,7 +82,7 @@ Cloudflare 生产资源只读复核（需要已登录 Wrangler，不会写资源
 pnpm --filter @touchx/backend smoke:cloudflare-live
 ```
 
-V1 生产验收聚合 gate（需要真实生产 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道和真实 PDF 样本）：
+V1 生产验收聚合 gate（需要真实生产 token、6-32 位数字真实学生号、ClawDBot webhook token、ClawDBot + 飞书双通知通道和真实 PDF 样本）：
 
 ```bash
 pnpm --filter @touchx/backend verify:v1-production

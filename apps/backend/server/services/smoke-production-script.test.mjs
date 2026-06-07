@@ -22,6 +22,10 @@ const clientBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-c
 const clientBoundarySmoke = readFileSync(clientBoundarySmokePath, "utf8");
 const dataBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-data-boundaries.mjs");
 const dataBoundarySmoke = readFileSync(dataBoundarySmokePath, "utf8");
+const rootReadme = readFileSync(join(import.meta.dirname, "../../../../README.md"), "utf8");
+const backendReadme = readFileSync(join(import.meta.dirname, "../../README.md"), "utf8");
+const todoDoc = readFileSync(join(import.meta.dirname, "../../../../TODO.md"), "utf8");
+const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../docs/v1-closeout-status.md"), "utf8");
 
 test("production smoke rejects weak fallback session secrets by default", () => {
   assert.match(script, /request_session_secret_security\(\)/);
@@ -98,6 +102,11 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /PRODUCTION_SMOKE_BASE_URL="\$\{TOUCHX_SMOKE_BASE_URL:-https:\/\/schedule-backend\.tagzxia\.com\}"/);
   assert.match(v1ProductionVerify, /is_local_smoke_url\(\)/);
   assert.match(v1ProductionVerify, /is_non_production_smoke_url\(\)/);
+  assert.match(v1ProductionVerify, /require_student_no\(\)/);
+  assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
+  assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
+  assert.match(v1ProductionVerify, /require_student_no "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"/);
+  assert.match(v1ProductionVerify, /require_student_no "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8/);
   assert.match(v1ProductionVerify, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/);
@@ -128,6 +137,36 @@ test("V1 production verification rejects weak real PDF thresholds", () => {
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8/);
+});
+
+test("V1 production verification rejects malformed student numbers before network checks", () => {
+  const result = spawnSync("bash", [v1ProductionVerifyPath], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_STUDENT_NO: "student-2305100613",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+      SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
+      SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "import-student",
+      SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "expected-student",
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TOUCHX_SMOKE_STUDENT_NO must be a 6-32 digit student number/);
+  assert.match(result.stderr, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO must be a 6-32 digit student number/);
+  assert.match(result.stderr, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must be a 6-32 digit student number/);
+});
+
+test("V1 production verification docs mention required student number format", () => {
+  [rootReadme, backendReadme, todoDoc, v1CloseoutStatus].forEach((doc) => {
+    assert.match(doc, /6-32 位数字/);
+  });
+  assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
+  assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
 });
 
 test("V1 production verification keeps local PDF smoke off production URLs", () => {

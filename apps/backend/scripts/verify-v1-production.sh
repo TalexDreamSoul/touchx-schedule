@@ -13,6 +13,14 @@ require_env() {
   fi
 }
 
+require_student_no() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" && ! "${value}" =~ ^[0-9]{6,32}$ ]]; then
+    missing+=("${name} must be a 6-32 digit student number")
+  fi
+}
+
 is_local_smoke_url() {
   local url="$1"
   [[ "${url}" == "http://127.0.0.1"* || "${url}" == "http://localhost"* ]]
@@ -70,6 +78,9 @@ fi
 if [[ -z "${SMOKE_REAL_PDF_EXPECT_STUDENT_NO}" ]]; then
   missing+=("SMOKE_REAL_PDF_EXPECT_STUDENT_NO or TOUCHX_SMOKE_STUDENT_NO")
 fi
+require_student_no "TOUCHX_SMOKE_STUDENT_NO"
+require_student_no "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+require_student_no "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"
 if ! is_local_smoke_url "${LOCAL_SMOKE_BASE_URL}"; then
   missing+=("SMOKE_BASE_URL must stay local for verify:v1-production smoke:local")
 fi
@@ -84,16 +95,16 @@ if (( ${#missing[@]} > 0 )); then
 
 Required inputs:
   TOUCHX_SMOKE_AUTH_TOKEN              Admin token for protected production checks.
-  TOUCHX_SMOKE_STUDENT_NO              Real production student number for legacy login verification.
+  TOUCHX_SMOKE_STUDENT_NO              Real production student number for legacy login verification; must be 6-32 digits.
   TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN  Real ClawDBot webhook token for inbound production smoke.
   TOUCHX_SMOKE_NOTIFICATION_CHANNELS   Must include both wechat_clawdbot and feishu.
   SMOKE_REAL_PDF_PATH                  Real schedule PDF sample on this machine.
-  SMOKE_SCHEDULE_IMPORT_STUDENT_NO     Student number used by local PDF import smoke.
+  SMOKE_SCHEDULE_IMPORT_STUDENT_NO     Student number used by local PDF import smoke; must be 6-32 digits.
 
 Optional hardening:
   TOUCHX_SMOKE_AUTH_LOGOUT=1           Revokes the supplied admin token at the end.
   SMOKE_REAL_PDF_MIN_ENTRIES=8         Minimum parsed course count; production gate requires >= 8.
-  SMOKE_REAL_PDF_EXPECT_STUDENT_NO=... Verifies parsed PDF owner student number; defaults to TOUCHX_SMOKE_STUDENT_NO.
+  SMOKE_REAL_PDF_EXPECT_STUDENT_NO=... Verifies parsed PDF owner student number; defaults to TOUCHX_SMOKE_STUDENT_NO and must be 6-32 digits.
   SMOKE_BASE_URL=http://127.0.0.1:9986 Local backend URL for the real PDF smoke; production URLs are refused.
   TOUCHX_SMOKE_BASE_URL=https://...    Production backend URL for production API smoke; local/private URLs are refused.
 EOF

@@ -169,7 +169,7 @@ SMOKE_REAL_PDF_MIN_ENTRIES=8 \
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝指向 localhost / 127.0.0.1 / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
+该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝指向 localhost / 127.0.0.1 / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
 
 ## 运行时自检（防回归）
 
@@ -245,7 +245,7 @@ pnpm --filter @touchx/backend smoke:production
 - `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=1`：跳过弱 fallback session token 拒绝检查，仅用于临时排障；生产验收不建议跳过。
 - `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。
 - `TOUCHX_SMOKE_AUTH_LOGOUT=1`：额外验证 admin logout 撤销当前 token。该检查会让传入 token 失效，默认关闭。
-- `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式。
+- `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式；完整生产验收要求 6-32 位数字。
 - `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1`：显式开启真实 ClawDBot webhook 入站 smoke；该检查会发送不 commit 的测试消息并要求至少解析出一个候选。
 - `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。
 - `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT`：ClawDBot webhook smoke 文本，默认 `周三下午3点复习数据结构`。
