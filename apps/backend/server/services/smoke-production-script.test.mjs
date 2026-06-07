@@ -459,6 +459,8 @@ test("miniapp parity smoke guards server-time calibration", () => {
   assert.match(miniappParitySmoke, /getServerNow/);
   assert.match(miniappParitySmoke, /useMemo\(\(\) => getTodayInfo\(\), \[\]\)/);
   assert.match(miniappParitySmoke, /server-time/);
+  assert.match(miniappParitySmoke, /release-candidate gate/);
+  assert.match(miniappParitySmoke, /2026-06-08/);
 });
 
 test("data boundary smoke guards D1 payload state and V1 infra scope", () => {

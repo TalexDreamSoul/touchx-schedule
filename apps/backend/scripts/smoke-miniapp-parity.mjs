@@ -437,6 +437,14 @@ const assertReleaseGateDocs = ({ readme, todo, miniappDecisionDoc, v1CloseoutSta
     /最近本地 gate：[\s\S]*`smoke:miniapp-parity`[\s\S]*`pnpm verify:v1-release`[\s\S]*`pnpm --filter @touchx\/microapp type-check`[\s\S]*`pnpm --filter @touchx\/microapp build:mp-weixin`/,
     "must keep the roadmap closeout summary aligned with the release gate",
   );
+
+  [todo, v1CloseoutStatus, calendarRoadmap].forEach((file) => {
+    assertMatches(
+      file,
+      /最近通过的本地 release-candidate gate（2026-06-08）：`pnpm verify:v1-release`[\s\S]*(?:@touchx\/miniapp build:weapp|Taro weapp)[\s\S]*(?:@touchx\/microapp type-check|旧 uni-app type-check)[\s\S]*(?:@touchx\/microapp build:mp-weixin|微信小程序构建)/,
+      "must keep the latest local release-candidate gate evidence in closeout docs",
+    );
+  });
 };
 
 const api = readSource("apps/miniapp/src/lib/api.ts");

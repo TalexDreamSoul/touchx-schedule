@@ -65,6 +65,8 @@ pnpm verify:v1-release
 
 `verify:v1-release` 会先跑后端 V1 本地 gate，再跑 `@touchx/miniapp build:weapp`、`@touchx/microapp type-check` 和 `@touchx/microapp build:mp-weixin`，是推荐的本地 release-candidate 命令。替换或归档 `apps/microapp` 前还必须按 `docs/miniapp-wechat-smoke-checklist.md` 补 WeChat DevTools 手工 smoke。
 
+最近通过的本地 release-candidate gate（2026-06-08）：`pnpm verify:v1-release`。该次验证覆盖后端 V1 本地 gate、Taro weapp 产物构建、旧 uni-app type-check 与微信小程序构建。
+
 ## 仍需生产验收
 
 V1 还不能算完整验收，必须使用真实生产材料执行：
