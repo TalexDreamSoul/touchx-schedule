@@ -9,7 +9,8 @@ SMOKE_BOOTSTRAP_STUDENT_NO=""
 
 is_non_production_smoke_url() {
   local url="$1"
-  python - "${url}" <<'PY'
+  local result
+  if python - "${url}" <<'PY'
 import ipaddress
 import sys
 from urllib.parse import urlsplit
@@ -45,6 +46,13 @@ blocked_networks = [
 ]
 sys.exit(0 if any(ip in network for network in blocked_networks) else 1)
 PY
+  then
+    return 0
+  else
+    result=$?
+    [[ "${result}" -eq 1 ]] && return 1
+    return 0
+  fi
 }
 
 if is_non_production_smoke_url "${BASE_URL}"; then

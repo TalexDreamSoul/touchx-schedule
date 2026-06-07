@@ -66,13 +66,18 @@ test("production smoke can opt into notification queue mode verification", () =>
 
 test("production smoke refuses non-production base URLs before network checks", () => {
   assert.match(script, /is_non_production_smoke_url\(\)/);
+  assert.match(script, /urlsplit/);
+  assert.match(script, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
   assert.match(script, /public HTTPS production API for smoke:production/);
 
   [
     "http://schedule-backend.tagzxia.com",
     "http://127.0.0.1:9986",
     "https://192.168.2.1",
+    "https://schedule-backend.tagzxia.com@192.168.2.1",
+    "https://prod.example@100.64.0.1",
     "https://[FD00::1]",
+    "https://prod.example@[FD00::1]",
   ].forEach((baseUrl) => {
     const result = spawnSync("bash", [scriptPath], {
       cwd: join(import.meta.dirname, "../../.."),
@@ -131,12 +136,15 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /PRODUCTION_SMOKE_BASE_URL="\$\{TOUCHX_SMOKE_BASE_URL:-https:\/\/schedule-backend\.tagzxia\.com\}"/);
   assert.match(v1ProductionVerify, /is_local_smoke_url\(\)/);
   assert.match(v1ProductionVerify, /is_non_production_smoke_url\(\)/);
+  assert.match(v1ProductionVerify, /urlsplit/);
+  assert.match(v1ProductionVerify, /parsed\.hostname/);
   assert.match(v1ProductionVerify, /http:\/\/127\.0\.0\.1:"\*/);
   assert.match(v1ProductionVerify, /http:\/\/localhost:"\*/);
-  assert.match(v1ProductionVerify, /\[\[ "\$\{url\}" != "https:\/\/"\* \]\] && return 0/);
-  assert.match(v1ProductionVerify, /169\.254/);
-  assert.match(v1ProductionVerify, /100\\\./);
-  assert.match(v1ProductionVerify, /\[fF\]\[cCdD\]\|\[fF\]\[eE\]\[89aAbB\]/);
+  assert.match(v1ProductionVerify, /parsed\.scheme != "https"/);
+  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("169\.254\.0\.0\/16"\)/);
+  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
+  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("fc00::\/7"\)/);
+  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("fe80::\/10"\)/);
   assert.match(v1ProductionVerify, /require_student_no\(\)/);
   assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
   assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
@@ -277,9 +285,13 @@ test("V1 production verification keeps production smoke off private network URLs
     "https://169.254.1.1",
     "https://100.64.0.1",
     "https://100.127.255.1",
+    "https://schedule-backend.tagzxia.com@10.0.0.8",
+    "https://schedule-backend.tagzxia.com@192.168.2.1",
+    "https://prod.example@100.64.0.1",
     "http://[::1]:9986",
     "https://[fd00::1]",
     "https://[FD00::1]",
+    "https://prod.example@[FD00::1]",
     "https://[fe80::1]",
     "https://[FEBF::1]",
   ].forEach((baseUrl) => {
