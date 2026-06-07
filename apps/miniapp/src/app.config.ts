@@ -1,3 +1,5 @@
+import { miniappChromeTheme } from "./lib/theme";
+
 export default defineAppConfig({
   pages: [
     "pages/today/index",
@@ -7,15 +9,15 @@ export default defineAppConfig({
   ],
   window: {
     navigationBarTitleText: "TouchX",
-    navigationBarBackgroundColor: "#f3f4f7",
-    navigationBarTextStyle: "black",
-    backgroundColor: "#f3f4f7",
+    navigationBarBackgroundColor: miniappChromeTheme.navigationBarBackgroundColor,
+    navigationBarTextStyle: miniappChromeTheme.navigationBarTextStyle,
+    backgroundColor: miniappChromeTheme.backgroundColor,
   },
   tabBar: {
-    color: "#5f5f5f",
-    selectedColor: "#111111",
-    backgroundColor: "#ffffff",
-    borderStyle: "black",
+    color: miniappChromeTheme.tabBarColor,
+    selectedColor: miniappChromeTheme.tabBarSelectedColor,
+    backgroundColor: miniappChromeTheme.tabBarBackgroundColor,
+    borderStyle: miniappChromeTheme.tabBarBorderStyle,
     list: [
       { pagePath: "pages/today/index", text: "今日" },
       { pagePath: "pages/week/index", text: "日程表" },

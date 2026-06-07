@@ -1,8 +1,10 @@
+import { miniappChromeTheme } from "../../lib/theme";
+
 export default definePageConfig({
   navigationBarTitleText: "日程表",
-  navigationBarBackgroundColor: "#f3f4f7",
-  navigationBarTextStyle: "black",
-  backgroundColor: "#f3f4f7",
+  navigationBarBackgroundColor: miniappChromeTheme.navigationBarBackgroundColor,
+  navigationBarTextStyle: miniappChromeTheme.navigationBarTextStyle,
+  backgroundColor: miniappChromeTheme.backgroundColor,
   enablePullDownRefresh: true,
-  backgroundTextStyle: "dark",
+  backgroundTextStyle: miniappChromeTheme.backgroundTextStyle,
 });
