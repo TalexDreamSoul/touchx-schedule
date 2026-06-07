@@ -33,6 +33,21 @@ const backendReadme = readFileSync(join(import.meta.dirname, "../../README.md"),
 const todoDoc = readFileSync(join(import.meta.dirname, "../../../../TODO.md"), "utf8");
 const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../docs/v1-closeout-status.md"), "utf8");
 
+const classifyProductionUrl = (baseUrl) =>
+  spawnSync(
+    "bash",
+    [
+      "-c",
+      'source "$1"; if is_non_production_smoke_url "$2"; then printf "non-production"; else printf "production"; fi',
+      "bash",
+      productionUrlGuardPath,
+      baseUrl,
+    ],
+    {
+      encoding: "utf8",
+    },
+  );
+
 test("production smoke rejects weak fallback session secrets by default", () => {
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
@@ -112,6 +127,29 @@ test("production URL guard stays shared and parser-based", () => {
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("fc00::\/7"\)/);
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("fe80::\/10"\)/);
+});
+
+test("production URL guard allows public HTTPS hosts and blocks unsafe parsed hosts", () => {
+  ["https://schedule-backend.tagzxia.com", "https://api.example.com:443/base", "https://api.example.com."].forEach(
+    (baseUrl) => {
+      const result = classifyProductionUrl(baseUrl);
+      assert.equal(result.status, 0, baseUrl);
+      assert.equal(result.stdout, "production", baseUrl);
+    },
+  );
+
+  [
+    "http://schedule-backend.tagzxia.com",
+    "https://localhost",
+    "https://127.0.0.1:9986",
+    "https://schedule-backend.tagzxia.com@192.168.2.1",
+    "https://prod.example@[FD00::1]",
+    "https://[bad",
+  ].forEach((baseUrl) => {
+    const result = classifyProductionUrl(baseUrl);
+    assert.equal(result.status, 0, baseUrl);
+    assert.equal(result.stdout, "non-production", baseUrl);
+  });
 });
 
 test("Cloudflare config smoke covers required bindings and migrations", () => {
