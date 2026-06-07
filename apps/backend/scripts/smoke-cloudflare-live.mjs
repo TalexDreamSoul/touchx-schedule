@@ -55,6 +55,14 @@ const asArray = (value, candidatePaths = []) => {
   return [];
 };
 
+const outputHasName = (output, name) =>
+  new Set(output.split(/[^A-Za-z0-9._-]+/).filter(Boolean)).has(name);
+
+const wranglerSucceeds = (args, options = {}) => {
+  runWrangler(args, options);
+  return true;
+};
+
 const requireConfiguredRecords = (records, label, requiredFields) => {
   assert.ok(records.length > 0, `${label} must be configured in wrangler.toml`);
   records.forEach((record) => {
@@ -103,7 +111,8 @@ config.d1Databases.forEach((database) => {
 const r2List = runWrangler(["r2", "bucket", "list"], { label: "wrangler r2 bucket list" });
 config.r2Buckets.forEach((bucket) => {
   assert.ok(
-    r2List.includes(bucket.bucketName) || runWrangler(["r2", "bucket", "info", bucket.bucketName], { label: `wrangler r2 bucket info ${bucket.bucketName}` }),
+    outputHasName(r2List, bucket.bucketName) ||
+      wranglerSucceeds(["r2", "bucket", "info", bucket.bucketName], { label: `wrangler r2 bucket info ${bucket.bucketName}` }),
     `R2 bucket ${bucket.bucketName} (${bucket.binding}) must exist in the Cloudflare account`,
   );
 });
@@ -111,7 +120,8 @@ config.r2Buckets.forEach((bucket) => {
 const queuesList = runWrangler(["queues", "list"], { label: "wrangler queues list" });
 config.queueProducers.forEach((producer) => {
   assert.ok(
-    queuesList.includes(producer.queue) || runWrangler(["queues", "info", producer.queue], { label: `wrangler queues info ${producer.queue}` }),
+    outputHasName(queuesList, producer.queue) ||
+      wranglerSucceeds(["queues", "info", producer.queue], { label: `wrangler queues info ${producer.queue}` }),
     `Queue ${producer.queue} (${producer.binding}) must exist in the Cloudflare account`,
   );
 });
@@ -156,7 +166,7 @@ config.d1Databases.forEach((database) => {
   });
   const unappliedRequiredMigrations = config.migrations
     .map((migration) => migration.fileName)
-    .filter((fileName) => migrations.includes(fileName));
+    .filter((fileName) => outputHasName(migrations, fileName));
   assert.ok(
     unappliedRequiredMigrations.length === 0,
     `D1 migrations for ${database.databaseName} are still unapplied: ${unappliedRequiredMigrations.join(", ")}`,

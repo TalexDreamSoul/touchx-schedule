@@ -210,10 +210,16 @@ test("Cloudflare config smoke covers required bindings and migrations", () => {
 test("Cloudflare live smoke is read-only and checks real resources", () => {
   assert.match(cloudflareLiveSmoke, /wranglerBaseArgs/);
   assert.match(cloudflareLiveSmoke, /whoami/);
+  assert.match(cloudflareLiveSmoke, /outputHasName/);
+  assert.match(cloudflareLiveSmoke, /wranglerSucceeds/);
   assert.match(cloudflareLiveSmoke, /d1", "list", "--json/);
   assert.match(cloudflareLiveSmoke, /\["result", "databases"\]/);
   assert.match(cloudflareLiveSmoke, /r2", "bucket", "list/);
+  assert.match(cloudflareLiveSmoke, /outputHasName\(r2List, bucket\.bucketName\)/);
+  assert.match(cloudflareLiveSmoke, /wranglerSucceeds\(\["r2", "bucket", "info", bucket\.bucketName\]/);
   assert.match(cloudflareLiveSmoke, /queues", "list/);
+  assert.match(cloudflareLiveSmoke, /outputHasName\(queuesList, producer\.queue\)/);
+  assert.match(cloudflareLiveSmoke, /wranglerSucceeds\(\["queues", "info", producer\.queue\]/);
   assert.match(cloudflareLiveSmoke, /deployments", "list"/);
   assert.match(cloudflareLiveSmoke, /\["deployments", "items"\]/);
   assert.match(cloudflareLiveSmoke, /\["result", "deployments"\]/);
@@ -229,6 +235,7 @@ test("Cloudflare live smoke is read-only and checks real resources", () => {
   assert.match(cloudflareLiveSmoke, /NEXUS_BOT_DELIVERY_TOKEN/);
   assert.match(cloudflareLiveSmoke, /NEXUS_REMINDER_DELIVERY_QUEUE/);
   assert.match(cloudflareLiveSmoke, /d1", "migrations", "list/);
+  assert.match(cloudflareLiveSmoke, /outputHasName\(migrations, fileName\)/);
   assert.doesNotMatch(cloudflareLiveSmoke, /(?:^|")create(?:\s|")/);
   assert.doesNotMatch(cloudflareLiveSmoke, /(?:^|")delete(?:\s|")/);
   assert.doesNotMatch(cloudflareLiveSmoke, /(?:^|")deploy(?:\s|")/);
