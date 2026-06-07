@@ -175,6 +175,9 @@ const assertWeekScheduleParity = (file) => {
     "const [loading, setLoading]",
     "const [mode, setMode]",
     "const [showSettings, setShowSettings]",
+    "const groupByDate = (items: EffectiveCalendarItem[], weekNo: number)",
+    "resolveDateByWeekday(weekNo, getEventWeekday(event))",
+    "const groupedTimeline = useMemo(() => groupByDate(events, weekNo), [events, weekNo])",
     "const syncServerClock = async ()",
     "syncServerOffsetFromIso(brief.serverNowIso)",
     "const load = async (targetWeekNo = weekNo, options: { alignWithServerWeek?: boolean } = {})",
@@ -203,6 +206,7 @@ const assertWeekScheduleParity = (file) => {
 
   assertMatches(file, /useEffect\(\(\) => \{ void load\(weekIndex \+ 1,\s*\{ alignWithServerWeek: true \}\); \}, \[\]\)/, "must load week schedule from the server-calibrated current week on first render");
   assertNotContains(file, "useMemo(() => getTodayInfo(), [])");
+  assertNotContains(file, "resolveDateByWeekday(1, getEventWeekday(event))");
   assertMatches(file, /mode === "course"[\s\S]*tx-schedule-card/, "must keep course-grid mode");
   assertMatches(file, /mode === "timeline"[\s\S]*tx-timeline-scroll|tx-timeline-scroll[\s\S]*groupedTimeline/, "must keep timeline mode");
 };

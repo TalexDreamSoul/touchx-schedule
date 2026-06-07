@@ -44,10 +44,10 @@ const days = [1, 2, 3, 4, 5, 6, 7] as const;
 
 const clampWeek = (value: number) => Math.max(1, Math.min(termMeta.maxWeek, value));
 
-const groupByDate = (items: EffectiveCalendarItem[]) => {
+const groupByDate = (items: EffectiveCalendarItem[], weekNo: number) => {
   const map = new Map<string, EffectiveCalendarItem[]>();
   sortEvents(items).forEach((event) => {
-    const key = event.date || resolveDateByWeekday(1, getEventWeekday(event));
+    const key = event.date || resolveDateByWeekday(weekNo, getEventWeekday(event));
     map.set(key, [...(map.get(key) || []), event]);
   });
   return Array.from(map.entries()).sort((left, right) => left[0].localeCompare(right[0]));
@@ -81,7 +81,7 @@ export default function WeekPage() {
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
 
   const weekNo = weekIndex + 1;
-  const groupedTimeline = useMemo(() => groupByDate(events), [events]);
+  const groupedTimeline = useMemo(() => groupByDate(events, weekNo), [events, weekNo]);
   const groupedGrid = useMemo(() => groupByWeekdayAndSection(events), [events]);
 
   const syncServerClock = async () => {
