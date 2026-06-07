@@ -28,9 +28,44 @@ Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these ga
 
 1. Today and week schedule flows use real Calendar API data and keep empty, loading, error, unauthenticated, and authenticated states guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 2. Profile account, notification binding, PDF import, and custom calendar-source publishing are available through real API calls and are guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
-3. Existing high-usage microapp routes have a Taro equivalent or an explicit V1 defer decision in `TODO.md`.
+3. Existing microapp routes have a Taro equivalent or an explicit V1 defer decision in the route coverage matrix below, guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 4. `pnpm --filter @touchx/miniapp type-check` and `pnpm --filter @touchx/miniapp build:weapp` pass. For V1 release readiness, run `pnpm verify:v1-release` so the backend local gate and Taro build are checked together.
 5. Manual WeChat DevTools smoke covers first load, login, today, week, subscription, profile, PDF import, and notification binding.
+
+## Microapp Route Coverage Matrix
+
+`Covered` means the V1 Taro route has a direct equivalent for the core user outcome. `Partial` means the core outcome has a Taro path but specialized microapp behavior remains a fallback. `Deferred` means the route is intentionally outside the V1 Taro replacement scope and must stay on `apps/microapp` until a later phase.
+
+| Microapp route | V1 decision | Taro equivalent or defer decision |
+| --- | --- | --- |
+| `pages/index/index` | Covered | Split into `apps/miniapp` tabs: `pages/today/index`, `pages/week/index`, `pages/sources/index`, and `pages/profile/index`. |
+| `pages/profile/account` | Covered | `apps/miniapp/src/pages/profile/index.tsx` handles account/password login, registration, refresh, nickname update, and logout. |
+| `pages/profile/avatar` | Deferred | Avatar and wallpaper media editing stays in microapp for V1; Taro profile only displays existing avatar state. |
+| `pages/profile/student-no` | Deferred | Mandatory student-number editing is legacy behavior; Taro V1 uses account/password auth and shared CalendarSource/PDF flows. |
+| `pages/profile/bind-student` | Deferred | Legacy student binding stays in microapp for V1; Taro uses account/password auth and schedule import/subscription flows. |
+| `pages/profile/bind-guide` | Deferred | Legacy binding instructions stay with the legacy binding route while Taro avoids the student-number-first flow. |
+| `pages/profile/subscribe` | Partial | `pages/sources/index` covers CalendarSource subscribe/cancel; social user subscriptions, inbound requests, circles, and notification inbox stay in microapp for V1. |
+| `pages/profile/circle-join` | Deferred | Circle join/social graph management is outside V1 Taro replacement scope. |
+| `pages/profile/social-activities` | Deferred | Social activity creation and invitation flows stay in microapp for V1. |
+| `pages/profile/ai-assistant` | Deferred | AI assistant remains a microapp/legacy route until shared assistant scope is defined after V1. |
+| `pages/profile/exam-companion` | Deferred | Exam companion remains a legacy companion route; Taro V1 only renders effective calendar items. |
+| `pages/profile/calendar-views` | Partial | `pages/today/index` and `pages/week/index` cover effective calendar views; specialized categorized views stay in microapp for V1. |
+| `pages/profile/free-heatmap` | Deferred | Shared free/busy heatmap is a social feature and remains microapp-only for V1. |
+| `pages/profile/preferences` | Partial | `pages/week/index` covers reminder settings; legacy theme/background and broader preferences remain microapp fallback. |
+| `pages/profile/schedule-import` | Partial | `pages/profile/index` covers PDF file selection and import preview; editable confirmation and correction workflows remain microapp/admin fallback for V1. |
+| `pages/profile/food-campaign` | Deferred | Food campaign flows are outside V1 Taro replacement scope. |
+| `pages/profile/food-campaign-detail` | Deferred | Food campaign detail stays in microapp for V1. |
+| `pages/profile/food-campaign-create` | Deferred | Food campaign creation stays in microapp for V1. |
+| `pages/profile/food-candidate-pool` | Deferred | Food candidate review/pool stays in microapp/admin for V1. |
+| `pages/profile/food-campaign-history` | Deferred | Food campaign history stays in microapp for V1. |
+| `pages/profile/food-campaign-invitees` | Deferred | Food campaign invitee selection stays in microapp for V1. |
+| `pages/party-games/werewolf` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/undercover` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/avalon` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/telephone` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/drawguess` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/turtle` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
+| `pages/party-games/heart-open` | Deferred | Party games are V2/social entertainment scope and stay in microapp. |
 
 ## Theme And Cross-Platform Fit
 

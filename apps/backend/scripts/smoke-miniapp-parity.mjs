@@ -12,6 +12,14 @@ const readSource = (relativePath) => {
   };
 };
 
+const readJson = (relativePath) => {
+  const file = readSource(relativePath);
+  return {
+    ...file,
+    data: JSON.parse(file.source),
+  };
+};
+
 const assertContains = (file, needle) => {
   assert.ok(file.source.includes(needle), `${file.absolutePath} must include ${needle}`);
 };
@@ -23,6 +31,8 @@ const assertNotContains = (file, needle) => {
 const assertMatches = (file, pattern, message) => {
   assert.ok(pattern.test(file.source), `${file.absolutePath} ${message}`);
 };
+
+const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const assertNoDemoFallbacks = (file) => {
   assertNotContains(file, "mock");
@@ -294,11 +304,44 @@ const assertSourcePublishParity = (file) => {
   assertMatches(file, /type:\s*type === "activity" \? "club_activity" : type === "exam" \? "exam_schedule" : "manual_collection"/, "must map custom source event types to CalendarSource types");
 };
 
+const resolveMicroappRoutes = (pagesJsonFile) => {
+  const pages = pagesJsonFile.data.pages || [];
+  const subpackages = pagesJsonFile.data.subpackages || [];
+  const rootRoutes = pages.map((page) => page.path);
+  const packageRoutes = subpackages.flatMap((subpackage) => {
+    return (subpackage.pages || []).map((page) => `${subpackage.root}/${page.path}`);
+  });
+  return [...rootRoutes, ...packageRoutes];
+};
+
+const assertMicroappRouteCoverage = (decisionDoc, pagesJsonFile) => {
+  const routes = resolveMicroappRoutes(pagesJsonFile);
+  assert.ok(routes.length >= 20, `${pagesJsonFile.absolutePath} must expose the expected microapp route surface`);
+
+  [
+    "## Microapp Route Coverage Matrix",
+    "`Covered` means",
+    "`Partial` means",
+    "`Deferred` means",
+    "| Microapp route | V1 decision | Taro equivalent or defer decision |",
+  ].forEach((needle) => assertContains(decisionDoc, needle));
+
+  routes.forEach((route) => {
+    const rowPattern = new RegExp(`\\|\\s*\`${escapeRegExp(route)}\`\\s*\\|\\s*(Covered|Partial|Deferred)\\s*\\|`);
+    assertMatches(decisionDoc, rowPattern, `must document a Covered, Partial, or Deferred V1 decision for ${route}`);
+  });
+
+  assertNotContains(decisionDoc, "TBD");
+  assertNotContains(decisionDoc, "TODO route");
+};
+
 const api = readSource("apps/miniapp/src/lib/api.ts");
 const today = readSource("apps/miniapp/src/pages/today/index.tsx");
 const week = readSource("apps/miniapp/src/pages/week/index.tsx");
 const profile = readSource("apps/miniapp/src/pages/profile/index.tsx");
 const sources = readSource("apps/miniapp/src/pages/sources/index.tsx");
+const microappPagesJson = readJson("apps/microapp/src/pages.json");
+const miniappDecisionDoc = readSource("docs/miniapp-route-decision.md");
 
 assertApiWrapperDelegates(api);
 
@@ -309,5 +352,6 @@ assertProfileAccountParity(profile);
 assertProfileNotificationParity(profile);
 assertProfilePdfParity(profile);
 assertSourcePublishParity(sources);
+assertMicroappRouteCoverage(miniappDecisionDoc, microappPagesJson);
 
-console.log("ok miniapp schedule, profile, notification, PDF import and custom source parity gates");
+console.log("ok miniapp schedule, route coverage, profile, notification, PDF import and custom source parity gates");
