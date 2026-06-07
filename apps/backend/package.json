@@ -14,6 +14,7 @@
     "deploy": "nuxt build && wrangler --cwd .output deploy --domains schedule-backend.tagzxia.com --keep-vars",
     "type-check": "nuxt prepare && tsc -p .nuxt/tsconfig.json --noEmit",
     "verify:v1-local": "bash ./scripts/verify-v1-local.sh",
+    "check:v1-production-env": "bash ./scripts/verify-v1-production.sh --check-env",
     "verify:v1-production": "bash ./scripts/verify-v1-production.sh",
     "smoke:local": "bash ./scripts/smoke-local.sh",
     "smoke:api-boundaries": "node ./scripts/smoke-api-boundaries.mjs",

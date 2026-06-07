@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
@@ -14,6 +15,7 @@ const cloudflareLiveSmokePath = join(import.meta.dirname, "../../scripts/smoke-c
 const cloudflareLiveSmoke = readFileSync(cloudflareLiveSmokePath, "utf8");
 const v1ProductionVerifyPath = join(import.meta.dirname, "../../scripts/verify-v1-production.sh");
 const v1ProductionVerify = readFileSync(v1ProductionVerifyPath, "utf8");
+const backendPackageJson = readFileSync(join(import.meta.dirname, "../../package.json"), "utf8");
 const v1LocalVerifyPath = join(import.meta.dirname, "../../scripts/verify-v1-local.sh");
 const v1LocalVerify = readFileSync(v1LocalVerifyPath, "utf8");
 const productionUrlGuardPath = join(import.meta.dirname, "../../scripts/production-url-guard.sh");
@@ -183,10 +185,20 @@ test("Cloudflare live smoke is read-only and checks real resources", () => {
 });
 
 test("V1 production verification gate requires real external inputs", () => {
+  assert.match(backendPackageJson, /"check:v1-production-env": "bash \.\/scripts\/verify-v1-production\.sh --check-env"/);
+  assert.match(v1ProductionVerify, /--check-env/);
+  assert.match(v1ProductionVerify, /CHECK_ENV_ONLY/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env\(\)/);
+  assert.match(v1ProductionVerify, /reject_bearer_prefix\(\)/);
+  assert.match(v1ProductionVerify, /require_empty_or_one_flag\(\)/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_AUTH_TOKEN/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_STUDENT_NO/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS/);
+  assert.match(v1ProductionVerify, /notification_channels="\$\{TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-\}"/);
+  assert.match(v1ProductionVerify, /has_wechat_clawdbot=0/);
+  assert.match(v1ProductionVerify, /has_feishu=0/);
+  assert.doesNotMatch(v1ProductionVerify, /notification_channels="\$\{TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-\$\{TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-\}\}"/);
   assert.match(v1ProductionVerify, /includes wechat_clawdbot/);
   assert.match(v1ProductionVerify, /includes feishu/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH/);
@@ -204,6 +216,12 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /require_student_no "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /require_student_no "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_PATH"/);
+  assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must be an absolute path/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8/);
   assert.match(v1ProductionVerify, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/);
@@ -215,6 +233,238 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /smoke:production/);
   assert.match(v1ProductionVerify, /smoke:local/);
   assert.match(v1ProductionVerify, /smoke:local[\s\S]*smoke:cloudflare-live[\s\S]*smoke:production/);
+});
+
+test("V1 production verification rejects invalid logout opt-in flag values", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-logout-flag-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+        TOUCHX_SMOKE_AUTH_LOGOUT: "true",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_LOGOUT must be empty or 1/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("V1 production verification accepts comma or space separated notification channels", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-space-channels-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot feishu",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /ok V1 production verification inputs/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("V1 production verification rejects unsupported notification channels", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-unsupported-channel-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu,email",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS only supports wechat_clawdbot,feishu/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("V1 production verification rejects auth token with Bearer prefix", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-auth-token-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "Bearer dummy-admin-token",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be the raw token without a Bearer prefix/);
+    assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("V1 production verification requires plural notification channels for full gate", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-channels-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNEL: "wechat_clawdbot,feishu",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("V1 production verification rejects unreplaced env template placeholders", () => {
+  const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      TOUCHX_SMOKE_AUTH_TOKEN: "__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__",
+      TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "__REPLACE_WITH_CLAWDBOT_WEBHOOK_TOKEN__",
+      TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+      SMOKE_REAL_PDF_PATH: "/absolute/path/real-schedule.pdf",
+      SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real value/);
+  assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real value/);
+  assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must be replaced with a real value/);
+  assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
+});
+
+test("V1 production verification requires an absolute real PDF path", () => {
+  const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+      TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+      TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+      TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+      SMOKE_BASE_URL: "http://127.0.0.1:9986",
+      SMOKE_REAL_PDF_PATH: "fixtures/real-schedule.pdf",
+      SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+      SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must be an absolute path/);
+  assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+});
+
+test("V1 production verification rejects unexpected CLI arguments", () => {
+  const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env", "extra"], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    env: process.env,
+  });
+
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Usage: .*verify-v1-production\.sh \[--check-env\]/);
+  assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+});
+
+test("V1 production verification can precheck env without network smoke", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-env-"));
+  const pdfPath = join(tempDir, "real-schedule.pdf");
+  writeFileSync(pdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [v1ProductionVerifyPath, "--check-env"], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        SMOKE_BASE_URL: "http://127.0.0.1:9986",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        SMOKE_REAL_PDF_MIN_ENTRIES: "8",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /ok V1 production verification inputs/);
+    assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
+    assert.doesNotMatch(result.stdout, /Cloudflare live resources/);
+    assert.doesNotMatch(result.stdout, /production API, auth, queue, and external delivery/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("V1 production verification rejects weak real PDF thresholds", () => {
@@ -287,6 +537,7 @@ test("V1 production verification env template avoids committing real smoke secre
   });
 
   assert.match(productionSmokeEnvExample, /\.env\.production-smoke\.local/);
+  assert.match(productionSmokeEnvExample, /check:v1-production-env/);
   assert.match(productionSmokeEnvExample, /__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__/);
   assert.match(productionSmokeEnvExample, /wechat_clawdbot,feishu/);
   assert.doesNotMatch(productionSmokeEnvExample, /txs1\./);
@@ -297,6 +548,7 @@ test("V1 production verification env template avoids committing real smoke secre
     assert.match(doc, /apps\/backend\/\.env\.production-smoke\.example/);
     assert.match(doc, /apps\/backend\/\.env\.production-smoke\.local/);
     assert.match(doc, /source apps\/backend\/\.env\.production-smoke\.local/);
+    assert.match(doc, /check:v1-production-env/);
   });
 });
 

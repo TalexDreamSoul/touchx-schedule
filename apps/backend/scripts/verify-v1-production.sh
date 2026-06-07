@@ -6,12 +6,53 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 cd "${ROOT_DIR}"
 source "${SCRIPT_DIR}/production-url-guard.sh"
 
+CHECK_ENV_ONLY=0
+if (( $# > 1 )); then
+  echo "Usage: $0 [--check-env]" >&2
+  exit 2
+fi
+case "${1:-}" in
+  "")
+    ;;
+  "--check-env")
+    CHECK_ENV_ONLY=1
+    ;;
+  *)
+    echo "Usage: $0 [--check-env]" >&2
+    exit 2
+    ;;
+esac
+
 missing=()
 
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
     missing+=("${name}")
+  fi
+}
+
+reject_placeholder_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" == __REPLACE_WITH_* || "${value}" == "/absolute/path/"* ]]; then
+    missing+=("${name} must be replaced with a real value")
+  fi
+}
+
+reject_bearer_prefix() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" == "Bearer "* || "${value}" == "bearer "* ]]; then
+    missing+=("${name} must be the raw token without a Bearer prefix")
+  fi
+}
+
+require_empty_or_one_flag() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" && "${value}" != "1" ]]; then
+    missing+=("${name} must be empty or 1")
   fi
 }
 
@@ -35,34 +76,52 @@ require_env "TOUCHX_SMOKE_STUDENT_NO"
 require_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
 require_env "SMOKE_REAL_PDF_PATH"
 require_env "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+reject_placeholder_env "TOUCHX_SMOKE_AUTH_TOKEN"
+reject_placeholder_env "TOUCHX_SMOKE_STUDENT_NO"
+reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
+reject_placeholder_env "SMOKE_REAL_PDF_PATH"
+reject_placeholder_env "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"
+require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"
 
 SMOKE_REAL_PDF_MIN_ENTRIES="${SMOKE_REAL_PDF_MIN_ENTRIES:-8}"
 SMOKE_REAL_PDF_EXPECT_STUDENT_NO="${SMOKE_REAL_PDF_EXPECT_STUDENT_NO:-${TOUCHX_SMOKE_STUDENT_NO:-}}"
 LOCAL_SMOKE_BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:9986}"
 PRODUCTION_SMOKE_BASE_URL="${TOUCHX_SMOKE_BASE_URL:-https://schedule-backend.tagzxia.com}"
 
-notification_channels="${TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-${TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-}}"
+notification_channels="${TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-}"
 if [[ -z "${notification_channels}" ]]; then
   missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu")
-fi
-
-normalized_notification_channels=",${notification_channels// /},"
-normalized_notification_channels="${normalized_notification_channels//,,/,}"
-if [[ "${normalized_notification_channels}" != *",wechat_clawdbot,"* ]]; then
-  missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS includes wechat_clawdbot")
-fi
-if [[ "${normalized_notification_channels}" != *",feishu,"* ]]; then
-  missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS includes feishu")
-fi
-for channel in ${notification_channels//,/ }; do
-  if [[ "${channel}" != "wechat_clawdbot" && "${channel}" != "feishu" ]]; then
-    missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS only supports wechat_clawdbot,feishu")
-    break
+else
+  has_wechat_clawdbot=0
+  has_feishu=0
+  for channel in ${notification_channels//,/ }; do
+    case "${channel}" in
+      "wechat_clawdbot")
+        has_wechat_clawdbot=1
+        ;;
+      "feishu")
+        has_feishu=1
+        ;;
+      *)
+        missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS only supports wechat_clawdbot,feishu")
+        break
+        ;;
+    esac
+  done
+  if [[ "${has_wechat_clawdbot}" != "1" ]]; then
+    missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS includes wechat_clawdbot")
   fi
-done
+  if [[ "${has_feishu}" != "1" ]]; then
+    missing+=("TOUCHX_SMOKE_NOTIFICATION_CHANNELS includes feishu")
+  fi
+fi
 
 if [[ -n "${SMOKE_REAL_PDF_PATH:-}" && ! -f "${SMOKE_REAL_PDF_PATH}" ]]; then
   missing+=("SMOKE_REAL_PDF_PATH exists: ${SMOKE_REAL_PDF_PATH}")
+fi
+if [[ -n "${SMOKE_REAL_PDF_PATH:-}" && "${SMOKE_REAL_PDF_PATH}" != /* ]]; then
+  missing+=("SMOKE_REAL_PDF_PATH must be an absolute path")
 fi
 if [[ ! "${SMOKE_REAL_PDF_MIN_ENTRIES}" =~ ^[0-9]+$ || "${SMOKE_REAL_PDF_MIN_ENTRIES}" -lt 8 ]]; then
   missing+=("SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8")
@@ -101,6 +160,11 @@ Optional hardening:
   TOUCHX_SMOKE_BASE_URL=https://...    Public HTTPS production backend URL; non-HTTPS, local, and private URLs are refused.
 EOF
   exit 1
+fi
+
+if (( CHECK_ENV_ONLY == 1 )); then
+  echo "ok V1 production verification inputs"
+  exit 0
 fi
 
 export SMOKE_REAL_PDF_MIN_ENTRIES

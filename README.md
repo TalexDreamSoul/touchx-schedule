@@ -88,6 +88,7 @@ V1 生产验收聚合 gate（需要真实生产 token、6-32 位数字真实学�
 cp apps/backend/.env.production-smoke.example apps/backend/.env.production-smoke.local
 # 填入真实值后执行；.env.production-smoke.local 已被 .gitignore 忽略
 set -a; source apps/backend/.env.production-smoke.local; set +a
+pnpm --filter @touchx/backend check:v1-production-env
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
