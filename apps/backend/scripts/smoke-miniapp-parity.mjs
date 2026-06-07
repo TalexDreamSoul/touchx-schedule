@@ -343,6 +343,8 @@ const assertManualSmokeChecklist = (file) => {
     "## Evidence To Record",
     "## Decision Rule",
     "pnpm verify:v1-release",
+    "pnpm --filter @touchx/microapp build:mp-weixin",
+    "apps/microapp/dist/build/mp-weixin",
     "WeChat DevTools",
     "First load",
     "Login and profile",
@@ -352,6 +354,7 @@ const assertManualSmokeChecklist = (file) => {
     "PDF import preview",
     "Notification binding",
     "Fallback route check",
+    "fallback route check",
     "Do not archive or replace `apps/microapp` unless every required manual scenario passes",
   ].forEach((needle) => assertContains(file, needle));
 };

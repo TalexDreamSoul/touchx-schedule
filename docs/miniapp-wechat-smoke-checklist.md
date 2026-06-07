@@ -6,6 +6,7 @@ Use this checklist before switching `apps/miniapp` from shadow route to primary 
 
 - Run `pnpm verify:v1-release` successfully.
 - Open `apps/miniapp/dist` in WeChat DevTools after `pnpm --filter @touchx/miniapp build:weapp`.
+- Open `apps/microapp/dist/build/mp-weixin` in WeChat DevTools after `pnpm --filter @touchx/microapp build:mp-weixin` when validating the fallback route from a fresh local build.
 - Use a backend environment that can register/login a test account and read/write calendar data.
 - Keep `apps/microapp` available as fallback during the same test window.
 
@@ -26,7 +27,7 @@ Use this checklist before switching `apps/miniapp` from shadow route to primary 
 
 - Date, tester, backend environment, and commit/branch identifier.
 - `pnpm verify:v1-release` terminal result.
-- WeChat DevTools screenshots for Today, Week, Sources, Profile, PDF preview, and notification binding.
+- WeChat DevTools screenshots for Today, Week, Sources, Profile, PDF preview, notification binding, and fallback route check.
 - Any failed scenario with observed error message and whether `apps/microapp` fallback still works.
 
 ## Decision Rule
