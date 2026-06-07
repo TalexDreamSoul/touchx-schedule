@@ -154,7 +154,7 @@ V1 本地收口 gate：
 pnpm --filter @touchx/backend verify:v1-local
 ```
 
-该 gate 包含 `smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries` 和 `smoke:data-boundaries`，会约束 `server/services/v1-api.ts` / `server/services/social-v1-api.ts` 的入口行数预算、模块委托边界和上传解析归属，也会检查后台页面继续复用 `NexusAdminShell` / `NexusDashboard`、不回流旧 `NexusConsole`，检查 `apps/miniapp` / `apps/mobile` 继续复用 `@touchx/api-client`，并固定 V1 阶段继续使用 D1 `nexus_state.payload` 严格持久化而不提前引入 PostgreSQL / Redis / Docker Compose，避免 V1 handler、后台 UI、端侧 API wrapper 或基础设施范围重新膨胀。
+该 gate 包含 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check、`smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries` 和 `smoke:data-boundaries`。这些检查会约束 `server/services/v1-api.ts` / `server/services/social-v1-api.ts` 的入口行数预算、模块委托边界和上传解析归属，也会检查后台页面继续复用 `NexusAdminShell` / `NexusDashboard`、不回流旧 `NexusConsole`，检查 `apps/miniapp` / `apps/mobile` 继续复用 `@touchx/api-client`，并固定 V1 阶段继续使用 D1 `nexus_state.payload` 严格持久化而不提前引入 PostgreSQL / Redis / Docker Compose，避免 V1 handler、后台 UI、端侧 API wrapper 或基础设施范围重新膨胀。
 
 V1 生产验收 gate（需要真实生产凭据和真实 PDF 样本）：
 

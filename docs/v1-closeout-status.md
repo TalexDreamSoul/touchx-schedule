@@ -57,7 +57,7 @@ pnpm --filter @touchx/miniapp build:weapp
 pnpm verify:v1-release
 ```
 
-`verify:v1-local` 覆盖 backend type-check、后端 node tests、共享包测试、miniapp/mobile type-check、API/admin/client/data/Cloudflare config boundary smoke、smoke 脚本语法和 `git diff --check`。
+`verify:v1-local` 覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp/mobile type-check、API/admin/client/data/Cloudflare config boundary smoke、smoke 脚本语法和 `git diff --check`。
 
 `verify:v1-release` 会先跑后端 V1 本地 gate，再跑 Taro 微信小程序构建，是推荐的本地 release-candidate 命令。
 
