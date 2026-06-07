@@ -892,9 +892,9 @@ apps/backend/server/modules/calendar/
 任务：
 
 - [ ] 今日 / 周视图覆盖真实 API 的 loading、empty、error、未登录、已登录状态。
-- [ ] 个人资料、通知绑定、PDF 导入和自定义日程源发布全部通过真实 API 闭环。
+- [x] 个人资料、通知绑定、PDF 导入和自定义日程源发布全部通过真实 API 闭环，并由 `smoke:miniapp-parity` 固化代码级 gate。
 - [ ] 对 `apps/microapp` 高频入口建立 Taro 对应页，不能覆盖的入口写入 V1 defer 决策。
-- [ ] 小程序主题统一从 `packages/ui-tokens` 映射出页面变量，端侧只保留微信小程序布局差异。
+- [x] 小程序主题统一从 `packages/ui-tokens` 映射出页面变量，端侧只保留微信小程序布局差异。
 - [ ] 每次替换判断前运行 `pnpm verify:v1-release` 并补一次 WeChat DevTools 手工 smoke。
 
 验收标准：

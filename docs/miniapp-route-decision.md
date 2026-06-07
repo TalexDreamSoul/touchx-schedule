@@ -27,7 +27,7 @@ Do not archive or replace `apps/microapp` during V1 closeout. The replacement de
 Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these gates:
 
 1. Today and week schedule flows use real Calendar API data and match the current production behavior for empty, loading, error, and authenticated states.
-2. Profile account, notification binding, PDF import, and custom calendar-source publishing are available through real API calls.
+2. Profile account, notification binding, PDF import, and custom calendar-source publishing are available through real API calls and are guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 3. Existing high-usage microapp routes have a Taro equivalent or an explicit V1 defer decision in `TODO.md`.
 4. `pnpm --filter @touchx/miniapp type-check` and `pnpm --filter @touchx/miniapp build:weapp` pass. For V1 release readiness, run `pnpm verify:v1-release` so the backend local gate and Taro build are checked together.
 5. Manual WeChat DevTools smoke covers first load, login, today, week, subscription, profile, PDF import, and notification binding.
@@ -37,7 +37,7 @@ Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these ga
 `apps/miniapp` should share semantics with React Native and Nexus, but keep a WeChat-native UI layer:
 
 - Use `@touchx/api-client` for all core API calls; do not reintroduce local `/api/v1` wrappers.
-- Map colors and event semantics from `packages/ui-tokens`; keep page-specific CSS variables only for WeChat layout, spacing, and component limitations.
+- Map colors and event semantics from `packages/ui-tokens`; miniapp page themes and event tones flow through `miniappPageThemeStyles`, while CSS keeps only WeChat layout, spacing, and component limitations.
 - Keep schedule, profile, import, notification, and social view-model logic close to shared packages or small app-level hooks; do not port uni-app page internals wholesale.
 - Treat `apps/microapp` as a behavior reference, not a visual template. Taro pages should match core states and outcomes while following the current TouchX low-saturation, tokenized theme.
 

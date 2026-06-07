@@ -20,6 +20,7 @@ import {
   type NotificationBindingRow,
   type PdfImportPreviewResult,
 } from "../../lib/api";
+import { miniappPageThemeStyles } from "../../lib/theme";
 
 type InputEvent = { detail: { value: string } };
 type SwitchEvent = { detail: { value: boolean } };
@@ -203,7 +204,7 @@ export default function ProfilePage() {
   useEffect(() => { void refreshMe(); }, []);
 
   return (
-    <View className="tx-page theme-green">
+    <View className="tx-page" style={miniappPageThemeStyles.green}>
       <View className="tx-safe-top">
         <Text className="tx-safe-title">我的</Text>
       </View>

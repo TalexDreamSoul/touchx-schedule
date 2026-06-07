@@ -94,6 +94,67 @@ export const calendarEventColors = {
   custom: "#64748b",
 } as const;
 
+export const miniappPageThemes = {
+  default: {
+    bg: touchxColors.light.background,
+    cardBg: touchxColors.light.card,
+    textMain: touchxColors.light.foreground,
+    textSub: touchxColors.light.mutedForeground,
+    line: touchxColors.light.border,
+    lineStrong: touchxColors.light.primary,
+    accent: calendarEventColors.course,
+    mutedBg: touchxColors.light.muted,
+    timeColBg: touchxColors.light.muted,
+    todayColBg: touchxColors.light.secondary,
+    todayHeadBg: touchxColors.light.border,
+    maskBg: "rgba(255, 255, 255, 0.72)",
+    glowPrimary: "rgba(22, 163, 74, 0.14)",
+    glowSecondary: "rgba(37, 99, 235, 0.12)",
+  },
+  green: {
+    bg: "#eef8f2",
+    cardBg: "#f9fffb",
+    textMain: touchxColors.light.foreground,
+    textSub: touchxColors.light.mutedForeground,
+    line: "#cde2d6",
+    lineStrong: calendarEventColors.activity,
+    accent: calendarEventColors.activity,
+    mutedBg: "#ebf9f0",
+    timeColBg: "#e6f3ea",
+    todayColBg: "#e2f8eb",
+    todayHeadBg: "#d4f2e0",
+    maskBg: "rgba(255, 255, 255, 0.72)",
+    glowPrimary: "rgba(22, 163, 74, 0.15)",
+    glowSecondary: "rgba(37, 99, 235, 0.10)",
+  },
+  purple: {
+    bg: "#f5f1ff",
+    cardBg: "#fcfaff",
+    textMain: touchxColors.light.foreground,
+    textSub: touchxColors.light.mutedForeground,
+    line: "#d9cfef",
+    lineStrong: calendarEventColors.todo,
+    accent: calendarEventColors.todo,
+    mutedBg: "#f5edff",
+    timeColBg: "#ede4fb",
+    todayColBg: "#f0e4ff",
+    todayHeadBg: "#eadbff",
+    maskBg: "rgba(255, 255, 255, 0.72)",
+    glowPrimary: "rgba(124, 58, 237, 0.14)",
+    glowSecondary: "rgba(37, 99, 235, 0.10)",
+  },
+} as const;
+
+export const miniappEventTones = {
+  course: { color: calendarEventColors.course, soft: "#e8edf7" },
+  exam: { color: calendarEventColors.exam, soft: "#fff0f0" },
+  todo: { color: calendarEventColors.todo, soft: "#f5edff" },
+  activity: { color: calendarEventColors.activity, soft: "#ebf9f0" },
+  holiday: { color: calendarEventColors.holiday, soft: "#fdf4e0" },
+  deadline: { color: calendarEventColors.deadline, soft: "#fdebe0" },
+  custom: { color: calendarEventColors.custom, soft: "#eff2f7" },
+} as const;
+
 export const iosLiquidGlassTokens = {
   materialBackground: "rgba(255, 255, 255, 0.62)",
   materialBackgroundDark: "rgba(20, 20, 20, 0.58)",

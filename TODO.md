@@ -114,8 +114,8 @@ packages/
 - [x] 保持 `apps/microapp` 不动，作为线上稳定版本和迁移参照。
 - [ ] Taro 稳定后，将 `apps/microapp` 归档或替换。
 - [x] RN App 接入共享包和新 Calendar API。
-- [ ] 将 `apps/miniapp` 主题变量逐步映射到 `packages/ui-tokens`，避免端侧颜色继续发散。
-- [ ] 为 `apps/miniapp` 补齐 profile、通知绑定、PDF 导入和自定义日程源发布 parity gates。
+- [x] 将 `apps/miniapp` 主题变量逐步映射到 `packages/ui-tokens`，避免端侧颜色继续发散。
+- [x] 为 `apps/miniapp` 补齐 profile、通知绑定、PDF 导入和自定义日程源发布 parity gates。
 - [ ] 评估学生端 Web/PWA 前，先完成 miniapp/RN 核心流程稳定和共享 API / token 收敛。
 
 ## V1 暂缓
@@ -141,13 +141,14 @@ packages/
 - `apps/backend/scripts/smoke-local.sh` 支持 `SMOKE_REAL_PDF_PATH` 真实 PDF 样本解析质量门禁，避免只验证伪 PDF 的错误终态。
 - `apps/backend/scripts/smoke-api-boundaries.mjs` 固化 `/api/v1` 入口边界：`v1-api.ts` 和 `social-v1-api.ts` 有行数预算，必须委托到 `server/modules/*`，且不能重新拥有 multipart 上传解析。
 - `apps/backend/scripts/smoke-admin-ui-boundaries.mjs` 固化后台 UI 边界：业务页必须复用 `NexusAdminShell` / `NexusDashboard`，共享 `.rx-*` 基础类只能在 shell 内定义，旧 `NexusConsole` 不能作为组件回流。
-- `apps/backend/scripts/smoke-client-boundaries.mjs` 固化端侧 API 边界：`apps/miniapp` 与 `apps/mobile` 必须继续复用 `@touchx/api-client` 与共享 base URL 解析，不能重新硬编码 `/api/v1` 或自建裸 `fetch` API wrapper。
+- `apps/backend/scripts/smoke-client-boundaries.mjs` 固化端侧 API / schedule / theme 边界：`apps/miniapp` 与 `apps/mobile` 必须继续复用 `@touchx/api-client`、共享 base URL 解析、共享课表默认值和 `calendarEventColors`；`apps/miniapp` 页面主题变量必须从 `packages/ui-tokens` 经 `miniappPageThemeStyles` 注入，不能重新硬编码 `/api/v1`、自建裸 `fetch` API wrapper 或本地事件色 class map。
+- `apps/backend/scripts/smoke-miniapp-parity.mjs` 固化 Taro 学生端代码级 parity：profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布、订阅/取消订阅必须继续通过 `apps/miniapp/src/lib/api.ts` 的真实 API helper 和页面状态闭环。
 - `apps/backend/scripts/smoke-data-boundaries.mjs` 固化 V1 数据/基础设施边界：D1 `nexus_state.payload` 仍是当前持久化模型，坏 payload 必须返回 503 而不是 bootstrap 覆盖；V1 收口阶段不得引入 PostgreSQL / Redis / Docker Compose 范围。
 - `apps/backend/scripts/smoke-cloudflare-config.mjs` 静态检查 `wrangler.toml` 的 D1/R2/Queue binding、queue producer/consumer、Cron 和 D1 migration 文件。
 - `apps/backend/scripts/smoke-cloudflare-live.mjs` 提供需要 Wrangler 登录的只读生产资源复核：D1/R2/Queue/Worker deployment 可见性与远端 D1 migration 未应用检查；不进入默认本地 gate。
 - `apps/backend/scripts/smoke-production.sh` 默认检查生产 bootstrap 管理员密码已初始化，并验证弱 fallback session token 被拒绝；提供管理员 token 后可校验 `/api/v1/admin/me`，`TOUCHX_SMOKE_AUTH_LOGOUT=1` 会在其他 opt-in 检查后执行会让 token 失效的 logout 撤销 smoke；提供 `TOUCHX_SMOKE_STUDENT_NO` 后可非破坏性复核生产旧学号登录仍返回 `legacy_student_no`；提供 `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE=1` 后可只读复核生产已有 `sourceQueue=notification` 的通用通知投递记录；提供 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 后可循环验证 ClawDBot / 飞书外部投递；提供 `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1` 和 webhook token 后可验证 ClawDBot webhook 入站链路。
 - `apps/backend/scripts/verify-v1-production.sh` 聚合 V1 生产验收：要求管理员 token、真实学生学号、真实 ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 样本与 Wrangler 登录态，先跑本地真实 PDF 解析 smoke，再串起 Cloudflare live 和生产 smoke；真实 PDF 默认要求至少 8 条课程且解析学号匹配真实学生号；`SMOKE_BASE_URL` 必须保持 localhost / 127.0.0.1，避免本地导入 smoke 误写生产数据；`TOUCHX_SMOKE_BASE_URL` 不能指向 localhost / 127.0.0.1 / 私网地址，避免把本地或内网 API 当作生产 API 验收；缺材料会直接失败，避免误把默认 smoke 当完整上线验收。
-- 最近通过的本地 gate：`pnpm --filter @touchx/backend verify:v1-local`，覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check、`smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries`、`smoke:data-boundaries`、`smoke:cloudflare-config`、`bash -n apps/backend/scripts/smoke-*.sh`、`git diff --check`；`pnpm --filter @touchx/miniapp build:weapp` 已通过，发版前可用根命令 `pnpm verify:v1-release` 串起本地 gate 和 Taro 小程序构建。
+- 最近通过的本地 gate：`pnpm --filter @touchx/backend verify:v1-local`，覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check、`smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries`、`smoke:miniapp-parity`、`smoke:data-boundaries`、`smoke:cloudflare-config`、`bash -n apps/backend/scripts/smoke-*.sh`、`git diff --check`；`pnpm --filter @touchx/miniapp build:weapp` 已通过，发版前可用根命令 `pnpm verify:v1-release` 串起本地 gate 和 Taro 小程序构建。
 
 ## 上线前环境验收
 

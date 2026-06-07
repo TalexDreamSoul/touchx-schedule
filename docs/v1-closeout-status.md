@@ -28,11 +28,14 @@ V1 收口聚焦在继续扩功能前先降低主要工程风险。当前基线�
 - 通知通道、绑定、投递、提醒规则和提醒候选行为已拆到 focused notification modules。
 - production smoke 已支持显式 opt-in 的 ClawDBot / 飞书真实外部投递，以及 ClawDBot webhook 入站链路。
 
-### 端侧 API 收敛
+### 端侧 API 与 token 收敛
 
 - `apps/miniapp` 和 `apps/mobile` 已复用 `@touchx/api-client` 作为共享 API 层。
 - API base URL 解析集中处理，支持运行时和环境变量覆盖，不再由各端维护独立硬编码 wrapper。
-- `smoke:client-boundaries` 防止 miniapp/mobile 重新复制 `/api/v1` wrapper 或自建裸 `fetch` API client。
+- `apps/miniapp` 和 `apps/mobile` 的课表默认学期、节次、星期和事件色复用 `@touchx/shared` / `@touchx/ui-tokens`。
+- `apps/miniapp` 页面主题变量由 `packages/ui-tokens` 的 miniapp page theme / event tone 映射输出，再通过 `miniappPageThemeStyles` 注入页面根节点。
+- `smoke:client-boundaries` 防止 miniapp/mobile 重新复制 `/api/v1` wrapper、自建裸 `fetch` API client、回流端侧 schedule 默认值或本地事件色/主题 class map。
+- `smoke:miniapp-parity` 防止 Taro profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布和订阅/取消订阅退回展示页或 mock 流程。
 
 ### 数据与基础设施护栏
 
@@ -57,7 +60,7 @@ pnpm --filter @touchx/miniapp build:weapp
 pnpm verify:v1-release
 ```
 
-`verify:v1-local` 覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp/mobile type-check、API/admin/client/data/Cloudflare config boundary smoke、smoke 脚本语法和 `git diff --check`。
+`verify:v1-local` 覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp/mobile type-check、API/admin/client/miniapp parity/data/Cloudflare config boundary smoke、smoke 脚本语法和 `git diff --check`。
 
 `verify:v1-release` 会先跑后端 V1 本地 gate，再跑 Taro 微信小程序构建，是推荐的本地 release-candidate 命令。
 

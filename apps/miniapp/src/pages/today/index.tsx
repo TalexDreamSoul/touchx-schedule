@@ -31,6 +31,7 @@ import {
   sortEvents,
   weekdayLabels,
 } from "../../lib/schedule";
+import { miniappPageThemeStyles } from "../../lib/theme";
 
 type InputEvent = { detail: { value: string } };
 type PickerEvent = { detail: { value: string | number } };
@@ -172,7 +173,7 @@ export default function TodayPage() {
   useEffect(() => { void load(); }, []);
 
   return (
-    <View className="tx-page theme-green">
+    <View className="tx-page" style={miniappPageThemeStyles.green}>
       <View className="tx-safe-top">
         <Text className="tx-safe-title">今日</Text>
       </View>

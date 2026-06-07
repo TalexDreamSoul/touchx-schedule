@@ -64,7 +64,7 @@ V1 本地收口 gate：
 pnpm --filter @touchx/backend verify:v1-local
 ```
 
-该 gate 会同时跑 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check，以及 `smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries`、`smoke:data-boundaries` 和 `smoke:cloudflare-config`。这些检查会防止 `/api/v1` 入口重新回到大 handler，防止后台页面绕过共享 Nexus shell 或回流旧 `NexusConsole`，防止 miniapp/mobile 重新复制 API wrapper，也防止 V1 收口阶段提前引入 PostgreSQL / Redis / Docker Compose。
+该 gate 会同时跑 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check，以及 `smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries`、`smoke:miniapp-parity`、`smoke:data-boundaries` 和 `smoke:cloudflare-config`。这些检查会防止 `/api/v1` 入口重新回到大 handler，防止后台页面绕过共享 Nexus shell 或回流旧 `NexusConsole`，防止 miniapp/mobile 重新复制 API wrapper 或端侧 schedule/theme token，防止 miniapp profile / 通知绑定 / PDF 导入 / 自定义日程源发布退回非真实 API 闭环，也防止 V1 收口阶段提前引入 PostgreSQL / Redis / Docker Compose。
 
 V1 发版前本地 gate（包含小程序构建）：
 

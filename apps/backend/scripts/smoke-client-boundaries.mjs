@@ -48,8 +48,42 @@ const assertUsesCalendarColorTokens = (file) => {
   assertNoRawEventColorMap(file);
 };
 
+const assertUsesMiniappThemeStyle = (file) => {
+  assertContains(file, "miniappPageThemeStyles");
+  assertNotContains(file, "theme-green");
+  assertNotContains(file, "theme-purple");
+  assert.ok(
+    /<View\b(?=[^>]*className="tx-page[^"]*")(?=[^>]*style=\{miniappPageThemeStyles\.)/.test(file.source),
+    `${file.absolutePath} must inject miniapp page theme CSS variables from apps/miniapp/src/lib/theme.ts`,
+  );
+};
+
+const assertMiniappStylesUseThemeVariables = (file) => {
+  assertNotContains(file, ".tx-page.theme-green {");
+  assertNotContains(file, ".tx-page.theme-purple {");
+  assert.ok(
+    !/\.event-(course|exam|todo|activity|holiday|deadline|custom)\s*\{[^}]*#[0-9a-fA-F]{3,8}/.test(file.source),
+    `${file.absolutePath} must not hardcode event swatches inside miniapp event classes`,
+  );
+  assertContains(file, "--event-course-color");
+  assertContains(file, "--event-exam-color");
+  assertContains(file, "--event-todo-color");
+  assertContains(file, "--event-activity-color");
+  assertContains(file, "--event-holiday-color");
+  assertContains(file, "--event-deadline-color");
+  assertContains(file, "--event-custom-color");
+};
+
 const miniappApi = readSource("apps/miniapp/src/lib/api.ts");
 const miniappSchedule = readSource("apps/miniapp/src/lib/schedule.ts");
+const miniappTheme = readSource("apps/miniapp/src/lib/theme.ts");
+const miniappStyles = readSource("apps/miniapp/src/styles/app.css");
+const miniappPages = [
+  readSource("apps/miniapp/src/pages/today/index.tsx"),
+  readSource("apps/miniapp/src/pages/week/index.tsx"),
+  readSource("apps/miniapp/src/pages/sources/index.tsx"),
+  readSource("apps/miniapp/src/pages/profile/index.tsx"),
+];
 const mobileApi = readSource("apps/mobile/src/api.ts");
 const mobileSchedule = readSource("apps/mobile/src/schedule.ts");
 const apiClient = readSource("packages/api-client/src/index.ts");
@@ -80,4 +114,12 @@ assertContains(apiClient, "createTouchXApiClient");
   assertUsesCalendarColorTokens(file);
 });
 
-console.log("ok client API and schedule boundary reuse for miniapp and mobile");
+assertContains(miniappTheme, "from \"@touchx/ui-tokens\"");
+assertContains(miniappTheme, "miniappPageThemes");
+assertContains(miniappTheme, "miniappEventTones");
+assertContains(miniappTheme, "miniappChromeTheme");
+assertContains(miniappTheme, "miniappPageThemeStyles");
+assertMiniappStylesUseThemeVariables(miniappStyles);
+miniappPages.forEach(assertUsesMiniappThemeStyle);
+
+console.log("ok client API, schedule and miniapp theme boundary reuse");

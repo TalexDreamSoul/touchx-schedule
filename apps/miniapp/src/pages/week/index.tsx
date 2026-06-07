@@ -28,6 +28,7 @@ import {
   termMeta,
   weekdayLabels,
 } from "../../lib/schedule";
+import { miniappPageThemeStyles } from "../../lib/theme";
 
 type PickerEvent = { detail: { value: string | number } };
 type InputEvent = { detail: { value: string } };
@@ -173,7 +174,7 @@ export default function WeekPage() {
     : { display: "none" };
 
   return (
-    <View className="tx-page theme-green tx-week-page" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+    <View className="tx-page tx-week-page" style={miniappPageThemeStyles.green} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <View className="tx-week-header">
         <Button className="tx-setting-btn" onClick={() => setShowSettings((value) => !value)}><View className="tx-gear-icon" /></Button>
         <View className="tx-week-center">

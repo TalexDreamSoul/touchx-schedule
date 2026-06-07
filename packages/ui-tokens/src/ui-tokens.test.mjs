@@ -9,6 +9,7 @@ const tokens = await bundleTsModule(join(repoRoot, "packages/ui-tokens/src/index
 });
 const hexColor = /^#[0-9a-f]{6}$/i;
 const rgbaColor = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(?:0|1|0?\.\d+)\s*\)$/;
+const colorToken = /^#[0-9a-f]{6}$|^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(?:0|1|0?\.\d+)\s*\)$/i;
 
 const assertAscendingPositiveNumbers = (values, label) => {
   let previous = 0;
@@ -56,6 +57,43 @@ test("calendar event colors cover every V1 event type with valid swatches", () =
   ]);
   for (const [eventType, value] of Object.entries(tokens.calendarEventColors)) {
     assert.match(value, hexColor, `${eventType} must use a hex swatch`);
+  }
+});
+
+test("miniapp page themes and event tones stay aligned with shared color tokens", () => {
+  const themeKeys = [
+    "bg",
+    "cardBg",
+    "textMain",
+    "textSub",
+    "line",
+    "lineStrong",
+    "accent",
+    "mutedBg",
+    "timeColBg",
+    "todayColBg",
+    "todayHeadBg",
+    "maskBg",
+    "glowPrimary",
+    "glowSecondary",
+  ];
+
+  assert.deepEqual(Object.keys(tokens.miniappPageThemes), ["default", "green", "purple"]);
+  for (const [themeName, theme] of Object.entries(tokens.miniappPageThemes)) {
+    assert.deepEqual(Object.keys(theme), themeKeys, `${themeName} must keep stable miniapp CSS variable keys`);
+    for (const [key, value] of Object.entries(theme)) {
+      assert.match(value, colorToken, `${themeName}.${key} must be a supported color token`);
+    }
+  }
+
+  assert.equal(tokens.miniappPageThemes.default.bg, tokens.touchxColors.light.background);
+  assert.equal(tokens.miniappPageThemes.default.cardBg, tokens.touchxColors.light.card);
+  assert.equal(tokens.miniappPageThemes.default.textMain, tokens.touchxColors.light.foreground);
+
+  assert.deepEqual(Object.keys(tokens.miniappEventTones), Object.keys(tokens.calendarEventColors));
+  for (const [eventType, tone] of Object.entries(tokens.miniappEventTones)) {
+    assert.equal(tone.color, tokens.calendarEventColors[eventType], `${eventType} tone color must reuse calendarEventColors`);
+    assert.match(tone.soft, hexColor, `${eventType} soft color must use a hex swatch`);
   }
 });
 

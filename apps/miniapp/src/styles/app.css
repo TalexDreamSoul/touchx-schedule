@@ -1,7 +1,7 @@
 page {
   min-height: 100%;
-  background: #f3f4f7;
-  color: #111111;
+  background: #fafafa;
+  color: #0a0a0a;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
 }
 
@@ -10,52 +10,30 @@ button::after {
 }
 
 .tx-page {
-  --bg: #f3f4f7;
+  --bg: #fafafa;
   --card-bg: #ffffff;
-  --text-main: #111111;
-  --text-sub: #5f5f5f;
-  --line: #d6d9e0;
-  --line-strong: #2c3445;
-  --accent: #2f55c8;
-  --muted-bg: #eff2f7;
-  --time-col-bg: #e8edf7;
-  --today-col-bg: #e6eaf1;
-  --today-head-bg: #dde2eb;
+  --text-main: #0a0a0a;
+  --text-sub: #737373;
+  --line: #e5e5e5;
+  --line-strong: #171717;
+  --accent: #2563eb;
+  --muted-bg: #f5f5f5;
+  --time-col-bg: #f5f5f5;
+  --today-col-bg: #f5f5f5;
+  --today-head-bg: #e5e5e5;
   --mask-bg: rgba(255, 255, 255, 0.72);
+  --glow-primary: rgba(22, 163, 74, 0.14);
+  --glow-secondary: rgba(37, 99, 235, 0.12);
   position: relative;
   min-height: 100vh;
   box-sizing: border-box;
   overflow: hidden;
   color: var(--text-main);
   background:
-    radial-gradient(circle at 18% 0%, rgba(19, 197, 106, 0.15), transparent 32%),
-    radial-gradient(circle at 88% 12%, rgba(47, 85, 200, 0.12), transparent 30%),
+    radial-gradient(circle at 18% 0%, var(--glow-primary), transparent 32%),
+    radial-gradient(circle at 88% 12%, var(--glow-secondary), transparent 30%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.58) 0%, rgba(255, 255, 255, 0.84) 34%, rgba(255, 255, 255, 0.96) 100%),
     var(--bg);
-}
-
-.tx-page.theme-purple {
-  --bg: #f5f1ff;
-  --card-bg: #fcfaff;
-  --muted-bg: #f5edff;
-  --line: #d9cfef;
-  --line-strong: #8e57de;
-  --accent: #a061ff;
-  --today-col-bg: #f0e4ff;
-  --today-head-bg: #eadbff;
-  --time-col-bg: #ede4fb;
-}
-
-.tx-page.theme-green {
-  --bg: #eef8f2;
-  --card-bg: #f9fffb;
-  --muted-bg: #ebf9f0;
-  --line: #cde2d6;
-  --line-strong: #159b57;
-  --accent: #13c56a;
-  --today-col-bg: #e2f8eb;
-  --today-head-bg: #d4f2e0;
-  --time-col-bg: #e6f3ea;
 }
 
 .tx-safe-top {
@@ -226,7 +204,7 @@ button::after {
   padding: 0 24rpx;
   margin: 0;
   background: var(--line-strong);
-  color: #ffffff;
+  color: var(--card-bg);
   font-size: 23rpx;
   font-weight: 600;
   border: none;
@@ -328,13 +306,13 @@ button::after {
   background: var(--accent);
 }
 
-.event-course { --event-color: #2f55c8; --event-soft: #e8edf7; }
-.event-exam { --event-color: #d24747; --event-soft: #fff0f0; }
-.event-todo { --event-color: #8e57de; --event-soft: #f5edff; }
-.event-activity { --event-color: #159b57; --event-soft: #ebf9f0; }
-.event-holiday { --event-color: #d9a511; --event-soft: #fdf4e0; }
-.event-deadline { --event-color: #cf6f17; --event-soft: #fdebe0; }
-.event-custom { --event-color: #64748b; --event-soft: #eff2f7; }
+.event-course { --event-color: var(--event-course-color); --event-soft: var(--event-course-soft); }
+.event-exam { --event-color: var(--event-exam-color); --event-soft: var(--event-exam-soft); }
+.event-todo { --event-color: var(--event-todo-color); --event-soft: var(--event-todo-soft); }
+.event-activity { --event-color: var(--event-activity-color); --event-soft: var(--event-activity-soft); }
+.event-holiday { --event-color: var(--event-holiday-color); --event-soft: var(--event-holiday-soft); }
+.event-deadline { --event-color: var(--event-deadline-color); --event-soft: var(--event-deadline-soft); }
+.event-custom { --event-color: var(--event-custom-color); --event-soft: var(--event-custom-soft); }
 
 .tx-event-card {
   position: relative;
@@ -755,11 +733,11 @@ button::after {
   height: 112rpx;
   border-radius: 30rpx;
   overflow: hidden;
-  background: linear-gradient(135deg, #2f55c8, #a061ff);
+  background: linear-gradient(135deg, var(--line-strong), var(--accent));
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
+  color: var(--card-bg);
   font-size: 40rpx;
   font-weight: 800;
 }
@@ -846,7 +824,7 @@ button::after {
   height: 320rpx;
   margin: 18rpx auto 4rpx;
   border-radius: 24rpx;
-  background: #ffffff;
+  background: var(--card-bg);
   border: 1rpx solid var(--line);
 }
 

@@ -19,6 +19,7 @@ run_step "mobile type-check" pnpm --filter "@touchx/mobile" type-check
 run_step "API boundary smoke" pnpm --filter "@touchx/backend" smoke:api-boundaries
 run_step "admin UI boundary smoke" pnpm --filter "@touchx/backend" smoke:admin-ui-boundaries
 run_step "client boundary smoke" pnpm --filter "@touchx/backend" smoke:client-boundaries
+run_step "miniapp parity smoke" pnpm --filter "@touchx/backend" smoke:miniapp-parity
 run_step "data boundary smoke" pnpm --filter "@touchx/backend" smoke:data-boundaries
 run_step "Cloudflare config smoke" pnpm --filter "@touchx/backend" smoke:cloudflare-config
 run_step "smoke script syntax" bash -n "apps/backend/scripts/smoke-production.sh" "apps/backend/scripts/smoke-local.sh" "apps/backend/scripts/verify-v1-production.sh"

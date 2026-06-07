@@ -19,6 +19,7 @@
     "smoke:api-boundaries": "node ./scripts/smoke-api-boundaries.mjs",
     "smoke:admin-ui-boundaries": "node ./scripts/smoke-admin-ui-boundaries.mjs",
     "smoke:client-boundaries": "node ./scripts/smoke-client-boundaries.mjs",
+    "smoke:miniapp-parity": "node ./scripts/smoke-miniapp-parity.mjs",
     "smoke:data-boundaries": "node ./scripts/smoke-data-boundaries.mjs",
     "smoke:cloudflare-config": "node ./scripts/smoke-cloudflare-config.mjs",
     "smoke:cloudflare-live": "node ./scripts/smoke-cloudflare-live.mjs",
