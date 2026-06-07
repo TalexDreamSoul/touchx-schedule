@@ -373,6 +373,28 @@ const assertReleaseGateScript = (packageJsonFile) => {
   ], `${packageJsonFile.absolutePath} verify:v1-release must guard backend, Taro build, and uni-app fallback build`);
 };
 
+const assertReleaseGateDocs = ({ readme, v1CloseoutStatus, calendarRoadmap }) => {
+  const files = [readme, v1CloseoutStatus, calendarRoadmap];
+  const sharedNeedles = [
+    "smoke:miniapp-parity",
+    "pnpm verify:v1-release",
+    "@touchx/miniapp build:weapp",
+    "@touchx/microapp type-check",
+    "@touchx/microapp build:mp-weixin",
+    "docs/miniapp-wechat-smoke-checklist.md",
+  ];
+
+  files.forEach((file) => {
+    sharedNeedles.forEach((needle) => assertContains(file, needle));
+  });
+
+  assertMatches(
+    calendarRoadmap,
+    /最近本地 gate：[\s\S]*`smoke:miniapp-parity`[\s\S]*`pnpm verify:v1-release`[\s\S]*`pnpm --filter @touchx\/microapp type-check`[\s\S]*`pnpm --filter @touchx\/microapp build:mp-weixin`/,
+    "must keep the roadmap closeout summary aligned with the release gate",
+  );
+};
+
 const api = readSource("apps/miniapp/src/lib/api.ts");
 const today = readSource("apps/miniapp/src/pages/today/index.tsx");
 const week = readSource("apps/miniapp/src/pages/week/index.tsx");
@@ -381,6 +403,9 @@ const sources = readSource("apps/miniapp/src/pages/sources/index.tsx");
 const microappPagesJson = readJson("apps/microapp/src/pages.json");
 const miniappDecisionDoc = readSource("docs/miniapp-route-decision.md");
 const manualSmokeChecklist = readSource("docs/miniapp-wechat-smoke-checklist.md");
+const readme = readSource("README.md");
+const v1CloseoutStatus = readSource("docs/v1-closeout-status.md");
+const calendarRoadmap = readSource("docs/touchx-calendar-platform-roadmap.md");
 const rootPackageJson = readJson("package.json");
 
 assertApiWrapperDelegates(api);
@@ -395,5 +420,6 @@ assertSourcePublishParity(sources);
 assertMicroappRouteCoverage(miniappDecisionDoc, microappPagesJson);
 assertManualSmokeChecklist(manualSmokeChecklist);
 assertReleaseGateScript(rootPackageJson);
+assertReleaseGateDocs({ readme, v1CloseoutStatus, calendarRoadmap });
 
 console.log("ok miniapp schedule, route coverage, release gate, manual smoke checklist, profile, notification, PDF import and custom source parity gates");

@@ -62,7 +62,7 @@ pnpm verify:v1-release
 
 `verify:v1-local` 覆盖 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp/mobile type-check、API/admin/client/miniapp parity/data/Cloudflare config boundary smoke、smoke 脚本语法和 `git diff --check`。
 
-`verify:v1-release` 会先跑后端 V1 本地 gate，再跑 Taro 微信小程序构建、uni-app fallback type-check 和 uni-app 微信小程序构建，是推荐的本地 release-candidate 命令。替换或归档 `apps/microapp` 前还必须按 `docs/miniapp-wechat-smoke-checklist.md` 补 WeChat DevTools 手工 smoke。
+`verify:v1-release` 会先跑后端 V1 本地 gate，再跑 `@touchx/miniapp build:weapp`、`@touchx/microapp type-check` 和 `@touchx/microapp build:mp-weixin`，是推荐的本地 release-candidate 命令。替换或归档 `apps/microapp` 前还必须按 `docs/miniapp-wechat-smoke-checklist.md` 补 WeChat DevTools 手工 smoke。
 
 ## 仍需生产验收
 
