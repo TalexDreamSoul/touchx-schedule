@@ -22,7 +22,7 @@ run_step "client boundary smoke" pnpm --filter "@touchx/backend" smoke:client-bo
 run_step "miniapp parity smoke" pnpm --filter "@touchx/backend" smoke:miniapp-parity
 run_step "data boundary smoke" pnpm --filter "@touchx/backend" smoke:data-boundaries
 run_step "Cloudflare config smoke" pnpm --filter "@touchx/backend" smoke:cloudflare-config
-run_step "smoke script syntax" bash -n "apps/backend/scripts/smoke-production.sh" "apps/backend/scripts/smoke-local.sh" "apps/backend/scripts/verify-v1-production.sh"
+run_step "smoke script syntax" bash -n "apps/backend/scripts/smoke-production.sh" "apps/backend/scripts/smoke-local.sh" "apps/backend/scripts/verify-v1-production.sh" "apps/backend/scripts/production-url-guard.sh"
 run_step "diff whitespace check" git diff --check
 
 echo "ok V1 local verification gate"

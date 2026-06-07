@@ -14,6 +14,10 @@ const cloudflareLiveSmokePath = join(import.meta.dirname, "../../scripts/smoke-c
 const cloudflareLiveSmoke = readFileSync(cloudflareLiveSmokePath, "utf8");
 const v1ProductionVerifyPath = join(import.meta.dirname, "../../scripts/verify-v1-production.sh");
 const v1ProductionVerify = readFileSync(v1ProductionVerifyPath, "utf8");
+const v1LocalVerifyPath = join(import.meta.dirname, "../../scripts/verify-v1-local.sh");
+const v1LocalVerify = readFileSync(v1LocalVerifyPath, "utf8");
+const productionUrlGuardPath = join(import.meta.dirname, "../../scripts/production-url-guard.sh");
+const productionUrlGuard = readFileSync(productionUrlGuardPath, "utf8");
 const smokeLocalPath = join(import.meta.dirname, "../../scripts/smoke-local.sh");
 const smokeLocal = readFileSync(smokeLocalPath, "utf8");
 const apiBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-api-boundaries.mjs");
@@ -65,9 +69,8 @@ test("production smoke can opt into notification queue mode verification", () =>
 });
 
 test("production smoke refuses non-production base URLs before network checks", () => {
-  assert.match(script, /is_non_production_smoke_url\(\)/);
-  assert.match(script, /urlsplit/);
-  assert.match(script, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
+  assert.match(script, /if is_non_production_smoke_url "\$\{BASE_URL\}"; then/);
+  assert.match(script, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
   assert.match(script, /public HTTPS production API for smoke:production/);
 
   [
@@ -94,6 +97,21 @@ test("production smoke refuses non-production base URLs before network checks", 
       baseUrl,
     );
   });
+});
+
+test("production URL guard stays shared and parser-based", () => {
+  [script, v1ProductionVerify].forEach((source) => {
+    assert.match(source, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
+    assert.doesNotMatch(source, /from urllib\.parse import urlsplit/);
+  });
+  assert.match(v1LocalVerify, /production-url-guard\.sh/);
+  assert.match(productionUrlGuard, /urlsplit/);
+  assert.match(productionUrlGuard, /parsed\.hostname/);
+  assert.match(productionUrlGuard, /parsed\.scheme != "https"/);
+  assert.match(productionUrlGuard, /ipaddress\.ip_network\("169\.254\.0\.0\/16"\)/);
+  assert.match(productionUrlGuard, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
+  assert.match(productionUrlGuard, /ipaddress\.ip_network\("fc00::\/7"\)/);
+  assert.match(productionUrlGuard, /ipaddress\.ip_network\("fe80::\/10"\)/);
 });
 
 test("Cloudflare config smoke covers required bindings and migrations", () => {
@@ -135,16 +153,10 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /LOCAL_SMOKE_BASE_URL="\$\{SMOKE_BASE_URL:-http:\/\/127\.0\.0\.1:9986\}"/);
   assert.match(v1ProductionVerify, /PRODUCTION_SMOKE_BASE_URL="\$\{TOUCHX_SMOKE_BASE_URL:-https:\/\/schedule-backend\.tagzxia\.com\}"/);
   assert.match(v1ProductionVerify, /is_local_smoke_url\(\)/);
-  assert.match(v1ProductionVerify, /is_non_production_smoke_url\(\)/);
-  assert.match(v1ProductionVerify, /urlsplit/);
-  assert.match(v1ProductionVerify, /parsed\.hostname/);
+  assert.match(v1ProductionVerify, /if is_non_production_smoke_url "\$\{PRODUCTION_SMOKE_BASE_URL\}"; then/);
+  assert.match(v1ProductionVerify, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
   assert.match(v1ProductionVerify, /http:\/\/127\.0\.0\.1:"\*/);
   assert.match(v1ProductionVerify, /http:\/\/localhost:"\*/);
-  assert.match(v1ProductionVerify, /parsed\.scheme != "https"/);
-  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("169\.254\.0\.0\/16"\)/);
-  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
-  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("fc00::\/7"\)/);
-  assert.match(v1ProductionVerify, /ipaddress\.ip_network\("fe80::\/10"\)/);
   assert.match(v1ProductionVerify, /require_student_no\(\)/);
   assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
   assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
