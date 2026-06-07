@@ -23,6 +23,7 @@ try:
 except ValueError:
   sys.exit(1)
 
+ip = getattr(ip, "ipv4_mapped", None) or ip
 blocked_networks = [
   ipaddress.ip_network("127.0.0.0/8"),
   ipaddress.ip_network("0.0.0.0/32"),

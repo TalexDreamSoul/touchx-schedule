@@ -240,11 +240,11 @@ pnpm --filter @touchx/backend smoke:production
 - `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO`：校验生产 bootstrap 管理员账号/学号是否符合预期。
 - `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD`：额外用于生成弱 fallback session token 的候选管理员密码；脚本始终检查默认 `fallback:123456`。
 - `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=1`：跳过弱 fallback session token 拒绝检查，仅用于临时排障；完整生产聚合 gate 会拒绝该变量，不能用于 V1 生产验收。
-- `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。
+- `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。必须是原始 token，不能带 `Bearer` 前缀、空白字符或 dummy/example 值。
 - `TOUCHX_SMOKE_AUTH_LOGOUT=1`：额外验证 admin logout 撤销当前 token。该检查会让传入 token 失效，默认关闭；完整生产预检只接受空值或 `1`。
 - `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式；完整生产验收要求 6-32 位数字。
 - `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1`：显式开启真实 ClawDBot webhook 入站 smoke；该检查会发送不 commit 的测试消息并要求至少解析出一个候选。
-- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。不能包含空白字符或 dummy/example 值。
 - `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT`：ClawDBot webhook smoke 文本，留空时使用默认 `周三下午3点复习数据结构`。
 - `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE=1`：可选只读检查；需要管理员 token，验证生产已有 `sourceQueue=notification` 的通用通知投递记录。
 - `TOUCHX_SMOKE_EXTERNAL_DELIVERY=1`：显式开启真实外部通知投递 smoke。

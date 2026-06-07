@@ -39,12 +39,14 @@ const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../doc
 const productionSmokeEnvExample = readFileSync(join(import.meta.dirname, "../../.env.production-smoke.example"), "utf8");
 const rootGitignore = readFileSync(join(import.meta.dirname, "../../../../.gitignore"), "utf8");
 const backendRoot = join(import.meta.dirname, "../../..");
+const validProductionAuthToken = "production-admin-token-value";
+const validClawdbotWebhookToken = "production-clawdbot-webhook-token-value";
 
 const productionPrecheckEnv = (overrides = {}) => ({
   ...process.env,
-  TOUCHX_SMOKE_AUTH_TOKEN: "production-admin-token-value",
+  TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
   TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "production-clawdbot-webhook-token-value",
+  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
   TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
   TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
   SMOKE_BASE_URL: "http://127.0.0.1:9986",
@@ -90,6 +92,9 @@ const classifyProductionUrl = (baseUrl) =>
   );
 
 test("production smoke rejects weak fallback session secrets by default", () => {
+  assert.match(script, /reject_raw_token_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(script, /reject_raw_token_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
+  assert.match(script, /reject_known_nonproduction_env\(\)/);
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
   assert.match(script, /fallback:123456/);
@@ -99,6 +104,32 @@ test("production smoke rejects weak fallback session secrets by default", () => 
   assert.match(script, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK/);
   assert.match(script, /expected 401 for weak fallback session token/);
   assert.match(script, /request_admin_bootstrap_status[\s\S]*request_session_secret_security[\s\S]*request_protected/);
+});
+
+test("production smoke rejects malformed supplied tokens before network checks", () => {
+  [
+    {
+      env: { TOUCHX_SMOKE_AUTH_TOKEN: "Bearer production-token-value" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be the raw token without a Bearer prefix/,
+    },
+    {
+      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret" },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
 });
 
 test("production smoke leaves token revocation until other opt-in checks finish", () => {
@@ -137,6 +168,7 @@ test("production smoke refuses non-production base URLs before network checks", 
     "https://192.168.2.1",
     "https://schedule-backend.tagzxia.com@192.168.2.1",
     "https://prod.example@100.64.0.1",
+    "https://[::ffff:192.168.2.1]",
     "https://[FD00::1]",
     "https://prod.example@[FD00::1]",
   ].forEach((baseUrl) => {
@@ -166,6 +198,7 @@ test("production URL guard stays shared and parser-based", () => {
   assert.match(productionUrlGuard, /urlsplit/);
   assert.match(productionUrlGuard, /parsed\.hostname/);
   assert.match(productionUrlGuard, /parsed\.scheme != "https"/);
+  assert.match(productionUrlGuard, /getattr\(ip, "ipv4_mapped", None\) or ip/);
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("169\.254\.0\.0\/16"\)/);
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
   assert.match(productionUrlGuard, /ipaddress\.ip_network\("fc00::\/7"\)/);
@@ -186,6 +219,7 @@ test("production URL guard allows public HTTPS hosts and blocks unsafe parsed ho
     "https://localhost",
     "https://127.0.0.1:9986",
     "https://schedule-backend.tagzxia.com@192.168.2.1",
+    "https://[::ffff:192.168.2.1]",
     "https://prod.example@[FD00::1]",
     "https://[bad",
   ].forEach((baseUrl) => {
@@ -471,9 +505,9 @@ test("V1 production verification rejects weak real PDF thresholds", () => {
     encoding: "utf8",
     env: {
       ...process.env,
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
       TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
       TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
       SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
       SMOKE_REAL_PDF_MIN_ENTRIES: "1",
@@ -490,9 +524,9 @@ test("V1 production verification rejects malformed student numbers before networ
     encoding: "utf8",
     env: {
       ...process.env,
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
       TOUCHX_SMOKE_STUDENT_NO: "student-2305100613",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
       TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
       SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
       SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "import-student",
@@ -568,9 +602,9 @@ test("V1 production verification keeps local PDF smoke off production URLs", () 
     encoding: "utf8",
     env: {
       ...process.env,
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
       TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
       TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
       SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
       SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
@@ -590,9 +624,9 @@ test("local smoke URL checks require localhost host boundaries", () => {
       encoding: "utf8",
       env: {
         ...process.env,
-        TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
         TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
         TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
         SMOKE_BASE_URL: baseUrl,
         SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
@@ -610,9 +644,9 @@ test("V1 production verification keeps production smoke off local URLs", () => {
     encoding: "utf8",
     env: {
       ...process.env,
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
       TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
       TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
       TOUCHX_SMOKE_BASE_URL: "http://127.0.0.1:9986",
       SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
@@ -635,6 +669,7 @@ test("V1 production verification keeps production smoke off private network URLs
     "https://schedule-backend.tagzxia.com@10.0.0.8",
     "https://schedule-backend.tagzxia.com@192.168.2.1",
     "https://prod.example@100.64.0.1",
+    "https://[::ffff:192.168.2.1]",
     "http://[::1]:9986",
     "https://[fd00::1]",
     "https://[FD00::1]",
@@ -647,9 +682,9 @@ test("V1 production verification keeps production smoke off private network URLs
       encoding: "utf8",
       env: {
         ...process.env,
-        TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
         TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
         TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
         TOUCHX_SMOKE_BASE_URL: baseUrl,
         SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
@@ -699,9 +734,9 @@ test("V1 production verification rejects single-channel external delivery", () =
     encoding: "utf8",
     env: {
       ...process.env,
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+      TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
       TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
       TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot",
       SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
       SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",

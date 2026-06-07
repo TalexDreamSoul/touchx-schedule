@@ -14,6 +14,36 @@ if is_non_production_smoke_url "${BASE_URL}"; then
   exit 1
 fi
 
+reject_known_nonproduction_env() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return
+  case "${value}" in
+    "dummy" | "dummy-admin-token" | "dummy-webhook-secret" | "webhook-secret" | "test-token" | "test-secret" | "example-token" | "example-secret")
+      echo "${name} must be replaced with a real production value" >&2
+      exit 1
+      ;;
+  esac
+}
+
+reject_raw_token_env() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return
+  if [[ "${value}" == "Bearer "* || "${value}" == "bearer "* ]]; then
+    echo "${name} must be the raw token without a Bearer prefix" >&2
+    exit 1
+  fi
+  if [[ "${value}" =~ [[:space:]] ]]; then
+    echo "${name} must not contain whitespace" >&2
+    exit 1
+  fi
+  reject_known_nonproduction_env "${name}"
+}
+
+reject_raw_token_env "TOUCHX_SMOKE_AUTH_TOKEN"
+reject_raw_token_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
+
 request() {
   local path="$1"
   curl --fail --silent --show-error --max-time 15 "${BASE_URL}${path}" >"${RESPONSE_FILE}"
