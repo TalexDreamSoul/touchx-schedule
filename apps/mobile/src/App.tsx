@@ -26,6 +26,7 @@ import {
   getCalendarSettings,
   getSessionToken,
   getStoredUser,
+  getTodayBrief,
   listCalendarSources,
   listMyCalendarSubscriptions,
   listMyEffectiveCalendar,
@@ -68,16 +69,19 @@ import {
   getTodayInfo,
   isArchivedPersonalEvent,
   isDonePersonalEvent,
+  isEventFutureOrOngoing,
   priorityLabel,
   resolveDateByWeekday,
   resolveGreeting,
   sectionTimes,
   sortEvents,
+  syncServerOffsetFromIso,
   weekdayLabels,
 } from "./schedule";
 import { NativeLiquidTabBar, isNativeLiquidTabBarAvailable } from "./NativeLiquidTabBar";
 import { exportScheduleToSystemCalendar, hapticImpact, hapticNotification, hapticSelection, notifyNativeAuthState, pushNativeScreen, requestScheduleNotificationPermission, smoothLayout, subscribeAuthState, syncScheduleWithSystem } from "./nativeUX";
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
+import { calendarEventTones, mobileNativeTheme } from "@touchx/ui-tokens";
 
 type TabKey = "today" | "schedule" | "profile";
 type ProfileRoute = "main" | "subscriptions";
@@ -98,40 +102,26 @@ const tabItems: Array<{ key: TabKey; label: string }> = [
   { key: "profile", label: "我的" },
 ];
 
-const colors = {
-  background: "#f3f4f7",
-  groupedBackground: "#f2f2f7",
-  card: "#ffffff",
-  muted: "#eff2f7",
-  text: "#111111",
-  subText: "#6b6b70",
-  secondaryText: "#8e8e93",
-  line: "#d6d9e0",
-  separator: "#d1d1d6",
-  strongLine: "#2c3445",
-  accent: "#2f55c8",
-  green: "#159b57",
-  red: "#ff3b30",
-};
+const colors = mobileNativeTheme;
 
 const eventTypeSoftColors: Record<string, string> = {
-  course: "#e8edf7",
-  exam: "#fff0f0",
-  todo: "#f5edff",
-  activity: "#ebf9f0",
-  holiday: "#fdf4e0",
-  deadline: "#fdebe0",
-  custom: "#eff2f7",
+  course: calendarEventTones.course.soft,
+  exam: calendarEventTones.exam.soft,
+  todo: calendarEventTones.todo.soft,
+  activity: calendarEventTones.activity.soft,
+  holiday: calendarEventTones.holiday.soft,
+  deadline: calendarEventTones.deadline.soft,
+  custom: calendarEventTones.custom.soft,
 };
 
 const eventTypeBorderColors: Record<string, string> = {
-  course: "#cdd7f2",
-  exam: "#f2cccc",
-  todo: "#ddd0f4",
-  activity: "#cce8d6",
-  holiday: "#efe0bc",
-  deadline: "#edcfbb",
-  custom: "#d6d9e0",
+  course: calendarEventTones.course.border,
+  exam: calendarEventTones.exam.border,
+  todo: calendarEventTones.todo.border,
+  activity: calendarEventTones.activity.border,
+  holiday: calendarEventTones.holiday.border,
+  deadline: calendarEventTones.deadline.border,
+  custom: calendarEventTones.custom.border,
 };
 
 const resolveTabKey = (value?: string): TabKey => {
@@ -287,7 +277,7 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: MiniappUser) => void }
           style={styles.loginInput}
         />
         <Pressable style={[styles.loginButton, loading ? styles.disabledButton : undefined]} onPress={submitLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.loginButtonText}>{mode === "register" ? "注册并进入 App" : "登录并进入 App"}</Text>}
+          {loading ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.loginButtonText}>{mode === "register" ? "注册并进入 App" : "登录并进入 App"}</Text>}
         </Pressable>
       </FadeInView>
     </KeyboardAvoidingView>
@@ -296,7 +286,7 @@ function LoginScreen({ onLoggedIn }: { onLoggedIn: (user: MiniappUser) => void }
 
 function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: number; edgeToEdge?: boolean }) {
   const insets = useSafeAreaInsets();
-  const todayInfo = useMemo(() => getTodayInfo(), []);
+  const [todayInfo, setTodayInfo] = useState(() => getTodayInfo());
   const [events, setEvents] = useState<EffectiveCalendarItem[]>([]);
   const [todos, setTodos] = useState<PersonalEventRow[]>([]);
   const [message, setMessage] = useState("正在加载真实日程…");
@@ -306,10 +296,23 @@ function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: num
   const sortedEvents = useMemo(() => sortEvents(events), [events]);
   const todayCourses = sortedEvents.filter((event) => getEventType(event) === "course");
   const otherEvents = sortedEvents.filter((event) => getEventType(event) !== "course");
-  const pendingCourses = todayCourses.slice(0, 6);
+  const pendingCourses = todayCourses.filter((event) => isEventFutureOrOngoing(event, todayInfo.date)).slice(0, 6);
   const todaySectionLoad = todayCourses.reduce((sum, item) => sum + Math.max(1, Number(item.endSection || item.startSection || 1) - Number(item.startSection || 1) + 1), 0);
 
+  const syncServerClock = async () => {
+    try {
+      const brief = await getTodayBrief();
+      syncServerOffsetFromIso(brief.serverNowIso);
+    } catch {
+      // Keep the last known offset when the calibration endpoint is unavailable.
+    }
+    const nextTodayInfo = getTodayInfo();
+    setTodayInfo(nextTodayInfo);
+    return nextTodayInfo;
+  };
+
   const load = async () => {
+    const nextTodayInfo = await syncServerClock();
     if (!getSessionToken()) {
       setEvents([]);
       setTodos([]);
@@ -319,7 +322,7 @@ function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: num
     setLoading(true);
     try {
       const [calendar, personal] = await Promise.all([
-        listMyEffectiveCalendar({ date: todayInfo.dateKey }),
+        listMyEffectiveCalendar({ date: nextTodayInfo.dateKey }),
         listPersonalEvents(),
       ]);
       const activeTodos = (personal.items || []).filter((item) => !isDonePersonalEvent(item) && !isArchivedPersonalEvent(item));
@@ -327,7 +330,7 @@ function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: num
       setEvents(calendar.items || []);
       setTodos(activeTodos);
       setMessage(`今天 ${calendar.items?.length || 0} 条日程，${activeTodos.length} 个待办`);
-      void syncScheduleWithSystem(calendar.items || [], { week: todayInfo.week });
+      void syncScheduleWithSystem(calendar.items || [], { week: nextTodayInfo.week });
     } catch (error) {
       setEvents([]);
       setTodos([]);
@@ -414,7 +417,7 @@ function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: num
     >
       <View style={styles.greetingRow}>
         <View style={styles.greetingCopy}>
-          <Text style={styles.greeting}>{resolveGreeting()}</Text>
+          <Text style={styles.greeting}>{resolveGreeting(todayInfo.date)}</Text>
           <Text style={styles.greetingSub}>第 {todayInfo.week} 周 · 周{todayInfo.weekdayLabel} · {todayInfo.dateKey}</Text>
         </View>
         <Pressable style={styles.roundIcon} onPress={() => {
@@ -501,7 +504,8 @@ function TodayScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: num
 
 function ScheduleScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: number; edgeToEdge?: boolean }) {
   const insets = useSafeAreaInsets();
-  const todayInfo = useMemo(() => getTodayInfo(), []);
+  const alignedServerWeekRef = useRef(false);
+  const [todayInfo, setTodayInfo] = useState(() => getTodayInfo());
   const [week, setWeek] = useState(todayInfo.week);
   const [events, setEvents] = useState<EffectiveCalendarItem[]>([]);
   const [message, setMessage] = useState("正在加载周日程…");
@@ -513,7 +517,24 @@ function ScheduleScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: 
   const [reminderOffsets, setReminderOffsets] = useState("30,15");
   const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null);
 
-  const load = async (targetWeek = week) => {
+  const syncServerClock = async () => {
+    try {
+      const brief = await getTodayBrief();
+      syncServerOffsetFromIso(brief.serverNowIso);
+    } catch {
+      // Keep the last known offset when the calibration endpoint is unavailable.
+    }
+    const nextTodayInfo = getTodayInfo();
+    setTodayInfo(nextTodayInfo);
+    return nextTodayInfo;
+  };
+
+  const load = async (targetWeek = week, options: { alignWithServerWeek?: boolean } = {}) => {
+    const nextTodayInfo = await syncServerClock();
+    const resolvedWeek = options.alignWithServerWeek ? nextTodayInfo.week : targetWeek;
+    if (options.alignWithServerWeek) {
+      setWeek(resolvedWeek);
+    }
     if (!getSessionToken()) {
       setEvents([]);
       setMessage(loginHint);
@@ -522,7 +543,7 @@ function ScheduleScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: 
     setLoading(true);
     try {
       const [data, settings] = await Promise.all([
-        listMyEffectiveCalendar({ week: targetWeek }),
+        listMyEffectiveCalendar({ week: resolvedWeek }),
         getCalendarSettings().catch(() => null),
       ]);
       smoothLayout();
@@ -531,8 +552,8 @@ function ScheduleScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: 
         setReminderEnabled(Boolean(settings.reminderEnabled ?? true));
         setReminderOffsets((settings.reminderWindowMinutes || [30, 15]).join(","));
       }
-      setMessage(`第 ${data.week || targetWeek} 周 ${data.items?.length || 0} 条日程`);
-      void syncScheduleWithSystem(data.items || [], { week: data.week || targetWeek });
+      setMessage(`第 ${data.week || resolvedWeek} 周 ${data.items?.length || 0} 条日程`);
+      void syncScheduleWithSystem(data.items || [], { week: data.week || resolvedWeek });
     } catch (error) {
       setEvents([]);
       setMessage(error instanceof Error ? error.message : "加载失败");
@@ -541,7 +562,11 @@ function ScheduleScreen({ refreshSignal, edgeToEdge = false }: { refreshSignal: 
     }
   };
 
-  useEffect(() => { void load(week); }, [refreshSignal]);
+  useEffect(() => {
+    const alignWithServerWeek = !alignedServerWeekRef.current;
+    alignedServerWeekRef.current = true;
+    void load(week, { alignWithServerWeek });
+  }, [refreshSignal]);
 
   const sortedEvents = useMemo(() => sortEvents(events), [events]);
   const byCell = useMemo(() => {
@@ -1347,7 +1372,7 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   loginMarkText: {
-    color: "#ffffff",
+    color: colors.onAccent,
     fontSize: 30,
     fontWeight: "900",
   },
@@ -1382,7 +1407,7 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   loginButtonText: {
-    color: "#ffffff",
+    color: colors.onAccent,
     fontSize: 16,
     fontWeight: "800",
   },
@@ -1621,7 +1646,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   primaryButtonText: {
-    color: "#ffffff",
+    color: colors.onAccent,
     fontSize: 14,
     fontWeight: "800",
   },
@@ -1647,7 +1672,7 @@ const styles = StyleSheet.create({
     gap: 8,
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "#f5edff",
+    backgroundColor: eventTypeSoftColors.todo,
   },
   todoMain: { flex: 1, minWidth: 0 },
   todoTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
@@ -1721,7 +1746,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   switchPillActive: {
-    backgroundColor: "#dff7e9",
+    backgroundColor: colors.successSoft,
   },
   switchPillText: {
     color: colors.text,
@@ -1818,7 +1843,7 @@ const styles = StyleSheet.create({
   tableRow: { minHeight: 74, flexDirection: "row" },
   timeCol: {
     width: 58,
-    backgroundColor: "#e8edf7",
+    backgroundColor: eventTypeSoftColors.course,
     alignItems: "center",
     justifyContent: "center",
     padding: 4,
@@ -1832,7 +1857,7 @@ const styles = StyleSheet.create({
   },
   headCell: { backgroundColor: colors.muted },
   headText: { color: colors.text, fontSize: 12, fontWeight: "800" },
-  todayColumn: { backgroundColor: "#eaf8f0" },
+  todayColumn: { backgroundColor: colors.todayColumn },
   todayHeadText: { color: colors.green },
   sectionNo: { color: colors.text, fontSize: 13, fontWeight: "800" },
   sectionTime: { marginTop: 2, color: colors.subText, fontSize: 10 },
@@ -2018,7 +2043,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.muted,
   },
   subscribeButtonText: {
-    color: "#ffffff",
+    color: colors.onAccent,
     fontSize: 13,
     fontWeight: "700",
   },

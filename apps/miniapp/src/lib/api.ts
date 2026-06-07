@@ -9,6 +9,7 @@ import type {
   PersonalEventRow,
   ReminderRuleRow,
   TouchXAuthSession,
+  TouchXTodayBrief,
   TouchXUser,
 } from "@touchx/api-client";
 
@@ -27,7 +28,7 @@ export interface MiniappApiEnvelope<T> {
 
 export type MiniappUser = TouchXUser;
 export type AuthSession = TouchXAuthSession;
-export type { CalendarSourceRow, CalendarSubscriptionRow, EffectiveCalendarItem, NotificationBindingRow, PersonalEventRow, ReminderRuleRow };
+export type { CalendarSourceRow, CalendarSubscriptionRow, EffectiveCalendarItem, NotificationBindingRow, PersonalEventRow, ReminderRuleRow, TouchXTodayBrief };
 
 export interface PdfImportPreviewResult {
   jobId: string;
@@ -107,6 +108,10 @@ export function logout() {
 
 export function listMyEffectiveCalendar(params: { week?: number; date?: string } = {}) {
   return apiClient.listMyEffectiveCalendar(params) as Promise<{ week?: number; items: EffectiveCalendarItem[]; total: number }>;
+}
+
+export function getTodayBrief() {
+  return apiClient.getTodayBrief();
 }
 
 export function listCalendarSources() {

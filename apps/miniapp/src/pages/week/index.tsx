@@ -4,6 +4,7 @@ import { View, Text, Button, Picker, ScrollView, Switch, Input } from "@tarojs/c
 import {
   getCalendarSettings,
   getSessionToken,
+  getTodayBrief,
   listMyEffectiveCalendar,
   updateCalendarSettings,
   type EffectiveCalendarItem,
@@ -25,6 +26,7 @@ import {
   resolveDateByWeekday,
   sectionTimes,
   sortEvents,
+  syncServerOffsetFromIso,
   termMeta,
   weekdayLabels,
 } from "../../lib/schedule";
@@ -66,7 +68,7 @@ const resolvePeriodLabel = (event: EffectiveCalendarItem) => {
 };
 
 export default function WeekPage() {
-  const todayInfo = useMemo(() => getTodayInfo(), []);
+  const [todayInfo, setTodayInfo] = useState(() => getTodayInfo());
   const [weekIndex, setWeekIndex] = useState(Math.max(0, todayInfo.week - 1));
   const [events, setEvents] = useState<EffectiveCalendarItem[]>([]);
   const [message, setMessage] = useState("登录后按周展示课程、订阅事件与个人 Todo。");
@@ -82,7 +84,24 @@ export default function WeekPage() {
   const groupedTimeline = useMemo(() => groupByDate(events), [events]);
   const groupedGrid = useMemo(() => groupByWeekdayAndSection(events), [events]);
 
-  const load = async (targetWeekNo = weekNo) => {
+  const syncServerClock = async () => {
+    try {
+      const brief = await getTodayBrief();
+      syncServerOffsetFromIso(brief.serverNowIso);
+    } catch {
+      // Keep the last known offset when the calibration endpoint is unavailable.
+    }
+    const nextTodayInfo = getTodayInfo();
+    setTodayInfo(nextTodayInfo);
+    return nextTodayInfo;
+  };
+
+  const load = async (targetWeekNo = weekNo, options: { alignWithServerWeek?: boolean } = {}) => {
+    const nextTodayInfo = await syncServerClock();
+    const resolvedWeekNo = options.alignWithServerWeek ? nextTodayInfo.week : targetWeekNo;
+    if (options.alignWithServerWeek) {
+      setWeekIndex(clampWeek(resolvedWeekNo) - 1);
+    }
     if (!getSessionToken()) {
       setEvents([]);
       setMessage("请先到“我的”完成账号密码登录。");
@@ -91,7 +110,7 @@ export default function WeekPage() {
     setLoading(true);
     try {
       const [calendar, settings] = await Promise.all([
-        listMyEffectiveCalendar({ week: targetWeekNo }),
+        listMyEffectiveCalendar({ week: resolvedWeekNo }),
         getCalendarSettings().catch(() => null),
       ]);
       setEvents(calendar.items || []);
@@ -99,7 +118,7 @@ export default function WeekPage() {
         setReminderEnabled(Boolean(settings.reminderEnabled));
         setReminderOffsetsText((settings.reminderWindowMinutes || [30, 15]).join(","));
       }
-      setMessage(`已加载第 ${calendar.week || targetWeekNo} 周 ${calendar.items?.length || 0} 条日程`);
+      setMessage(`已加载第 ${calendar.week || resolvedWeekNo} 周 ${calendar.items?.length || 0} 条日程`);
     } catch (error) {
       setEvents([]);
       setMessage(error instanceof Error ? error.message : "加载失败");
@@ -163,7 +182,7 @@ export default function WeekPage() {
   };
 
   usePullDownRefresh(() => { void load(weekNo); });
-  useEffect(() => { void load(weekIndex + 1); }, []);
+  useEffect(() => { void load(weekIndex + 1, { alignWithServerWeek: true }); }, []);
 
   const todayColumnIndex = weekNo === todayInfo.week ? todayInfo.weekday - 1 : -1;
   const todayOutlineStyle = todayColumnIndex >= 0

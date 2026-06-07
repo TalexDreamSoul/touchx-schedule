@@ -46,7 +46,7 @@ test("spacing, radius and typography scales stay ordered and usable", () => {
 });
 
 test("calendar event colors cover every V1 event type with valid swatches", () => {
-  assert.deepEqual(Object.keys(tokens.calendarEventColors), [
+  const eventTypes = [
     "course",
     "exam",
     "todo",
@@ -54,9 +54,17 @@ test("calendar event colors cover every V1 event type with valid swatches", () =
     "holiday",
     "deadline",
     "custom",
-  ]);
+  ];
+  assert.deepEqual(Object.keys(tokens.calendarEventColors), eventTypes);
   for (const [eventType, value] of Object.entries(tokens.calendarEventColors)) {
     assert.match(value, hexColor, `${eventType} must use a hex swatch`);
+  }
+
+  assert.deepEqual(Object.keys(tokens.calendarEventTones), eventTypes);
+  for (const [eventType, tone] of Object.entries(tokens.calendarEventTones)) {
+    assert.equal(tone.color, tokens.calendarEventColors[eventType], `${eventType} tone color must reuse calendarEventColors`);
+    assert.match(tone.soft, hexColor, `${eventType} soft color must use a hex swatch`);
+    assert.match(tone.border, hexColor, `${eventType} border color must use a hex swatch`);
   }
 });
 
@@ -110,4 +118,11 @@ test("native platform tokens stay in safe numeric ranges", () => {
   assert.ok(tokens.androidNativeTokens.stateLayerOpacity > 0 && tokens.androidNativeTokens.stateLayerOpacity < 1);
   assert.ok(tokens.androidNativeTokens.elevation1 <= tokens.androidNativeTokens.elevation2);
   assert.ok(tokens.androidNativeTokens.elevation2 <= tokens.androidNativeTokens.elevation3);
+
+  assert.equal(tokens.mobileNativeTheme.card, tokens.touchxColors.light.card);
+  assert.equal(tokens.mobileNativeTheme.muted, tokens.calendarEventTones.custom.soft);
+  assert.equal(tokens.mobileNativeTheme.line, tokens.calendarEventTones.custom.border);
+  for (const [key, value] of Object.entries(tokens.mobileNativeTheme)) {
+    assert.match(value, hexColor, `mobileNativeTheme.${key} must use a hex color`);
+  }
 });

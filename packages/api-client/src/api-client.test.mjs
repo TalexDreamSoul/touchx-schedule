@@ -104,6 +104,34 @@ test("TouchXApiClient joins URLs, attaches auth and returns envelope data", asyn
   assert.equal(calls[0].init.credentials, "omit");
 });
 
+test("TouchXApiClient exposes today brief for server-time calibration", async () => {
+  const calls = [];
+  const client = apiClient.createTouchXApiClient({
+    baseUrl: "https://api.example/api/v1",
+    fetcher: async (input, init) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          serverNowIso: "2026-06-08T01:02:03.000Z",
+          serverTimezone: "Asia/Shanghai",
+          currentWeek: 15,
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  const data = await client.getTodayBrief();
+
+  assert.equal(calls[0].input, "https://api.example/api/v1/today-brief");
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(data.serverNowIso, "2026-06-08T01:02:03.000Z");
+  assert.equal(data.currentWeek, 15);
+});
+
 test("TouchXApiClient preserves API envelope errors", async () => {
   const client = apiClient.createTouchXApiClient({
     baseUrl: "https://api.example/api/v1",

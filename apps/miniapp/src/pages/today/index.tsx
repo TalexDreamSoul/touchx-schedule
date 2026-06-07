@@ -4,6 +4,7 @@ import {
   archivePersonalEvent,
   createPersonalEvent,
   getSessionToken,
+  getTodayBrief,
   listMyEffectiveCalendar,
   listPersonalEvents,
   markPersonalEventDone,
@@ -26,9 +27,11 @@ import {
   isDonePersonalEvent,
   isEventFutureOrOngoing,
   priorityLabel,
+  resolveGreeting,
   resolveSemesterElapsed,
   sectionTimes,
   sortEvents,
+  syncServerOffsetFromIso,
   weekdayLabels,
 } from "../../lib/schedule";
 import { miniappPageThemeStyles } from "../../lib/theme";
@@ -39,19 +42,10 @@ type PickerEvent = { detail: { value: string | number } };
 const priorityOptions = ["normal", "high", "low"] as const;
 const priorityPickerLabels = ["普通", "高优先级", "低优先级"];
 
-const resolveGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour < 6) return "夜深了";
-  if (hour < 11) return "早上好";
-  if (hour < 14) return "中午好";
-  if (hour < 18) return "下午好";
-  return "晚上好";
-};
-
 const isCourseLike = (event: EffectiveCalendarItem) => getEventType(event) === "course";
 
 export default function TodayPage() {
-  const todayInfo = useMemo(() => getTodayInfo(), []);
+  const [todayInfo, setTodayInfo] = useState(() => getTodayInfo());
   const [events, setEvents] = useState<EffectiveCalendarItem[]>([]);
   const [todoItems, setTodoItems] = useState<PersonalEventRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,12 +57,28 @@ export default function TodayPage() {
 
   const sortedEvents = useMemo(() => sortEvents(events), [events]);
   const todayCourses = useMemo(() => sortedEvents.filter(isCourseLike), [sortedEvents]);
-  const pendingCourses = useMemo(() => todayCourses.filter((item) => isEventFutureOrOngoing(item)), [todayCourses]);
+  const pendingCourses = useMemo(() => todayCourses.filter((item) => isEventFutureOrOngoing(item, todayInfo.date)), [todayCourses, todayInfo.date]);
   const nonCourseEvents = useMemo(() => sortedEvents.filter((item) => !isCourseLike(item)), [sortedEvents]);
-  const semesterElapsed = useMemo(() => resolveSemesterElapsed(), []);
+  const semesterElapsed = useMemo(() => resolveSemesterElapsed(todayInfo.date), [todayInfo.date]);
   const todaySectionLoad = todayCourses.reduce((sum, item) => sum + Math.max(1, Number(item.endSection || item.startSection || 1) - Number(item.startSection || 1) + 1), 0);
 
+  const syncServerClock = async () => {
+    try {
+      const brief = await getTodayBrief();
+      syncServerOffsetFromIso(brief.serverNowIso);
+    } catch {
+      // Keep the last known offset when the calibration endpoint is unavailable.
+    }
+    const nextTodayInfo = getTodayInfo();
+    setTodayInfo(nextTodayInfo);
+    return nextTodayInfo;
+  };
+
   const load = async () => {
+    const nextTodayInfo = await syncServerClock();
+    if (!editingTodoId) {
+      setTodoWeekday(Math.max(0, nextTodayInfo.weekday - 1));
+    }
     if (!getSessionToken()) {
       setEvents([]);
       setTodoItems([]);
@@ -78,7 +88,7 @@ export default function TodayPage() {
     setLoading(true);
     try {
       const [calendar, personal] = await Promise.all([
-        listMyEffectiveCalendar({ date: todayInfo.dateKey }),
+        listMyEffectiveCalendar({ date: nextTodayInfo.dateKey }),
         listPersonalEvents(),
       ]);
       const activeTodos = (personal.items || []).filter((item) => !isDonePersonalEvent(item) && !isArchivedPersonalEvent(item));
@@ -180,7 +190,7 @@ export default function TodayPage() {
       <View className="tx-scroll-page">
         <View className="tx-greeting-row">
           <View>
-            <Text className="tx-greeting-main">{resolveGreeting()}</Text>
+            <Text className="tx-greeting-main">{resolveGreeting(todayInfo.date)}</Text>
             <Text className="tx-greeting-sub">第 {todayInfo.week} 周 · 周{todayInfo.weekdayLabel} · {todayInfo.dateKey}</Text>
           </View>
           <View className="tx-icon-btn">🍽️</View>

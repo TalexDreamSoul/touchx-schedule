@@ -34,8 +34,9 @@ V1 收口聚焦在继续扩功能前先降低主要工程风险。当前基线�
 - API base URL 解析集中处理，支持运行时和环境变量覆盖，不再由各端维护独立硬编码 wrapper。
 - `apps/miniapp` 和 `apps/mobile` 的课表默认学期、节次、星期和事件色复用 `@touchx/shared` / `@touchx/ui-tokens`。
 - `apps/miniapp` 页面主题变量由 `packages/ui-tokens` 的 miniapp page theme / event tone 映射输出，再通过 `miniappPageThemeStyles` 注入页面根节点。
-- `smoke:client-boundaries` 防止 miniapp/mobile 重新复制 `/api/v1` wrapper、自建裸 `fetch` API client、回流端侧 schedule 默认值或本地事件色/主题 class map。
-- `smoke:miniapp-parity` 防止 Taro today/week 真实日程 API 状态流、profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布和订阅/取消订阅退回展示页或 mock 流程；同时要求 `apps/microapp/src/pages.json` 的每个旧路由在 `docs/miniapp-route-decision.md` 中有 `Covered` / `Partial` / `Deferred` 决策。
+- `smoke:client-boundaries` 防止 miniapp/mobile 重新复制 `/api/v1` wrapper、自建裸 `fetch` API client、回流端侧 schedule 默认值、miniapp 主题 class map、mobile 本地色板或 mobile 空依赖本地时间 memo；mobile today/schedule 通过 `today-brief` 维护 `serverOffsetMs` 计算当前周次/今日课程。
+- `smoke:miniapp-parity` 防止 Taro today/week 真实日程 API 状态流、profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布和订阅/取消订阅退回展示页或 mock 流程；同时要求 miniapp today/week 通过 `today-brief` 维护 `serverOffsetMs` 计算当前周次/今日课程，且要求 `apps/microapp/src/pages.json` 的每个旧路由在 `docs/miniapp-route-decision.md` 中有 `Covered` / `Partial` / `Deferred` 决策。
+- `apps/backend/server/services/miniapp-schedule-helper.test.mjs` 对 miniapp/mobile 的 schedule helper 做打包后函数级回归，覆盖服务端时间校准后的当前日/周次、进行中课程和问候语。
 
 ### 数据与基础设施护栏
 

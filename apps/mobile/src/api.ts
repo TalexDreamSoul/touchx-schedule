@@ -8,6 +8,7 @@ import type {
   PersonalEventRow,
   ReminderRuleRow,
   TouchXAuthSession,
+  TouchXTodayBrief,
   TouchXUser,
 } from "@touchx/api-client";
 
@@ -24,6 +25,7 @@ export type {
   NotificationBindingRow,
   PersonalEventRow,
   ReminderRuleRow,
+  TouchXTodayBrief,
 };
 
 const TOKEN_KEY = "touchx_mobile_session_token_v1";
@@ -126,6 +128,10 @@ export function logout() {
 
 export function listMyEffectiveCalendar(params: { week?: number; date?: string } = {}) {
   return apiClient.listMyEffectiveCalendar(params) as Promise<{ week?: number; items: EffectiveCalendarItem[]; total: number }>;
+}
+
+export function getTodayBrief() {
+  return apiClient.getTodayBrief();
 }
 
 export function listCalendarSources() {

@@ -49,6 +49,8 @@ const assertImports = (file, names) => {
 
 const assertApiWrapperDelegates = (file) => {
   [
+    "getTodayBrief()",
+    "apiClient.getTodayBrief()",
     "listMyEffectiveCalendar(params",
     "apiClient.listMyEffectiveCalendar(params)",
     "listPersonalEvents()",
@@ -102,6 +104,7 @@ const assertTodayScheduleParity = (file) => {
     "archivePersonalEvent",
     "createPersonalEvent",
     "getSessionToken",
+    "getTodayBrief",
     "listMyEffectiveCalendar",
     "listPersonalEvents",
     "markPersonalEventDone",
@@ -111,18 +114,22 @@ const assertTodayScheduleParity = (file) => {
   ]);
 
   [
+    "const [todayInfo, setTodayInfo]",
     "const [events, setEvents]",
     "const [todoItems, setTodoItems]",
     "const [loading, setLoading]",
     "const [message, setMessage]",
+    "const syncServerClock = async ()",
+    "syncServerOffsetFromIso(brief.serverNowIso)",
     "const load = async ()",
+    "const nextTodayInfo = await syncServerClock()",
     "if (!getSessionToken())",
     "setEvents([])",
     "setTodoItems([])",
     "完成账号密码登录",
     "setLoading(true)",
     "Promise.all([",
-    "listMyEffectiveCalendar({ date: todayInfo.dateKey })",
+    "listMyEffectiveCalendar({ date: nextTodayInfo.dateKey })",
     "listPersonalEvents()",
     "setEvents(calendar.items || [])",
     "setTodoItems(activeTodos)",
@@ -146,6 +153,8 @@ const assertTodayScheduleParity = (file) => {
   ].forEach((needle) => assertContains(file, needle));
 
   assertMatches(file, /useEffect\(\(\) => \{ void load\(\); \}, \[\]\)/, "must load today schedule on first render");
+  assertNotContains(file, "useMemo(() => getTodayInfo(), [])");
+  assertNotContains(file, "new Date().getHours()");
   assertNotContains(file, "学号登录");
 };
 
@@ -153,24 +162,29 @@ const assertWeekScheduleParity = (file) => {
   assertImports(file, [
     "getCalendarSettings",
     "getSessionToken",
+    "getTodayBrief",
     "listMyEffectiveCalendar",
     "updateCalendarSettings",
     "type EffectiveCalendarItem",
   ]);
 
   [
+    "const [todayInfo, setTodayInfo]",
     "const [events, setEvents]",
     "const [message, setMessage]",
     "const [loading, setLoading]",
     "const [mode, setMode]",
     "const [showSettings, setShowSettings]",
-    "const load = async (targetWeekNo = weekNo)",
+    "const syncServerClock = async ()",
+    "syncServerOffsetFromIso(brief.serverNowIso)",
+    "const load = async (targetWeekNo = weekNo, options: { alignWithServerWeek?: boolean } = {})",
+    "const resolvedWeekNo = options.alignWithServerWeek ? nextTodayInfo.week : targetWeekNo",
     "if (!getSessionToken())",
     "setEvents([])",
     "完成账号密码登录",
     "setLoading(true)",
     "Promise.all([",
-    "listMyEffectiveCalendar({ week: targetWeekNo })",
+    "listMyEffectiveCalendar({ week: resolvedWeekNo })",
     "getCalendarSettings().catch(() => null)",
     "setEvents(calendar.items || [])",
     "setReminderEnabled(Boolean(settings.reminderEnabled))",
@@ -187,9 +201,36 @@ const assertWeekScheduleParity = (file) => {
     "点击展开详情",
   ].forEach((needle) => assertContains(file, needle));
 
-  assertMatches(file, /useEffect\(\(\) => \{ void load\(weekIndex \+ 1\); \}, \[\]\)/, "must load week schedule on first render");
+  assertMatches(file, /useEffect\(\(\) => \{ void load\(weekIndex \+ 1,\s*\{ alignWithServerWeek: true \}\); \}, \[\]\)/, "must load week schedule from the server-calibrated current week on first render");
+  assertNotContains(file, "useMemo(() => getTodayInfo(), [])");
   assertMatches(file, /mode === "course"[\s\S]*tx-schedule-card/, "must keep course-grid mode");
   assertMatches(file, /mode === "timeline"[\s\S]*tx-timeline-scroll|tx-timeline-scroll[\s\S]*groupedTimeline/, "must keep timeline mode");
+};
+
+const assertMiniappServerTimeParity = ({ api, schedule, today, week }) => {
+  [
+    "getTodayBrief()",
+    "apiClient.getTodayBrief()",
+  ].forEach((needle) => assertContains(api, needle));
+
+  [
+    "let serverOffsetMs = 0",
+    "getServerOffsetMs",
+    "syncServerOffsetFromIso",
+    "serverOffsetMs = serverNowMs - Date.now()",
+    "getServerNow",
+    "getTodayInfo = (now = getServerNow())",
+    "isEventFutureOrOngoing = (event: EffectiveCalendarItem, now = getServerNow())",
+    "resolveSemesterElapsed = (now = getServerNow())",
+  ].forEach((needle) => assertContains(schedule, needle));
+
+  [today, week].forEach((file) => {
+    assertContains(file, "getTodayBrief");
+    assertContains(file, "syncServerOffsetFromIso");
+    assertContains(file, "syncServerClock");
+    assertContains(file, "setTodayInfo(nextTodayInfo)");
+    assertNotContains(file, "useMemo(() => getTodayInfo(), [])");
+  });
 };
 
 const assertProfileAccountParity = (file) => {
@@ -399,6 +440,7 @@ const assertReleaseGateDocs = ({ readme, todo, miniappDecisionDoc, v1CloseoutSta
 };
 
 const api = readSource("apps/miniapp/src/lib/api.ts");
+const schedule = readSource("apps/miniapp/src/lib/schedule.ts");
 const today = readSource("apps/miniapp/src/pages/today/index.tsx");
 const week = readSource("apps/miniapp/src/pages/week/index.tsx");
 const profile = readSource("apps/miniapp/src/pages/profile/index.tsx");
@@ -413,6 +455,7 @@ const calendarRoadmap = readSource("docs/touchx-calendar-platform-roadmap.md");
 const rootPackageJson = readJson("package.json");
 
 assertApiWrapperDelegates(api);
+assertMiniappServerTimeParity({ api, schedule, today, week });
 
 [today, week, profile, sources].forEach(assertNoDemoFallbacks);
 assertTodayScheduleParity(today);
@@ -426,4 +469,4 @@ assertManualSmokeChecklist(manualSmokeChecklist);
 assertReleaseGateScript(rootPackageJson);
 assertReleaseGateDocs({ readme, todo, miniappDecisionDoc, v1CloseoutStatus, calendarRoadmap });
 
-console.log("ok miniapp schedule, route coverage, release gate, manual smoke checklist, profile, notification, PDF import and custom source parity gates");
+console.log("ok miniapp schedule, server-time, route coverage, release gate, manual smoke checklist, profile, notification, PDF import and custom source parity gates");

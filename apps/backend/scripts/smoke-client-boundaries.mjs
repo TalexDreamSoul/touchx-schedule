@@ -58,6 +58,50 @@ const assertUsesMiniappThemeStyle = (file) => {
   );
 };
 
+const assertMobileAppUsesThemeTokens = (file) => {
+  assertContains(file, "from \"@touchx/ui-tokens\"");
+  assertContains(file, "mobileNativeTheme");
+  assertContains(file, "calendarEventTones");
+  assertContains(file, "const colors = mobileNativeTheme");
+  assert.ok(!/const colors\s*=\s*\{/.test(file.source), `${file.absolutePath} must not define a local mobile color palette`);
+
+  const softColorsBlock = file.source.match(/const eventTypeSoftColors[\s\S]*?\n};/)?.[0] || "";
+  const borderColorsBlock = file.source.match(/const eventTypeBorderColors[\s\S]*?\n};/)?.[0] || "";
+  assert.ok(softColorsBlock.includes("calendarEventTones"), `${file.absolutePath} must derive event soft colors from shared tokens`);
+  assert.ok(borderColorsBlock.includes("calendarEventTones"), `${file.absolutePath} must derive event border colors from shared tokens`);
+  assert.ok(!/#[0-9a-fA-F]{3,8}/.test(softColorsBlock), `${file.absolutePath} must not hardcode event soft colors`);
+  assert.ok(!/#[0-9a-fA-F]{3,8}/.test(borderColorsBlock), `${file.absolutePath} must not hardcode event border colors`);
+};
+
+const assertMobileServerTimeParity = ({ api, schedule, app }) => {
+  [
+    "getTodayBrief()",
+    "apiClient.getTodayBrief()",
+  ].forEach((needle) => assertContains(api, needle));
+
+  [
+    "let serverOffsetMs = 0",
+    "getServerOffsetMs",
+    "syncServerOffsetFromIso",
+    "serverOffsetMs = serverNowMs - Date.now()",
+    "getServerNow",
+    "getTodayInfo = (now = getServerNow())",
+    "resolveGreeting = (now = getServerNow())",
+    "isEventFutureOrOngoing = (event: EffectiveCalendarItem, now = getServerNow())",
+  ].forEach((needle) => assertContains(schedule, needle));
+
+  [
+    "getTodayBrief",
+    "syncServerOffsetFromIso",
+    "syncServerClock",
+    "setTodayInfo(nextTodayInfo)",
+    "alignWithServerWeek",
+  ].forEach((needle) => assertContains(app, needle));
+
+  assertNotContains(app, "useMemo(() => getTodayInfo(), [])");
+  assertNotContains(schedule, "new Date().getHours()");
+};
+
 const assertMiniappStylesUseThemeVariables = (file) => {
   assertNotContains(file, ".tx-page.theme-green {");
   assertNotContains(file, ".tx-page.theme-purple {");
@@ -86,6 +130,7 @@ const miniappPages = [
 ];
 const mobileApi = readSource("apps/mobile/src/api.ts");
 const mobileSchedule = readSource("apps/mobile/src/schedule.ts");
+const mobileApp = readSource("apps/mobile/src/App.tsx");
 const apiClient = readSource("packages/api-client/src/index.ts");
 
 [miniappApi, mobileApi].forEach((file) => {
@@ -113,6 +158,8 @@ assertContains(apiClient, "createTouchXApiClient");
   assertUsesSharedScheduleDefaults(file);
   assertUsesCalendarColorTokens(file);
 });
+assertMobileAppUsesThemeTokens(mobileApp);
+assertMobileServerTimeParity({ api: mobileApi, schedule: mobileSchedule, app: mobileApp });
 
 assertContains(miniappTheme, "from \"@touchx/ui-tokens\"");
 assertContains(miniappTheme, "miniappPageThemes");
@@ -122,4 +169,4 @@ assertContains(miniappTheme, "miniappPageThemeStyles");
 assertMiniappStylesUseThemeVariables(miniappStyles);
 miniappPages.forEach(assertUsesMiniappThemeStyle);
 
-console.log("ok client API, schedule and miniapp theme boundary reuse");
+console.log("ok client API, schedule, server-time and miniapp/mobile theme boundary reuse");

@@ -68,6 +68,17 @@ export interface TouchXAuthSession {
   user: TouchXUser;
 }
 
+export interface TouchXTodayBrief {
+  serverNowIso: string;
+  serverTimezone?: string;
+  currentWeek?: number;
+  weekNo?: number;
+  dayNo?: number;
+  dayLabel?: string;
+  greeting?: string;
+  termMeta?: unknown;
+}
+
 export interface CalendarSourceRow {
   id: string;
   title: string;
@@ -332,6 +343,10 @@ export class TouchXApiClient {
     }
     const suffix = query.toString();
     return this.get<{ items: EffectiveCalendarEvent[]; total: number }>(`calendar/me/effective${suffix ? `?${suffix}` : ""}`);
+  }
+
+  getTodayBrief() {
+    return this.get<TouchXTodayBrief>("today-brief");
   }
 
   listMyCalendarSubscriptions() {

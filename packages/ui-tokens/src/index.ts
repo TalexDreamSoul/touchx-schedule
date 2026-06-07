@@ -94,6 +94,16 @@ export const calendarEventColors = {
   custom: "#64748b",
 } as const;
 
+export const calendarEventTones = {
+  course: { color: calendarEventColors.course, soft: "#e8edf7", border: "#cdd7f2" },
+  exam: { color: calendarEventColors.exam, soft: "#fff0f0", border: "#f2cccc" },
+  todo: { color: calendarEventColors.todo, soft: "#f5edff", border: "#ddd0f4" },
+  activity: { color: calendarEventColors.activity, soft: "#ebf9f0", border: "#cce8d6" },
+  holiday: { color: calendarEventColors.holiday, soft: "#fdf4e0", border: "#efe0bc" },
+  deadline: { color: calendarEventColors.deadline, soft: "#fdebe0", border: "#edcfbb" },
+  custom: { color: calendarEventColors.custom, soft: "#eff2f7", border: "#d6d9e0" },
+} as const;
+
 export const miniappPageThemes = {
   default: {
     bg: touchxColors.light.background,
@@ -146,13 +156,32 @@ export const miniappPageThemes = {
 } as const;
 
 export const miniappEventTones = {
-  course: { color: calendarEventColors.course, soft: "#e8edf7" },
-  exam: { color: calendarEventColors.exam, soft: "#fff0f0" },
-  todo: { color: calendarEventColors.todo, soft: "#f5edff" },
-  activity: { color: calendarEventColors.activity, soft: "#ebf9f0" },
-  holiday: { color: calendarEventColors.holiday, soft: "#fdf4e0" },
-  deadline: { color: calendarEventColors.deadline, soft: "#fdebe0" },
-  custom: { color: calendarEventColors.custom, soft: "#eff2f7" },
+  course: { color: calendarEventTones.course.color, soft: calendarEventTones.course.soft },
+  exam: { color: calendarEventTones.exam.color, soft: calendarEventTones.exam.soft },
+  todo: { color: calendarEventTones.todo.color, soft: calendarEventTones.todo.soft },
+  activity: { color: calendarEventTones.activity.color, soft: calendarEventTones.activity.soft },
+  holiday: { color: calendarEventTones.holiday.color, soft: calendarEventTones.holiday.soft },
+  deadline: { color: calendarEventTones.deadline.color, soft: calendarEventTones.deadline.soft },
+  custom: { color: calendarEventTones.custom.color, soft: calendarEventTones.custom.soft },
+} as const;
+
+export const mobileNativeTheme = {
+  background: "#f3f4f7",
+  groupedBackground: "#f2f2f7",
+  card: touchxColors.light.card,
+  muted: calendarEventTones.custom.soft,
+  text: "#111111",
+  subText: "#6b6b70",
+  secondaryText: "#8e8e93",
+  line: calendarEventTones.custom.border,
+  separator: "#d1d1d6",
+  strongLine: "#2c3445",
+  accent: "#2f55c8",
+  onAccent: "#ffffff",
+  green: "#159b57",
+  red: "#ff3b30",
+  successSoft: "#dff7e9",
+  todayColumn: "#eaf8f0",
 } as const;
 
 export const iosLiquidGlassTokens = {

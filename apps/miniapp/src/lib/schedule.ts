@@ -38,6 +38,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
+let serverOffsetMs = 0;
+
+export const getServerOffsetMs = () => serverOffsetMs;
+
+export const syncServerOffsetFromIso = (serverNowIso?: string) => {
+  const serverNowMs = Date.parse(String(serverNowIso || ""));
+  if (Number.isFinite(serverNowMs)) {
+    serverOffsetMs = serverNowMs - Date.now();
+  }
+  return serverOffsetMs;
+};
+
+export const getServerNow = () => new Date(Date.now() + serverOffsetMs);
+
 export const buildDateKey = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
 export const parseDateKey = (dateKey: string) => {
@@ -80,8 +94,8 @@ export const formatWeekRange = (week: number) => {
   return `${formatDateLabel(start)} - ${formatDateLabel(end)}`;
 };
 
-export const getTodayInfo = () => {
-  const date = new Date();
+export const getTodayInfo = (now = getServerNow()) => {
+  const date = now;
   const dateKey = buildDateKey(date);
   const weekday = resolveWeekday(date);
   return {
@@ -173,7 +187,16 @@ export const priorityLabel = (priority?: string) => {
   return "普通优先级";
 };
 
-export const isEventFutureOrOngoing = (event: EffectiveCalendarItem, now = new Date()) => {
+export const resolveGreeting = (now = getServerNow()) => {
+  const hour = now.getHours();
+  if (hour < 6) return "夜深了";
+  if (hour < 11) return "早上好";
+  if (hour < 14) return "中午好";
+  if (hour < 18) return "下午好";
+  return "晚上好";
+};
+
+export const isEventFutureOrOngoing = (event: EffectiveCalendarItem, now = getServerNow()) => {
   const time = event.endTime || getSectionEndTime(getEventEndSection(event));
   const match = /^(\d{1,2}):(\d{2})$/.exec(time);
   if (!match) return true;
@@ -182,7 +205,7 @@ export const isEventFutureOrOngoing = (event: EffectiveCalendarItem, now = new D
   return end.getTime() >= now.getTime();
 };
 
-export const resolveSemesterElapsed = (now = new Date()) => {
+export const resolveSemesterElapsed = (now = getServerNow()) => {
   const semesterStart = new Date(2026, 2, 1, 8, 0, 0, 0);
   const elapsedMs = Math.max(0, now.getTime() - semesterStart.getTime());
   const totalHours = Math.floor(elapsedMs / (60 * 60 * 1000));

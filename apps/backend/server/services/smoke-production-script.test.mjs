@@ -26,6 +26,8 @@ const adminUiBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-
 const adminUiBoundarySmoke = readFileSync(adminUiBoundarySmokePath, "utf8");
 const clientBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-client-boundaries.mjs");
 const clientBoundarySmoke = readFileSync(clientBoundarySmokePath, "utf8");
+const miniappParitySmokePath = join(import.meta.dirname, "../../scripts/smoke-miniapp-parity.mjs");
+const miniappParitySmoke = readFileSync(miniappParitySmokePath, "utf8");
 const dataBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-data-boundaries.mjs");
 const dataBoundarySmoke = readFileSync(dataBoundarySmokePath, "utf8");
 const rootReadme = readFileSync(join(import.meta.dirname, "../../../../README.md"), "utf8");
@@ -434,13 +436,29 @@ test("admin UI boundary smoke guards shared Nexus shell reuse", () => {
 test("client boundary smoke guards shared API client reuse", () => {
   assert.match(clientBoundarySmoke, /apps\/miniapp\/src\/lib\/api\.ts/);
   assert.match(clientBoundarySmoke, /apps\/mobile\/src\/api\.ts/);
+  assert.match(clientBoundarySmoke, /apps\/mobile\/src\/App\.tsx/);
   assert.match(clientBoundarySmoke, /packages\/api-client\/src\/index\.ts/);
   assert.match(clientBoundarySmoke, /from \\"@touchx\/api-client\\"/);
   assert.match(clientBoundarySmoke, /createTouchXApiClient/);
   assert.match(clientBoundarySmoke, /resolveTouchXApiBaseUrl/);
+  assert.match(clientBoundarySmoke, /mobileNativeTheme/);
+  assert.match(clientBoundarySmoke, /calendarEventTones/);
+  assert.match(clientBoundarySmoke, /must not define a local mobile color palette/);
+  assert.match(clientBoundarySmoke, /assertMobileServerTimeParity/);
+  assert.match(clientBoundarySmoke, /syncServerOffsetFromIso/);
+  assert.match(clientBoundarySmoke, /alignWithServerWeek/);
   assert.match(clientBoundarySmoke, /Taro\.uploadFile/);
   assert.match(clientBoundarySmoke, /fetcher: fetch/);
   assert.match(clientBoundarySmoke, /must not include/);
+});
+
+test("miniapp parity smoke guards server-time calibration", () => {
+  assert.match(miniappParitySmoke, /serverOffsetMs/);
+  assert.match(miniappParitySmoke, /getTodayBrief/);
+  assert.match(miniappParitySmoke, /syncServerOffsetFromIso/);
+  assert.match(miniappParitySmoke, /getServerNow/);
+  assert.match(miniappParitySmoke, /useMemo\(\(\) => getTodayInfo\(\), \[\]\)/);
+  assert.match(miniappParitySmoke, /server-time/);
 });
 
 test("data boundary smoke guards D1 payload state and V1 infra scope", () => {
