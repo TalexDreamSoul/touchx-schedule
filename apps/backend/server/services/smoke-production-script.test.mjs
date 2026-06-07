@@ -30,8 +30,6 @@ const todoDoc = readFileSync(join(import.meta.dirname, "../../../../TODO.md"), "
 const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../docs/v1-closeout-status.md"), "utf8");
 
 test("production smoke rejects weak fallback session secrets by default", () => {
-  assert.match(script, /is_non_production_smoke_url\(\)/);
-  assert.match(script, /public HTTPS production API for smoke:production/);
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
   assert.match(script, /fallback:\$\{fallback_password\}/);
@@ -39,21 +37,6 @@ test("production smoke rejects weak fallback session secrets by default", () => 
   assert.match(script, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK/);
   assert.match(script, /expected 401 for weak fallback session token/);
   assert.match(script, /request_admin_bootstrap_status[\s\S]*request_session_secret_security[\s\S]*request_protected/);
-});
-
-test("production smoke refuses non-production base URLs before network checks", () => {
-  ["http://127.0.0.1:9986", "http://schedule-backend.tagzxia.com", "https://192.168.2.1"].forEach((baseUrl) => {
-    const result = spawnSync("bash", [scriptPath], {
-      cwd: join(import.meta.dirname, "../../.."),
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        TOUCHX_SMOKE_BASE_URL: baseUrl,
-      },
-    });
-    assert.notEqual(result.status, 0, baseUrl);
-    assert.match(result.stderr, /public HTTPS production API for smoke:production/, baseUrl);
-  });
 });
 
 test("production smoke leaves token revocation until other opt-in checks finish", () => {
@@ -79,6 +62,33 @@ test("production smoke can opt into notification queue mode verification", () =>
   assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE/);
   assert.match(script, /admin\/notification-deliveries\?sourceQueue=notification&limit=1/);
   assert.match(script, /expected at least one sourceQueue=notification delivery in production/);
+});
+
+test("production smoke refuses non-production base URLs before network checks", () => {
+  assert.match(script, /is_non_production_smoke_url\(\)/);
+  assert.match(script, /public HTTPS production API for smoke:production/);
+
+  [
+    "http://schedule-backend.tagzxia.com",
+    "http://127.0.0.1:9986",
+    "https://192.168.2.1",
+    "https://[FD00::1]",
+  ].forEach((baseUrl) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: baseUrl,
+      },
+    });
+    assert.notEqual(result.status, 0, baseUrl);
+    assert.match(
+      result.stderr,
+      /TOUCHX_SMOKE_BASE_URL must point to a public HTTPS production API for smoke:production/,
+      baseUrl,
+    );
+  });
 });
 
 test("Cloudflare config smoke covers required bindings and migrations", () => {
