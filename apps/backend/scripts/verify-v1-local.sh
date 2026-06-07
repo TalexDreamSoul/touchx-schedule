@@ -13,8 +13,12 @@ run_step() {
 
 run_step "backend type-check" pnpm --filter "@touchx/backend" type-check
 run_step "backend node tests" node --test "apps/backend/server/services"/*.test.mjs
+run_step "shared tests" pnpm --filter "@touchx/shared" test
 run_step "api-client tests" pnpm --filter "@touchx/api-client" test
 run_step "calendar-core tests" pnpm --filter "@touchx/calendar-core" test
+run_step "import-core tests" pnpm --filter "@touchx/import-core" test
+run_step "notification-core tests" pnpm --filter "@touchx/notification-core" test
+run_step "ui-tokens tests" pnpm --filter "@touchx/ui-tokens" test
 run_step "miniapp type-check" pnpm --filter "@touchx/miniapp" type-check
 run_step "mobile type-check" pnpm --filter "@touchx/mobile" type-check
 run_step "API boundary smoke" pnpm --filter "@touchx/backend" smoke:api-boundaries

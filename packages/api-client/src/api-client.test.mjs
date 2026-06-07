@@ -77,3 +77,77 @@ test("resolveTouchXApiBaseUrl supports platform env and custom default fallback"
     "https://fallback.example/api/v1",
   );
 });
+
+test("TouchXApiClient joins URLs, attaches auth and returns envelope data", async () => {
+  const calls = [];
+  const client = apiClient.createTouchXApiClient({
+    baseUrl: "https://api.example/api/v1/",
+    token: async () => " token-123 ",
+    fetcher: async (input, init) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify({ ok: true, data: { saved: true } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  const data = await client.post("calendar/me/settings", { nickname: "TouchX" });
+
+  assert.deepEqual(data, { saved: true });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input, "https://api.example/api/v1/calendar/me/settings");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer token-123");
+  assert.equal(calls[0].init.headers["content-type"], "application/json");
+  assert.equal(calls[0].init.body, JSON.stringify({ nickname: "TouchX" }));
+  assert.equal(calls[0].init.credentials, "omit");
+});
+
+test("TouchXApiClient preserves API envelope errors", async () => {
+  const client = apiClient.createTouchXApiClient({
+    baseUrl: "https://api.example/api/v1",
+    fetcher: async () => new Response(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code: "AUTH_REQUIRED",
+          message: "请先登录",
+          details: { route: "calendar/me/settings" },
+        },
+      }),
+      { status: 401, headers: { "content-type": "application/json" } },
+    ),
+  });
+
+  await assert.rejects(
+    () => client.get("calendar/me/settings"),
+    (error) => {
+      assert.ok(error instanceof apiClient.TouchXApiError);
+      assert.equal(error.status, 401);
+      assert.equal(error.code, "AUTH_REQUIRED");
+      assert.equal(error.message, "请先登录");
+      assert.deepEqual(error.details, { route: "calendar/me/settings" });
+      return true;
+    },
+  );
+});
+
+test("TouchXApiClient wraps non-JSON API responses", async () => {
+  const client = apiClient.createTouchXApiClient({
+    baseUrl: "https://api.example/api/v1",
+    fetcher: async () => new Response("bad gateway", { status: 502 }),
+  });
+
+  await assert.rejects(
+    () => client.get("calendar/me/settings"),
+    (error) => {
+      assert.ok(error instanceof apiClient.TouchXApiError);
+      assert.equal(error.status, 502);
+      assert.equal(error.code, "INVALID_RESPONSE");
+      assert.match(error.message, /Invalid API response/);
+      assert.equal(typeof error.details, "string");
+      return true;
+    },
+  );
+});

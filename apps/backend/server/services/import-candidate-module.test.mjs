@@ -24,11 +24,18 @@ const transpileModuleToTemp = (sourcePath, fileName, replacements = []) => {
   return tmpFile;
 };
 
+const writeModuleToTemp = (fileName, source) => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "touchx-import-candidate-"));
+  const tmpFile = join(tmpDir, fileName);
+  writeFileSync(tmpFile, source, "utf8");
+  return tmpFile;
+};
+
 const loadImportCandidateModule = async () => {
-  const sharedPath = transpileModuleToTemp(
-    join(import.meta.dirname, "../../../../packages/shared/src/index.ts"),
-    "shared.mjs",
-  );
+  const sharedPath = writeModuleToTemp("shared.mjs", `
+export const IMPORT_JOB_STATUSES = ["uploaded", "parsing", "parsed", "reviewing", "committed", "failed"];
+export const IMPORT_CANDIDATE_STATUSES = ["pending", "accepted", "rejected", "corrected"];
+`);
   const importCorePath = transpileModuleToTemp(
     join(import.meta.dirname, "../../../../packages/import-core/src/index.ts"),
     "import-core.mjs",

@@ -173,6 +173,27 @@ export class TouchXApiError extends Error {
   }
 }
 
+const parseApiEnvelope = async <T>(response: Response) => {
+  let payload: ApiEnvelope<T>;
+  try {
+    payload = (await response.json()) as ApiEnvelope<T>;
+  } catch (error) {
+    throw new TouchXApiError(`Invalid API response (${response.status})`, {
+      status: response.status,
+      code: "INVALID_RESPONSE",
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+  if (!response.ok || !payload?.ok) {
+    throw new TouchXApiError(payload?.error?.message || `HTTP ${response.status}`, {
+      status: response.status,
+      code: payload?.error?.code,
+      details: payload?.error?.details,
+    });
+  }
+  return payload.data as T;
+};
+
 export class TouchXApiClient {
   private readonly baseUrl: string;
   private readonly token?: TouchXApiClientOptions["token"];
@@ -217,15 +238,7 @@ export class TouchXApiClient {
       body: method === "GET" || options.body === undefined ? undefined : JSON.stringify(options.body),
       credentials: "omit",
     });
-    const payload = (await response.json()) as ApiEnvelope<T>;
-    if (!response.ok || !payload.ok) {
-      throw new TouchXApiError(payload.error?.message || `HTTP ${response.status}`, {
-        status: response.status,
-        code: payload.error?.code,
-        details: payload.error?.details,
-      });
-    }
-    return payload.data as T;
+    return parseApiEnvelope<T>(response);
   }
 
   get<T = unknown>(path: string) {
@@ -279,18 +292,10 @@ export class TouchXApiClient {
       body: formData,
       credentials: "omit",
     });
-    const payload = (await response.json()) as ApiEnvelope<{
+    return parseApiEnvelope<{
       jobId: string;
       totalFiles: number;
-    }>;
-    if (!response.ok || !payload.ok) {
-      throw new TouchXApiError(payload.error?.message || `HTTP ${response.status}`, {
-        status: response.status,
-        code: payload.error?.code,
-        details: payload.error?.details,
-      });
-    }
-    return payload.data;
+    }>(response);
   }
 
   listCalendarSources() {

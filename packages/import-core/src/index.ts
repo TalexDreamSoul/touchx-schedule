@@ -1,10 +1,19 @@
-import type { ImportCandidateEvent, ImportJob } from "@touchx/shared";
+import {
+  IMPORT_CANDIDATE_STATUSES,
+  IMPORT_JOB_STATUSES,
+  type ImportCandidateEvent,
+  type ImportJob,
+} from "@touchx/shared";
 
 const asString = (value: unknown) => String(value || "").trim();
 
+const isOneOf = <T extends readonly string[]>(items: T, value: string): value is T[number] => {
+  return (items as readonly string[]).includes(value);
+};
+
 export const normalizeImportJobStatus = (value: unknown): ImportJob["status"] => {
   const status = asString(value);
-  if (status === "uploaded" || status === "parsing" || status === "parsed" || status === "reviewing" || status === "committed" || status === "failed") {
+  if (isOneOf(IMPORT_JOB_STATUSES, status)) {
     return status;
   }
   return "uploaded";
@@ -12,7 +21,7 @@ export const normalizeImportJobStatus = (value: unknown): ImportJob["status"] =>
 
 export const normalizeImportCandidateStatus = (value: unknown): ImportCandidateEvent["status"] => {
   const status = asString(value);
-  if (status === "accepted" || status === "rejected" || status === "corrected") {
+  if (isOneOf(IMPORT_CANDIDATE_STATUSES, status)) {
     return status;
   }
   return "pending";
@@ -25,8 +34,9 @@ export const isImportCandidateActionable = (candidate: ImportCandidateEvent) => 
 export const summarizeImportCandidates = (items: ImportCandidateEvent[]) => {
   return items.reduce(
     (acc, item) => {
+      const status = normalizeImportCandidateStatus(item.status);
       acc.total += 1;
-      acc[item.status] += 1;
+      acc[status] += 1;
       return acc;
     },
     {
