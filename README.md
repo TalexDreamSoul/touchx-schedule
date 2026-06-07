@@ -85,6 +85,9 @@ pnpm --filter @touchx/backend smoke:cloudflare-live
 V1 生产验收聚合 gate（需要真实生产 token、6-32 位数字真实学生号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 样本和公网 HTTPS 生产 API）：
 
 ```bash
+cp apps/backend/.env.production-smoke.example apps/backend/.env.production-smoke.local
+# 填入真实值后执行；.env.production-smoke.local 已被 .gitignore 忽略
+set -a; source apps/backend/.env.production-smoke.local; set +a
 pnpm --filter @touchx/backend verify:v1-production
 ```
 

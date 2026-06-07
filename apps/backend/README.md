@@ -159,17 +159,13 @@ pnpm --filter @touchx/backend verify:v1-local
 V1 生产验收 gate（需要公网 HTTPS 生产 API、真实生产凭据和真实 PDF 样本）：
 
 ```bash
-TOUCHX_SMOKE_AUTH_TOKEN=... \
-TOUCHX_SMOKE_STUDENT_NO=2305100613 \
-TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN=... \
-TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu \
-SMOKE_SCHEDULE_IMPORT_STUDENT_NO=2305100613 \
-SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
-SMOKE_REAL_PDF_MIN_ENTRIES=8 \
+cp apps/backend/.env.production-smoke.example apps/backend/.env.production-smoke.local
+# 填入真实值后执行；.env.production-smoke.local 已被 .gitignore 忽略
+set -a; source apps/backend/.env.production-smoke.local; set +a
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝非公网 HTTPS、localhost / 127.0.0.1 / link-local / CGNAT / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
+真实生产材料建议先复制 `apps/backend/.env.production-smoke.example` 到被忽略的 `apps/backend/.env.production-smoke.local`，再填入真实值并通过 `source` 导入，避免把 token 或真实 PDF 路径写进 tracked 文档。该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝非公网 HTTPS、localhost / 127.0.0.1 / link-local / CGNAT / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
 
 ## 运行时自检（防回归）
 

@@ -72,12 +72,9 @@ pnpm verify:v1-release
 V1 还不能算完整验收，必须使用真实生产材料执行：
 
 ```bash
-TOUCHX_SMOKE_AUTH_TOKEN=... \
-TOUCHX_SMOKE_STUDENT_NO=... \
-TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN=... \
-TOUCHX_SMOKE_NOTIFICATION_CHANNELS=wechat_clawdbot,feishu \
-SMOKE_SCHEDULE_IMPORT_STUDENT_NO=... \
-SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
+cp apps/backend/.env.production-smoke.example apps/backend/.env.production-smoke.local
+# 填入真实值后执行；.env.production-smoke.local 已被 .gitignore 忽略
+set -a; source apps/backend/.env.production-smoke.local; set +a
 pnpm --filter @touchx/backend verify:v1-production
 ```
 

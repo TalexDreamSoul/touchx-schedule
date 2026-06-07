@@ -34,6 +34,8 @@ const rootReadme = readFileSync(join(import.meta.dirname, "../../../../README.md
 const backendReadme = readFileSync(join(import.meta.dirname, "../../README.md"), "utf8");
 const todoDoc = readFileSync(join(import.meta.dirname, "../../../../TODO.md"), "utf8");
 const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../docs/v1-closeout-status.md"), "utf8");
+const productionSmokeEnvExample = readFileSync(join(import.meta.dirname, "../../.env.production-smoke.example"), "utf8");
+const rootGitignore = readFileSync(join(import.meta.dirname, "../../../../.gitignore"), "utf8");
 
 const classifyProductionUrl = (baseUrl) =>
   spawnSync(
@@ -265,6 +267,37 @@ test("V1 production verification docs mention required student number format", (
   assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
   assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+});
+
+test("V1 production verification env template avoids committing real smoke secrets", () => {
+  [
+    "TOUCHX_SMOKE_BASE_URL",
+    "TOUCHX_SMOKE_AUTH_TOKEN",
+    "TOUCHX_SMOKE_STUDENT_NO",
+    "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN",
+    "TOUCHX_SMOKE_NOTIFICATION_CHANNELS",
+    "SMOKE_BASE_URL",
+    "SMOKE_SCHEDULE_IMPORT_STUDENT_NO",
+    "SMOKE_REAL_PDF_PATH",
+    "SMOKE_REAL_PDF_MIN_ENTRIES",
+    "SMOKE_REAL_PDF_EXPECT_STUDENT_NO",
+    "TOUCHX_SMOKE_AUTH_LOGOUT",
+  ].forEach((name) => {
+    assert.match(productionSmokeEnvExample, new RegExp(`^${name}=`, "m"));
+  });
+
+  assert.match(productionSmokeEnvExample, /\.env\.production-smoke\.local/);
+  assert.match(productionSmokeEnvExample, /__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__/);
+  assert.match(productionSmokeEnvExample, /wechat_clawdbot,feishu/);
+  assert.doesNotMatch(productionSmokeEnvExample, /txs1\./);
+  assert.doesNotMatch(productionSmokeEnvExample, /Bearer\s+/);
+  assert.match(rootGitignore, /apps\/backend\/\.env\.\*/);
+  assert.match(rootGitignore, /!apps\/backend\/\.env\.production-smoke\.example/);
+  [rootReadme, backendReadme, v1CloseoutStatus].forEach((doc) => {
+    assert.match(doc, /apps\/backend\/\.env\.production-smoke\.example/);
+    assert.match(doc, /apps\/backend\/\.env\.production-smoke\.local/);
+    assert.match(doc, /source apps\/backend\/\.env\.production-smoke\.local/);
+  });
 });
 
 test("V1 production verification keeps local PDF smoke off production URLs", () => {
