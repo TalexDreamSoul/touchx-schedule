@@ -142,7 +142,7 @@ packages/
 - `apps/backend/scripts/smoke-api-boundaries.mjs` 固化 `/api/v1` 入口边界：`v1-api.ts` 和 `social-v1-api.ts` 有行数预算，必须委托到 `server/modules/*`，且不能重新拥有 multipart 上传解析。
 - `apps/backend/scripts/smoke-admin-ui-boundaries.mjs` 固化后台 UI 边界：业务页必须复用 `NexusAdminShell` / `NexusDashboard`，共享 `.rx-*` 基础类只能在 shell 内定义，旧 `NexusConsole` 不能作为组件回流。
 - `apps/backend/scripts/smoke-client-boundaries.mjs` 固化端侧 API / schedule / theme 边界：`apps/miniapp` 与 `apps/mobile` 必须继续复用 `@touchx/api-client`、共享 base URL 解析、共享课表默认值和 `calendarEventColors`；`apps/miniapp` 页面主题变量必须从 `packages/ui-tokens` 经 `miniappPageThemeStyles` 注入，不能重新硬编码 `/api/v1`、自建裸 `fetch` API wrapper 或本地事件色 class map。
-- `apps/backend/scripts/smoke-miniapp-parity.mjs` 固化 Taro 学生端代码级 parity：profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布、订阅/取消订阅必须继续通过 `apps/miniapp/src/lib/api.ts` 的真实 API helper 和页面状态闭环。
+- `apps/backend/scripts/smoke-miniapp-parity.mjs` 固化 Taro 学生端代码级 parity：today/week 真实日程 API 的 loading、empty、error、未登录、已登录状态流，以及 profile 账号/昵称、微信 ClawDBot 通知绑定、PDF 导入预览、自定义日程源发布、订阅/取消订阅必须继续通过 `apps/miniapp/src/lib/api.ts` 的真实 API helper 和页面状态闭环。
 - `apps/backend/scripts/smoke-data-boundaries.mjs` 固化 V1 数据/基础设施边界：D1 `nexus_state.payload` 仍是当前持久化模型，坏 payload 必须返回 503 而不是 bootstrap 覆盖；V1 收口阶段不得引入 PostgreSQL / Redis / Docker Compose 范围。
 - `apps/backend/scripts/smoke-cloudflare-config.mjs` 静态检查 `wrangler.toml` 的 D1/R2/Queue binding、queue producer/consumer、Cron 和 D1 migration 文件。
 - `apps/backend/scripts/smoke-cloudflare-live.mjs` 提供需要 Wrangler 登录的只读生产资源复核：D1/R2/Queue/Worker deployment 可见性与远端 D1 migration 未应用检查；不进入默认本地 gate。

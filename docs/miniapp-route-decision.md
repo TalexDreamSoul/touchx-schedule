@@ -26,7 +26,7 @@ Do not archive or replace `apps/microapp` during V1 closeout. The replacement de
 
 Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these gates:
 
-1. Today and week schedule flows use real Calendar API data and match the current production behavior for empty, loading, error, and authenticated states.
+1. Today and week schedule flows use real Calendar API data and keep empty, loading, error, unauthenticated, and authenticated states guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 2. Profile account, notification binding, PDF import, and custom calendar-source publishing are available through real API calls and are guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 3. Existing high-usage microapp routes have a Taro equivalent or an explicit V1 defer decision in `TODO.md`.
 4. `pnpm --filter @touchx/miniapp type-check` and `pnpm --filter @touchx/miniapp build:weapp` pass. For V1 release readiness, run `pnpm verify:v1-release` so the backend local gate and Taro build are checked together.
