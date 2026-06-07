@@ -79,7 +79,7 @@ pnpm --filter @touchx/backend check:v1-production-env
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-其中 `check:v1-production-env` 只校验本地材料完整性和安全边界，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符；正式验收仍必须运行 `verify:v1-production`。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给单通道 smoke 排障；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`；真实 PDF 路径必须是绝对路径；`TOUCHX_SMOKE_AUTH_LOGOUT` 只能留空或设为 `1`。`TOUCHX_SMOKE_BASE_URL` 必须是公网 HTTPS 生产 API，不能指向本地、link-local、CGNAT 或私网地址。
+其中 `check:v1-production-env` 只校验本地材料完整性和安全边界，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符；正式验收仍必须运行 `verify:v1-production`。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀且不能包含空白字符；`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN` 也不能包含空白字符；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给单通道 smoke 排障；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`；真实 PDF 路径必须是绝对路径；`TOUCHX_SMOKE_AUTH_LOGOUT` 只能留空或设为 `1`；`TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空，完整生产 gate 不允许跳过弱 fallback session token 拒绝检查。`TOUCHX_SMOKE_BASE_URL` 必须是公网 HTTPS 生产 API，不能指向本地、link-local、CGNAT 或私网地址。
 
 生产 gate 需要覆盖：
 

@@ -110,7 +110,10 @@ request_session_secret_security() {
   fi
   local bootstrap_student_no="${SMOKE_BOOTSTRAP_STUDENT_NO:-admin@schedule.com}"
   local fallback_password="${TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD:-123456}"
-  local weak_secrets=("fallback:${fallback_password}" "touchx-session-fallback-secret")
+  local weak_secrets=("fallback:123456" "touchx-session-fallback-secret")
+  if [[ "${fallback_password}" != "123456" ]]; then
+    weak_secrets+=("fallback:${fallback_password}")
+  fi
   local weak_secret
   for weak_secret in "${weak_secrets[@]}"; do
     local weak_token
@@ -298,9 +301,11 @@ request_external_notification_channel() {
   payload="$(python - <<'PY'
 import json
 import os
+default_title = "TouchX 生产 smoke"
+default_body = "这是一条 TouchX 生产外部通知链路 smoke。"
 print(json.dumps({
-  "title": os.environ.get("TOUCHX_SMOKE_NOTIFICATION_TITLE", "TouchX 生产 smoke"),
-  "body": os.environ.get("TOUCHX_SMOKE_NOTIFICATION_BODY", "这是一条 TouchX 生产外部通知链路 smoke。"),
+  "title": os.environ.get("TOUCHX_SMOKE_NOTIFICATION_TITLE") or default_title,
+  "body": os.environ.get("TOUCHX_SMOKE_NOTIFICATION_BODY") or default_body,
 }, ensure_ascii=False))
 PY
 )"
@@ -370,14 +375,14 @@ request_clawdbot_webhook() {
     exit 1
   fi
 
-  local webhook_text="${TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT:-周三下午3点复习数据结构}"
   local payload
   payload="$(python - <<'PY'
 import json
 import os
+default_text = "周三下午3点复习数据结构"
 print(json.dumps({
   "studentNo": os.environ["TOUCHX_SMOKE_STUDENT_NO"],
-  "text": os.environ.get("TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT", "周三下午3点复习数据结构"),
+  "text": os.environ.get("TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT") or default_text,
   "nickname": "TouchX production smoke",
   "commit": False,
 }, ensure_ascii=False))

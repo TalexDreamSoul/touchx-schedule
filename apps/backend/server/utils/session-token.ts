@@ -4,7 +4,7 @@ import type { AuthSessionRecord, UserRecord } from "../services/domain-store";
 
 const SESSION_TOKEN_PREFIX = "txs1";
 const SESSION_TOKEN_VERSION = 1;
-const SESSION_SECRET_FALLBACK = "touchx-session-fallback-secret";
+const SESSION_SECRET_RUNTIME_FALLBACK = `runtime-fallback:${randomBytes(32).toString("hex")}`;
 
 interface SessionTokenPayload {
   v: number;
@@ -41,11 +41,7 @@ const resolveSessionSecret = (event: H3Event) => {
   if (configured) {
     return configured;
   }
-  const passwordFallback = asString((config as Record<string, unknown>).adminLoginPassword);
-  if (passwordFallback) {
-    return `fallback:${passwordFallback}`;
-  }
-  return SESSION_SECRET_FALLBACK;
+  return SESSION_SECRET_RUNTIME_FALLBACK;
 };
 
 const signPayload = (secret: string, payloadBase64: string) => {

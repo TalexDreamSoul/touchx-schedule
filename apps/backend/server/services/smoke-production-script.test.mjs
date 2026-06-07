@@ -92,7 +92,9 @@ const classifyProductionUrl = (baseUrl) =>
 test("production smoke rejects weak fallback session secrets by default", () => {
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
-  assert.match(script, /fallback:\$\{fallback_password\}/);
+  assert.match(script, /fallback:123456/);
+  assert.match(script, /fallback_password="\$\{TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD:-123456\}"/);
+  assert.match(script, /if \[\[ "\$\{fallback_password\}" != "123456" \]\]; then[\s\S]*weak_secrets\+=\("fallback:\$\{fallback_password\}"\)/);
   assert.match(script, /touchx-session-fallback-secret/);
   assert.match(script, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK/);
   assert.match(script, /expected 401 for weak fallback session token/);
@@ -225,7 +227,9 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /CHECK_ENV_ONLY/);
   assert.match(v1ProductionVerify, /reject_placeholder_env\(\)/);
   assert.match(v1ProductionVerify, /reject_bearer_prefix\(\)/);
+  assert.match(v1ProductionVerify, /reject_whitespace_env\(\)/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag\(\)/);
+  assert.match(v1ProductionVerify, /require_empty_env\(\)/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_AUTH_TOKEN/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_STUDENT_NO/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN/);
@@ -253,7 +257,13 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /require_student_no "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
+  assert.match(v1ProductionVerify, /no auth prefix or whitespace/);
+  assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"/);
+  assert.match(v1ProductionVerify, /require_empty_env "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK"/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK must stay unset/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_PATH"/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must be an absolute path/);
@@ -278,6 +288,18 @@ test("V1 production verification rejects invalid logout opt-in flag values", () 
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_LOGOUT must be empty or 1/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
+test("V1 production verification refuses to skip session secret checks", () => {
+  withTempPdf("touchx-v1-production-session-secret-skip-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK: "1",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK must be empty for verify:v1-production/);
     assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
   });
 });
@@ -314,6 +336,20 @@ test("V1 production verification rejects auth token with Bearer prefix", () => {
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be the raw token without a Bearer prefix/);
     assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
+  });
+});
+
+test("V1 production verification rejects token values containing whitespace", () => {
+  withTempPdf("touchx-v1-production-token-whitespace-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token ",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: " ",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must not contain whitespace/);
+    assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must not contain whitespace/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
   });
 });
 
@@ -422,7 +458,14 @@ test("V1 production verification docs mention required student number format", (
   });
   assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(backendReadme, /不能包含空白字符/);
+  assert.match(backendReadme, /完整生产聚合 gate 会拒绝该变量/);
+  assert.match(todoDoc, /完整生产 gate 会拒绝 `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK`/);
   assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /不能包含空白字符/);
+  assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空/);
+  assert.match(backendReadme, /始终检查默认 `fallback:123456`/);
+  assert.match(todoDoc, /始终检查默认 `fallback:123456` 候选/);
 });
 
 test("V1 production verification env template avoids committing real smoke secrets", () => {
@@ -447,6 +490,8 @@ test("V1 production verification env template avoids committing real smoke secre
   assert.match(productionSmokeEnvExample, /check:v1-production-env/);
   assert.match(productionSmokeEnvExample, /__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__/);
   assert.match(productionSmokeEnvExample, /wechat_clawdbot,feishu/);
+  assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix or whitespace/);
+  assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace/);
   assert.doesNotMatch(productionSmokeEnvExample, /txs1\./);
   assert.doesNotMatch(productionSmokeEnvExample, /Bearer\s+/);
   assert.match(rootGitignore, /apps\/backend\/\.env\.\*/);
@@ -566,6 +611,8 @@ test("production smoke can opt into ClawDBot webhook inbound verification", () =
   assert.match(script, /request_clawdbot_webhook\(\)/);
   assert.match(script, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK/);
   assert.match(script, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN/);
+  assert.match(script, /default_text = "周三下午3点复习数据结构"/);
+  assert.match(script, /os\.environ\.get\("TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT"\) or default_text/);
   assert.match(script, /\/api\/v1\/bot\/clawdbot\/webhook/);
   assert.match(script, /x-clawdbot-webhook-token/);
   assert.match(script, /"commit": False/);
@@ -579,6 +626,10 @@ test("production smoke can verify multiple external notification channels", () =
   assert.match(script, /request_external_notification_channel\(\)/);
   assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS/);
   assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-/);
+  assert.match(script, /default_title = "TouchX 生产 smoke"/);
+  assert.match(script, /default_body = "这是一条 TouchX 生产外部通知链路 smoke。"/);
+  assert.match(script, /os\.environ\.get\("TOUCHX_SMOKE_NOTIFICATION_TITLE"\) or default_title/);
+  assert.match(script, /os\.environ\.get\("TOUCHX_SMOKE_NOTIFICATION_BODY"\) or default_body/);
   assert.match(script, /for channel_type in \$\{channels\}/);
   assert.match(script, /notification-channels\/\$\{channel_type\}\/test/);
   assert.match(script, /ok external notification \$\{channel_type\} -> sent/);
