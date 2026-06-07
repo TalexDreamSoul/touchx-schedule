@@ -40,6 +40,16 @@ reject_placeholder_env() {
   fi
 }
 
+reject_known_nonproduction_env() {
+  local name="$1"
+  local value="${!name:-}"
+  case "${value}" in
+    "dummy" | "dummy-admin-token" | "dummy-webhook-secret" | "webhook-secret" | "test-token" | "test-secret" | "example-token" | "example-secret")
+      missing+=("${name} must be replaced with a real production value")
+      ;;
+  esac
+}
+
 reject_bearer_prefix() {
   local name="$1"
   local value="${!name:-}"
@@ -79,6 +89,20 @@ require_student_no() {
   fi
 }
 
+has_pdf_magic() {
+  local path="$1"
+  python - "${path}" <<'PY'
+from pathlib import Path
+import sys
+
+try:
+  with Path(sys.argv[1]).open("rb") as file:
+    print("1" if file.read(5) == b"%PDF-" else "0")
+except OSError:
+  print("0")
+PY
+}
+
 is_local_smoke_url() {
   local url="$1"
   [[ "${url}" == "http://127.0.0.1" || "${url}" == "http://127.0.0.1/"* || "${url}" == "http://127.0.0.1:"* ]] && return 0
@@ -96,6 +120,8 @@ reject_placeholder_env "TOUCHX_SMOKE_STUDENT_NO"
 reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
 reject_placeholder_env "SMOKE_REAL_PDF_PATH"
 reject_placeholder_env "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+reject_known_nonproduction_env "TOUCHX_SMOKE_AUTH_TOKEN"
+reject_known_nonproduction_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
 reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"
 reject_whitespace_env "TOUCHX_SMOKE_AUTH_TOKEN"
 reject_whitespace_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
@@ -141,6 +167,9 @@ fi
 if [[ -n "${SMOKE_REAL_PDF_PATH:-}" && "${SMOKE_REAL_PDF_PATH}" != /* ]]; then
   missing+=("SMOKE_REAL_PDF_PATH must be an absolute path")
 fi
+if [[ -n "${SMOKE_REAL_PDF_PATH:-}" && -f "${SMOKE_REAL_PDF_PATH}" && "$(has_pdf_magic "${SMOKE_REAL_PDF_PATH}")" != "1" ]]; then
+  missing+=("SMOKE_REAL_PDF_PATH must point to a PDF file")
+fi
 if [[ ! "${SMOKE_REAL_PDF_MIN_ENTRIES}" =~ ^[0-9]+$ || "${SMOKE_REAL_PDF_MIN_ENTRIES}" -lt 8 ]]; then
   missing+=("SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8")
 fi
@@ -163,11 +192,11 @@ if (( ${#missing[@]} > 0 )); then
   cat >&2 <<'EOF'
 
 Required inputs:
-  TOUCHX_SMOKE_AUTH_TOKEN              Raw admin token for protected production checks; no auth prefix or whitespace.
+  TOUCHX_SMOKE_AUTH_TOKEN              Raw admin token for protected production checks; no auth prefix, whitespace, or dummy/example value.
   TOUCHX_SMOKE_STUDENT_NO              Real production student number for legacy login verification; must be 6-32 digits.
-  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN  Real ClawDBot webhook token for inbound production smoke; no whitespace.
+  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN  Real ClawDBot webhook token for inbound production smoke; no whitespace or dummy/example value.
   TOUCHX_SMOKE_NOTIFICATION_CHANNELS   Must include both wechat_clawdbot and feishu.
-  SMOKE_REAL_PDF_PATH                  Real schedule PDF sample on this machine.
+  SMOKE_REAL_PDF_PATH                  Real schedule PDF sample on this machine; must be an absolute PDF file path.
   SMOKE_SCHEDULE_IMPORT_STUDENT_NO     Student number used by local PDF import smoke; must be 6-32 digits.
 
 Optional hardening:

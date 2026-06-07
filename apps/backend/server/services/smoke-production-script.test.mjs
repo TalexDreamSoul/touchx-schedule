@@ -42,9 +42,9 @@ const backendRoot = join(import.meta.dirname, "../../..");
 
 const productionPrecheckEnv = (overrides = {}) => ({
   ...process.env,
-  TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+  TOUCHX_SMOKE_AUTH_TOKEN: "production-admin-token-value",
   TOUCHX_SMOKE_STUDENT_NO: "2305100613",
-  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "production-clawdbot-webhook-token-value",
   TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
   TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
   SMOKE_BASE_URL: "http://127.0.0.1:9986",
@@ -247,6 +247,7 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /--check-env/);
   assert.match(v1ProductionVerify, /CHECK_ENV_ONLY/);
   assert.match(v1ProductionVerify, /reject_placeholder_env\(\)/);
+  assert.match(v1ProductionVerify, /reject_known_nonproduction_env\(\)/);
   assert.match(v1ProductionVerify, /reject_bearer_prefix\(\)/);
   assert.match(v1ProductionVerify, /reject_whitespace_env\(\)/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag\(\)/);
@@ -273,21 +274,25 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /http:\/\/localhost:"\*/);
   assert.match(v1ProductionVerify, /require_student_no\(\)/);
   assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
+  assert.match(v1ProductionVerify, /has_pdf_magic\(\)/);
   assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /require_student_no "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /require_student_no "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_known_nonproduction_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
+  assert.match(v1ProductionVerify, /reject_known_nonproduction_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
-  assert.match(v1ProductionVerify, /no auth prefix or whitespace/);
-  assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace/);
+  assert.match(v1ProductionVerify, /no auth prefix, whitespace, or dummy\/example value/);
+  assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace or dummy\/example value/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"/);
   assert.match(v1ProductionVerify, /require_empty_env "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK"/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK must stay unset/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_PATH"/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must be an absolute path/);
+  assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must point to a PDF file/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8/);
   assert.match(v1ProductionVerify, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/);
@@ -400,6 +405,20 @@ test("V1 production verification rejects unreplaced env template placeholders", 
   assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
 });
 
+test("V1 production verification rejects known non-production token values", () => {
+  withTempPdf("touchx-v1-production-dummy-token-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/);
+    assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
 test("V1 production verification requires an absolute real PDF path", () => {
   const result = runV1ProductionPrecheck({
     SMOKE_REAL_PDF_PATH: "fixtures/real-schedule.pdf",
@@ -407,6 +426,22 @@ test("V1 production verification requires an absolute real PDF path", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must be an absolute path/);
   assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+});
+
+test("V1 production verification rejects non-PDF real sample files", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-v1-production-non-pdf-"));
+  const textPath = join(tempDir, "real-schedule.txt");
+  writeFileSync(textPath, "not a pdf\n");
+  try {
+    const result = runV1ProductionPrecheck({
+      SMOKE_REAL_PDF_PATH: textPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must point to a PDF file/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("V1 production verification rejects unexpected CLI arguments", () => {
@@ -479,10 +514,12 @@ test("V1 production verification docs mention required student number format", (
   });
   assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(backendReadme, /绝对 PDF 文件路径|真实 PDF 路径必须是绝对 PDF 文件路径/);
   assert.match(backendReadme, /不能包含空白字符/);
   assert.match(backendReadme, /完整生产聚合 gate 会拒绝该变量/);
   assert.match(todoDoc, /完整生产 gate 会拒绝 `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK`/);
   assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /绝对 PDF 文件路径|真实 PDF 路径必须是绝对 PDF 文件路径/);
   assert.match(v1CloseoutStatus, /不能包含空白字符/);
   assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空/);
   assert.match(backendReadme, /始终检查默认 `fallback:123456`/);
@@ -511,8 +548,8 @@ test("V1 production verification env template avoids committing real smoke secre
   assert.match(productionSmokeEnvExample, /check:v1-production-env/);
   assert.match(productionSmokeEnvExample, /__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__/);
   assert.match(productionSmokeEnvExample, /wechat_clawdbot,feishu/);
-  assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix or whitespace/);
-  assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace/);
+  assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix, whitespace, or dummy\/example value/);
+  assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace or dummy\/example value/);
   assert.doesNotMatch(productionSmokeEnvExample, /txs1\./);
   assert.doesNotMatch(productionSmokeEnvExample, /Bearer\s+/);
   assert.match(rootGitignore, /apps\/backend\/\.env\.\*/);
