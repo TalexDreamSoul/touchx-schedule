@@ -156,7 +156,7 @@ pnpm --filter @touchx/backend verify:v1-local
 
 该 gate 包含 backend type-check、后端 node tests、`pnpm test:packages` workspace 包测试、miniapp / mobile type-check、`smoke:api-boundaries`、`smoke:admin-ui-boundaries`、`smoke:client-boundaries` 和 `smoke:data-boundaries`。这些检查会约束 `server/services/v1-api.ts` / `server/services/social-v1-api.ts` 的入口行数预算、模块委托边界和上传解析归属，也会检查后台页面继续复用 `NexusAdminShell` / `NexusDashboard`、不回流旧 `NexusConsole`，检查 `apps/miniapp` / `apps/mobile` 继续复用 `@touchx/api-client`，并固定 V1 阶段继续使用 D1 `nexus_state.payload` 严格持久化而不提前引入 PostgreSQL / Redis / Docker Compose，避免 V1 handler、后台 UI、端侧 API wrapper 或基础设施范围重新膨胀。
 
-V1 生产验收 gate（需要真实生产凭据和真实 PDF 样本）：
+V1 生产验收 gate（需要公网 HTTPS 生产 API、真实生产凭据和真实 PDF 样本）：
 
 ```bash
 TOUCHX_SMOKE_AUTH_TOKEN=... \
@@ -169,7 +169,7 @@ SMOKE_REAL_PDF_MIN_ENTRIES=8 \
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝指向 localhost / 127.0.0.1 / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
+该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝非公网 HTTPS、localhost / 127.0.0.1 / link-local / CGNAT / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT=1` 可在最后额外验证 admin logout 撤销当前 token。
 
 ## 运行时自检（防回归）
 
@@ -239,7 +239,7 @@ pnpm --filter @touchx/backend smoke:production
 
 可选变量：
 
-- `TOUCHX_SMOKE_BASE_URL`：生产 API 地址，默认 `https://schedule-backend.tagzxia.com`。
+- `TOUCHX_SMOKE_BASE_URL`：公网 HTTPS 生产 API 地址，默认 `https://schedule-backend.tagzxia.com`；`smoke:production` 和完整生产验收都会拒绝非 HTTPS、本地、link-local、CGNAT 和私网地址。
 - `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO`：校验生产 bootstrap 管理员账号/学号是否符合预期。
 - `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD`：用于生成弱 fallback session token 的候选默认管理员密码，默认 `123456`。
 - `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=1`：跳过弱 fallback session token 拒绝检查，仅用于临时排障；生产验收不建议跳过。

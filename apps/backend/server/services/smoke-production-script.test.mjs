@@ -14,6 +14,8 @@ const cloudflareLiveSmokePath = join(import.meta.dirname, "../../scripts/smoke-c
 const cloudflareLiveSmoke = readFileSync(cloudflareLiveSmokePath, "utf8");
 const v1ProductionVerifyPath = join(import.meta.dirname, "../../scripts/verify-v1-production.sh");
 const v1ProductionVerify = readFileSync(v1ProductionVerifyPath, "utf8");
+const smokeLocalPath = join(import.meta.dirname, "../../scripts/smoke-local.sh");
+const smokeLocal = readFileSync(smokeLocalPath, "utf8");
 const apiBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-api-boundaries.mjs");
 const apiBoundarySmoke = readFileSync(apiBoundarySmokePath, "utf8");
 const adminUiBoundarySmokePath = join(import.meta.dirname, "../../scripts/smoke-admin-ui-boundaries.mjs");
@@ -28,6 +30,8 @@ const todoDoc = readFileSync(join(import.meta.dirname, "../../../../TODO.md"), "
 const v1CloseoutStatus = readFileSync(join(import.meta.dirname, "../../../../docs/v1-closeout-status.md"), "utf8");
 
 test("production smoke rejects weak fallback session secrets by default", () => {
+  assert.match(script, /is_non_production_smoke_url\(\)/);
+  assert.match(script, /public HTTPS production API for smoke:production/);
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
   assert.match(script, /fallback:\$\{fallback_password\}/);
@@ -35,6 +39,21 @@ test("production smoke rejects weak fallback session secrets by default", () => 
   assert.match(script, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK/);
   assert.match(script, /expected 401 for weak fallback session token/);
   assert.match(script, /request_admin_bootstrap_status[\s\S]*request_session_secret_security[\s\S]*request_protected/);
+});
+
+test("production smoke refuses non-production base URLs before network checks", () => {
+  ["http://127.0.0.1:9986", "http://schedule-backend.tagzxia.com", "https://192.168.2.1"].forEach((baseUrl) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: baseUrl,
+      },
+    });
+    assert.notEqual(result.status, 0, baseUrl);
+    assert.match(result.stderr, /public HTTPS production API for smoke:production/, baseUrl);
+  });
 });
 
 test("production smoke leaves token revocation until other opt-in checks finish", () => {
@@ -102,6 +121,12 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /PRODUCTION_SMOKE_BASE_URL="\$\{TOUCHX_SMOKE_BASE_URL:-https:\/\/schedule-backend\.tagzxia\.com\}"/);
   assert.match(v1ProductionVerify, /is_local_smoke_url\(\)/);
   assert.match(v1ProductionVerify, /is_non_production_smoke_url\(\)/);
+  assert.match(v1ProductionVerify, /http:\/\/127\.0\.0\.1:"\*/);
+  assert.match(v1ProductionVerify, /http:\/\/localhost:"\*/);
+  assert.match(v1ProductionVerify, /\[\[ "\$\{url\}" != "https:\/\/"\* \]\] && return 0/);
+  assert.match(v1ProductionVerify, /169\.254/);
+  assert.match(v1ProductionVerify, /100\\\./);
+  assert.match(v1ProductionVerify, /\[fF\]\[cCdD\]\|\[fF\]\[eE\]\[89aAbB\]/);
   assert.match(v1ProductionVerify, /require_student_no\(\)/);
   assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
   assert.match(v1ProductionVerify, /require_student_no "TOUCHX_SMOKE_STUDENT_NO"/);
@@ -164,6 +189,9 @@ test("V1 production verification docs mention required student number format", (
   [rootReadme, backendReadme, todoDoc, v1CloseoutStatus].forEach((doc) => {
     assert.match(doc, /6-32 位数字/);
   });
+  [rootReadme, backendReadme, todoDoc, v1CloseoutStatus].forEach((doc) => {
+    assert.match(doc, /HTTPS|公网 HTTPS/);
+  });
   assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
   assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
@@ -188,6 +216,29 @@ test("V1 production verification keeps local PDF smoke off production URLs", () 
   assert.match(result.stderr, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
 });
 
+test("local smoke URL checks require localhost host boundaries", () => {
+  assert.match(smokeLocal, /http:\/\/127\.0\.0\.1:"\*/);
+  assert.match(smokeLocal, /http:\/\/localhost:"\*/);
+  ["http://localhost.evil.test:9986", "http://127.0.0.1.evil.test:9986"].forEach((baseUrl) => {
+    const result = spawnSync("bash", [v1ProductionVerifyPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "dummy",
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "webhook-secret",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,feishu",
+        SMOKE_BASE_URL: baseUrl,
+        SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0, baseUrl);
+    assert.match(result.stderr, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/, baseUrl);
+  });
+});
+
 test("V1 production verification keeps production smoke off local URLs", () => {
   const result = spawnSync("bash", [v1ProductionVerifyPath], {
     cwd: join(import.meta.dirname, "../../.."),
@@ -208,7 +259,20 @@ test("V1 production verification keeps production smoke off local URLs", () => {
 });
 
 test("V1 production verification keeps production smoke off private network URLs", () => {
-  ["http://10.0.0.8:9986", "https://172.16.2.1", "https://192.168.2.1", "http://[::1]:9986"].forEach((baseUrl) => {
+  [
+    "http://schedule-backend.tagzxia.com",
+    "http://10.0.0.8:9986",
+    "https://172.16.2.1",
+    "https://192.168.2.1",
+    "https://169.254.1.1",
+    "https://100.64.0.1",
+    "https://100.127.255.1",
+    "http://[::1]:9986",
+    "https://[fd00::1]",
+    "https://[FD00::1]",
+    "https://[fe80::1]",
+    "https://[FEBF::1]",
+  ].forEach((baseUrl) => {
     const result = spawnSync("bash", [v1ProductionVerifyPath], {
       cwd: join(import.meta.dirname, "../../.."),
       encoding: "utf8",

@@ -78,7 +78,7 @@ SMOKE_REAL_PDF_PATH=/absolute/path/real-schedule.pdf \
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-其中 `TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`。
+其中 `TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`。`TOUCHX_SMOKE_BASE_URL` 必须是公网 HTTPS 生产 API，不能指向本地、link-local、CGNAT 或私网地址。
 
 生产 gate 需要覆盖：
 
@@ -89,7 +89,7 @@ pnpm --filter @touchx/backend verify:v1-production
 - 生产旧学号登录策略。
 - Cloudflare D1 / R2 / Queue / Worker live 资源可见性与 migration 状态。
 
-该 gate 会拒绝本地或私网 `TOUCHX_SMOKE_BASE_URL`，并要求真实 PDF 导入 smoke 只打 localhost，避免本地导入检查误写生产数据。
+该 gate 会拒绝非公网 HTTPS、本地、link-local、CGNAT 或私网 `TOUCHX_SMOKE_BASE_URL`，并要求真实 PDF 导入 smoke 只打 localhost，避免本地导入检查误写生产数据。
 
 ## 建议提交批次
 

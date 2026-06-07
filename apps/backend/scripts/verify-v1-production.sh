@@ -23,18 +23,24 @@ require_student_no() {
 
 is_local_smoke_url() {
   local url="$1"
-  [[ "${url}" == "http://127.0.0.1"* || "${url}" == "http://localhost"* ]]
+  [[ "${url}" == "http://127.0.0.1" || "${url}" == "http://127.0.0.1/"* || "${url}" == "http://127.0.0.1:"* ]] && return 0
+  [[ "${url}" == "http://localhost" || "${url}" == "http://localhost/"* || "${url}" == "http://localhost:"* ]] && return 0
+  return 1
 }
 
 is_non_production_smoke_url() {
   local url="$1"
+  [[ "${url}" != "https://"* ]] && return 0
   [[ "${url}" == "http://127."* || "${url}" == "https://127."* ]] && return 0
   [[ "${url}" == "http://localhost"* || "${url}" == "https://localhost"* ]] && return 0
   [[ "${url}" == "http://0.0.0.0"* || "${url}" == "https://0.0.0.0"* ]] && return 0
   [[ "${url}" == "http://10."* || "${url}" == "https://10."* ]] && return 0
   [[ "${url}" == "http://192.168."* || "${url}" == "https://192.168."* ]] && return 0
+  [[ "${url}" == "http://169.254."* || "${url}" == "https://169.254."* ]] && return 0
+  [[ "${url}" =~ ^https?://100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\. ]] && return 0
   [[ "${url}" =~ ^https?://172\.(1[6-9]|2[0-9]|3[0-1])\. ]] && return 0
   [[ "${url}" == "http://[::1]"* || "${url}" == "https://[::1]"* ]] && return 0
+  [[ "${url}" =~ ^https?://\[(([fF][cCdD]|[fF][eE][89aAbB])[0-9a-fA-F]*:) ]] && return 0
   return 1
 }
 
@@ -106,7 +112,7 @@ Optional hardening:
   SMOKE_REAL_PDF_MIN_ENTRIES=8         Minimum parsed course count; production gate requires >= 8.
   SMOKE_REAL_PDF_EXPECT_STUDENT_NO=... Verifies parsed PDF owner student number; defaults to TOUCHX_SMOKE_STUDENT_NO and must be 6-32 digits.
   SMOKE_BASE_URL=http://127.0.0.1:9986 Local backend URL for the real PDF smoke; production URLs are refused.
-  TOUCHX_SMOKE_BASE_URL=https://...    Production backend URL for production API smoke; local/private URLs are refused.
+  TOUCHX_SMOKE_BASE_URL=https://...    Public HTTPS production backend URL; non-HTTPS, local, and private URLs are refused.
 EOF
   exit 1
 fi

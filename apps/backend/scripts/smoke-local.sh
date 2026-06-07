@@ -4,7 +4,9 @@ set -euo pipefail
 BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:9986}"
 
 is_local_base_url() {
-  [[ "${BASE_URL}" == "http://127.0.0.1"* || "${BASE_URL}" == "http://localhost"* ]]
+  [[ "${BASE_URL}" == "http://127.0.0.1" || "${BASE_URL}" == "http://127.0.0.1/"* || "${BASE_URL}" == "http://127.0.0.1:"* ]] && return 0
+  [[ "${BASE_URL}" == "http://localhost" || "${BASE_URL}" == "http://localhost/"* || "${BASE_URL}" == "http://localhost:"* ]] && return 0
+  return 1
 }
 
 check_exact() {
