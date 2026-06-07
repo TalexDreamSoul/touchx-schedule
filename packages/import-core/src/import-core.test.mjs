@@ -1,34 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import { bundleTsModule, repoRoot } from "../../test-utils/bundle-ts-module.mjs";
 
-const repoRoot = resolve(import.meta.dirname, "../../..");
-const esbuildBin = [
-  "node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.20.2/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.18.20/node_modules/esbuild/bin/esbuild",
-].map((item) => join(repoRoot, item)).find((item) => existsSync(item));
-
-if (!esbuildBin) {
-  throw new Error("esbuild binary is required to run import-core tests");
-}
-
-const outDir = "/tmp/touchx-import-core-test";
-const outFile = join(outDir, "import-core.mjs");
-await mkdir(outDir, { recursive: true });
-execFileSync(esbuildBin, [
-  join(repoRoot, "packages/import-core/src/index.ts"),
-  "--bundle",
-  "--platform=node",
-  "--format=esm",
-  `--outfile=${outFile}`,
-], { stdio: "pipe" });
-
-const core = await import(outFile);
+const core = await bundleTsModule(join(repoRoot, "packages/import-core/src/index.ts"), {
+  outFileName: "import-core.mjs",
+  tmpPrefix: "touchx-import-core-test",
+});
 
 const candidate = (status, confidence = 0.8) => ({
   id: `candidate-${status}`,

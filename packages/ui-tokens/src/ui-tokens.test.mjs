@@ -1,34 +1,12 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import { bundleTsModule, repoRoot } from "../../test-utils/bundle-ts-module.mjs";
 
-const repoRoot = resolve(import.meta.dirname, "../../..");
-const esbuildBin = [
-  "node_modules/.pnpm/esbuild@0.27.3/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.21.5/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.20.2/node_modules/esbuild/bin/esbuild",
-  "node_modules/.pnpm/esbuild@0.18.20/node_modules/esbuild/bin/esbuild",
-].map((item) => join(repoRoot, item)).find((item) => existsSync(item));
-
-if (!esbuildBin) {
-  throw new Error("esbuild binary is required to run ui-tokens tests");
-}
-
-const outDir = "/tmp/touchx-ui-tokens-test";
-const outFile = join(outDir, "ui-tokens.mjs");
-await mkdir(outDir, { recursive: true });
-execFileSync(esbuildBin, [
-  join(repoRoot, "packages/ui-tokens/src/index.ts"),
-  "--bundle",
-  "--platform=node",
-  "--format=esm",
-  `--outfile=${outFile}`,
-], { stdio: "pipe" });
-
-const tokens = await import(outFile);
+const tokens = await bundleTsModule(join(repoRoot, "packages/ui-tokens/src/index.ts"), {
+  outFileName: "ui-tokens.mjs",
+  tmpPrefix: "touchx-ui-tokens-test",
+});
 const hexColor = /^#[0-9a-f]{6}$/i;
 const rgbaColor = /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*(?:0|1|0?\.\d+)\s*\)$/;
 
