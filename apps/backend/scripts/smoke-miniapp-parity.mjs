@@ -373,8 +373,8 @@ const assertReleaseGateScript = (packageJsonFile) => {
   ], `${packageJsonFile.absolutePath} verify:v1-release must guard backend, Taro build, and uni-app fallback build`);
 };
 
-const assertReleaseGateDocs = ({ readme, v1CloseoutStatus, calendarRoadmap }) => {
-  const files = [readme, v1CloseoutStatus, calendarRoadmap];
+const assertReleaseGateDocs = ({ readme, todo, miniappDecisionDoc, v1CloseoutStatus, calendarRoadmap }) => {
+  const files = [readme, todo, miniappDecisionDoc, v1CloseoutStatus, calendarRoadmap];
   const sharedNeedles = [
     "smoke:miniapp-parity",
     "pnpm verify:v1-release",
@@ -404,6 +404,7 @@ const microappPagesJson = readJson("apps/microapp/src/pages.json");
 const miniappDecisionDoc = readSource("docs/miniapp-route-decision.md");
 const manualSmokeChecklist = readSource("docs/miniapp-wechat-smoke-checklist.md");
 const readme = readSource("README.md");
+const todo = readSource("TODO.md");
 const v1CloseoutStatus = readSource("docs/v1-closeout-status.md");
 const calendarRoadmap = readSource("docs/touchx-calendar-platform-roadmap.md");
 const rootPackageJson = readJson("package.json");
@@ -420,6 +421,6 @@ assertSourcePublishParity(sources);
 assertMicroappRouteCoverage(miniappDecisionDoc, microappPagesJson);
 assertManualSmokeChecklist(manualSmokeChecklist);
 assertReleaseGateScript(rootPackageJson);
-assertReleaseGateDocs({ readme, v1CloseoutStatus, calendarRoadmap });
+assertReleaseGateDocs({ readme, todo, miniappDecisionDoc, v1CloseoutStatus, calendarRoadmap });
 
 console.log("ok miniapp schedule, route coverage, release gate, manual smoke checklist, profile, notification, PDF import and custom source parity gates");
