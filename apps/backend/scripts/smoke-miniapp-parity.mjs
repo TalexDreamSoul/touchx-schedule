@@ -335,6 +335,44 @@ const assertMicroappRouteCoverage = (decisionDoc, pagesJsonFile) => {
   assertNotContains(decisionDoc, "TODO route");
 };
 
+const assertManualSmokeChecklist = (file) => {
+  [
+    "# Miniapp WeChat DevTools Smoke Checklist",
+    "## Prerequisites",
+    "## Required Manual Scenarios",
+    "## Evidence To Record",
+    "## Decision Rule",
+    "pnpm verify:v1-release",
+    "WeChat DevTools",
+    "First load",
+    "Login and profile",
+    "Today schedule",
+    "Week schedule",
+    "Subscription and sources",
+    "PDF import preview",
+    "Notification binding",
+    "Fallback route check",
+    "Do not archive or replace `apps/microapp` unless every required manual scenario passes",
+  ].forEach((needle) => assertContains(file, needle));
+};
+
+const assertReleaseGateScript = (packageJsonFile) => {
+  const scripts = packageJsonFile.data.scripts || {};
+  assert.equal(scripts["build:miniapp"], "pnpm --filter @touchx/miniapp build:weapp", "root build:miniapp must build the Taro WeChat route");
+  assert.equal(scripts["build:microapp"], "pnpm --filter @touchx/microapp build:mp-weixin", "root build:microapp must build the uni-app fallback route");
+
+  const releaseSteps = String(scripts["verify:v1-release"] || "")
+    .split("&&")
+    .map((step) => step.trim())
+    .filter(Boolean);
+  assert.deepEqual(releaseSteps, [
+    "pnpm --filter @touchx/backend verify:v1-local",
+    "pnpm --filter @touchx/miniapp build:weapp",
+    "pnpm --filter @touchx/microapp type-check",
+    "pnpm --filter @touchx/microapp build:mp-weixin",
+  ], `${packageJsonFile.absolutePath} verify:v1-release must guard backend, Taro build, and uni-app fallback build`);
+};
+
 const api = readSource("apps/miniapp/src/lib/api.ts");
 const today = readSource("apps/miniapp/src/pages/today/index.tsx");
 const week = readSource("apps/miniapp/src/pages/week/index.tsx");
@@ -342,6 +380,8 @@ const profile = readSource("apps/miniapp/src/pages/profile/index.tsx");
 const sources = readSource("apps/miniapp/src/pages/sources/index.tsx");
 const microappPagesJson = readJson("apps/microapp/src/pages.json");
 const miniappDecisionDoc = readSource("docs/miniapp-route-decision.md");
+const manualSmokeChecklist = readSource("docs/miniapp-wechat-smoke-checklist.md");
+const rootPackageJson = readJson("package.json");
 
 assertApiWrapperDelegates(api);
 
@@ -353,5 +393,7 @@ assertProfileNotificationParity(profile);
 assertProfilePdfParity(profile);
 assertSourcePublishParity(sources);
 assertMicroappRouteCoverage(miniappDecisionDoc, microappPagesJson);
+assertManualSmokeChecklist(manualSmokeChecklist);
+assertReleaseGateScript(rootPackageJson);
 
-console.log("ok miniapp schedule, route coverage, profile, notification, PDF import and custom source parity gates");
+console.log("ok miniapp schedule, route coverage, release gate, manual smoke checklist, profile, notification, PDF import and custom source parity gates");

@@ -13,7 +13,7 @@
     "preview:backend": "pnpm --filter @touchx/backend preview",
     "deploy:backend": "pnpm --filter @touchx/backend run deploy",
     "test:packages": "pnpm --filter \"./packages/**\" --if-present test",
-    "verify:v1-release": "pnpm --filter @touchx/backend verify:v1-local && pnpm --filter @touchx/miniapp build:weapp",
+    "verify:v1-release": "pnpm --filter @touchx/backend verify:v1-local && pnpm --filter @touchx/miniapp build:weapp && pnpm --filter @touchx/microapp type-check && pnpm --filter @touchx/microapp build:mp-weixin",
     "type-check": "pnpm -r --if-present type-check"
   },
   "devDependencies": {

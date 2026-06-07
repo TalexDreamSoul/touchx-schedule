@@ -29,8 +29,8 @@ Before replacing or archiving `apps/microapp`, `apps/miniapp` must pass these ga
 1. Today and week schedule flows use real Calendar API data and keep empty, loading, error, unauthenticated, and authenticated states guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 2. Profile account, notification binding, PDF import, and custom calendar-source publishing are available through real API calls and are guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
 3. Existing microapp routes have a Taro equivalent or an explicit V1 defer decision in the route coverage matrix below, guarded by `pnpm --filter @touchx/backend smoke:miniapp-parity`.
-4. `pnpm --filter @touchx/miniapp type-check` and `pnpm --filter @touchx/miniapp build:weapp` pass. For V1 release readiness, run `pnpm verify:v1-release` so the backend local gate and Taro build are checked together.
-5. Manual WeChat DevTools smoke covers first load, login, today, week, subscription, profile, PDF import, and notification binding.
+4. `pnpm verify:v1-release` passes, covering backend local gate, Taro build, uni-app fallback type-check, and uni-app WeChat build.
+5. Manual WeChat DevTools smoke follows `docs/miniapp-wechat-smoke-checklist.md` and covers first load, login, today, week, subscription, profile, PDF import, notification binding, and fallback route check.
 
 ## Microapp Route Coverage Matrix
 

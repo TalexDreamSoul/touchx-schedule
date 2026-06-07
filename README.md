@@ -72,7 +72,7 @@ V1 发版前本地 gate（包含小程序构建）：
 pnpm verify:v1-release
 ```
 
-该 gate 会先跑 `@touchx/backend` 的 `verify:v1-local`，再跑 `@touchx/miniapp build:weapp`，用于发版前确认 Taro 小程序当前主线路线仍可构建。
+该 gate 会先跑 `@touchx/backend` 的 `verify:v1-local`，再跑 `@touchx/miniapp build:weapp`、`@touchx/microapp type-check` 和 `@touchx/microapp build:mp-weixin`，用于发版前确认 Taro 主线路线与 uni-app fallback 都仍可构建。替换或归档 `apps/microapp` 前还必须按 `docs/miniapp-wechat-smoke-checklist.md` 补一次 WeChat DevTools 手工 smoke。
 
 V1 当前收口功能、剩余生产验收项和建议提交批次见 `docs/v1-closeout-status.md`。
 
