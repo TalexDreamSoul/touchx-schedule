@@ -11,6 +11,7 @@ const requiredWorkerSecrets = [
   "NEXUS_ADMIN_LOGIN_PASSWORD",
   "NEXUS_SESSION_TOKEN_SECRET",
   "NEXUS_HEARTBEAT_TOKEN",
+  "NEXUS_HEARTBEAT_TIMEZONE",
   "NEXUS_BOT_DELIVERY_TOKEN",
   "NEXUS_REMINDER_DELIVERY_QUEUE",
 ];
@@ -40,13 +41,15 @@ const parseJson = (raw, label) => {
   }
 };
 
-const asArray = (value, candidateKeys = []) => {
+const asArray = (value, candidatePaths = []) => {
   if (Array.isArray(value)) {
     return value;
   }
-  for (const key of candidateKeys) {
-    if (Array.isArray(value?.[key])) {
-      return value[key];
+  for (const candidatePath of candidatePaths) {
+    const path = Array.isArray(candidatePath) ? candidatePath : [candidatePath];
+    const candidate = path.reduce((current, key) => current?.[key], value);
+    if (Array.isArray(candidate)) {
+      return candidate;
     }
   }
   return [];
@@ -62,17 +65,15 @@ const requireConfiguredRecords = (records, label, requiredFields) => {
 };
 
 const extractSecretNames = (payload) =>
-  ([
-    payload,
-    payload?.result,
-    payload?.secrets,
-    payload?.items,
-    payload?.result?.secrets,
-    payload?.result?.items,
-    payload?.secrets?.items,
-    payload?.result?.secrets?.items,
-  ]
-    .find((candidate) => Array.isArray(candidate)) || [])
+  asArray(payload, [
+    "result",
+    "secrets",
+    "items",
+    ["result", "secrets"],
+    ["result", "items"],
+    ["secrets", "items"],
+    ["result", "secrets", "items"],
+  ])
     .map((item) => (typeof item === "string" ? item : item?.name || item?.key || ""))
     .filter(Boolean);
 
@@ -84,7 +85,7 @@ runWrangler(["whoami"], { label: "wrangler whoami" });
 
 const d1List = asArray(
   parseJson(runWrangler(["d1", "list", "--json"], { label: "wrangler d1 list" }), "wrangler d1 list"),
-  ["result", "databases", "items"],
+  ["result", "databases", "items", ["result", "databases"], ["result", "items"]],
 );
 config.d1Databases.forEach((database) => {
   assert.ok(
@@ -121,7 +122,14 @@ const deployments = parseJson(
   }),
   "wrangler deployments list",
 );
-const deploymentItems = asArray(deployments, ["deployments", "items", "result"]);
+const deploymentItems = asArray(deployments, [
+  "deployments",
+  "items",
+  "result",
+  ["deployments", "items"],
+  ["result", "deployments"],
+  ["result", "items"],
+]);
 assert.ok(
   deploymentItems.length > 0,
   `Worker ${config.workerName} must have at least one Cloudflare deployment`,

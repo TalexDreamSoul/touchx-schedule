@@ -217,7 +217,7 @@ Cloudflare 真实资源只读验收：
 pnpm --filter @touchx/backend smoke:cloudflare-live
 ```
 
-该脚本需要本机已登录 Cloudflare Wrangler，只执行只读检查：`whoami`、D1 列表、R2 bucket 列表/详情、Queue 列表/详情、Worker deployment 列表、Worker secret 名称列表，以及 D1 远端未应用 migration 检查；不会创建、更新、删除或部署任何资源。它不放入默认 `verify:v1-local`，避免本地开发机必须持有生产 Cloudflare 凭证。
+该脚本需要本机已登录 Cloudflare Wrangler，只执行只读检查：`whoami`、D1 列表、R2 bucket 列表/详情、Queue 列表/详情、Worker deployment 列表、Worker secret 名称列表，以及 D1 远端未应用 migration 检查；Worker secret 必须包含管理员初始化、session secret、heartbeat token/timezone、bot token 和提醒投递队列模式。不会创建、更新、删除或部署任何资源。它不放入默认 `verify:v1-local`，避免本地开发机必须持有生产 Cloudflare 凭证。
 
 生产 smoke：
 
