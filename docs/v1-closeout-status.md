@@ -88,7 +88,7 @@ pnpm --filter @touchx/backend verify:v1-production
 - 真实 PDF 课表解析质量，至少解析 8 条课程且学号匹配预期学生。
 - 生产默认通知队列使用通用 `notificationDeliveries`。
 - 生产旧学号登录策略。
-- Cloudflare D1 / R2 / Queue / Worker live 资源可见性与 migration 状态。
+- Cloudflare D1 / R2 / Queue / Worker live 资源可见性、Worker secret 名称可见性与 migration 状态。
 
 该 gate 会拒绝非公网 HTTPS、本地、link-local、CGNAT 或私网 `TOUCHX_SMOKE_BASE_URL`，并要求真实 PDF 导入 smoke 只打 localhost，避免本地导入检查误写生产数据。
 

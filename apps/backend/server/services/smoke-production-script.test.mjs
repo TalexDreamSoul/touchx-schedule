@@ -214,6 +214,16 @@ test("Cloudflare live smoke is read-only and checks real resources", () => {
   assert.match(cloudflareLiveSmoke, /r2", "bucket", "list/);
   assert.match(cloudflareLiveSmoke, /queues", "list/);
   assert.match(cloudflareLiveSmoke, /deployments", "list"/);
+  assert.match(cloudflareLiveSmoke, /secret", "list"/);
+  assert.match(cloudflareLiveSmoke, /--format", "json"/);
+  assert.match(cloudflareLiveSmoke, /extractSecretNames/);
+  assert.match(cloudflareLiveSmoke, /result\?\.secrets\?\.items/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_ADMIN_BOOTSTRAP_STUDENT_NO/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_ADMIN_LOGIN_PASSWORD/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_SESSION_TOKEN_SECRET/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_HEARTBEAT_TOKEN/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_BOT_DELIVERY_TOKEN/);
+  assert.match(cloudflareLiveSmoke, /NEXUS_REMINDER_DELIVERY_QUEUE/);
   assert.match(cloudflareLiveSmoke, /d1", "migrations", "list/);
   assert.doesNotMatch(cloudflareLiveSmoke, /(?:^|")create(?:\s|")/);
   assert.doesNotMatch(cloudflareLiveSmoke, /(?:^|")delete(?:\s|")/);

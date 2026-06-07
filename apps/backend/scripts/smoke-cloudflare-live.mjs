@@ -6,6 +6,14 @@ import { getCloudflareConfig } from "./cloudflare-config-utils.mjs";
 const backendRoot = fileURLToPath(new URL("..", import.meta.url));
 const config = getCloudflareConfig();
 const wranglerBaseArgs = ["--cwd", backendRoot];
+const requiredWorkerSecrets = [
+  "NEXUS_ADMIN_BOOTSTRAP_STUDENT_NO",
+  "NEXUS_ADMIN_LOGIN_PASSWORD",
+  "NEXUS_SESSION_TOKEN_SECRET",
+  "NEXUS_HEARTBEAT_TOKEN",
+  "NEXUS_BOT_DELIVERY_TOKEN",
+  "NEXUS_REMINDER_DELIVERY_QUEUE",
+];
 
 const runWrangler = (args, options = {}) => {
   const result = spawnSync("wrangler", [...wranglerBaseArgs, ...args], {
@@ -52,6 +60,21 @@ const requireConfiguredRecords = (records, label, requiredFields) => {
     });
   });
 };
+
+const extractSecretNames = (payload) =>
+  ([
+    payload,
+    payload?.result,
+    payload?.secrets,
+    payload?.items,
+    payload?.result?.secrets,
+    payload?.result?.items,
+    payload?.secrets?.items,
+    payload?.result?.secrets?.items,
+  ]
+    .find((candidate) => Array.isArray(candidate)) || [])
+    .map((item) => (typeof item === "string" ? item : item?.name || item?.key || ""))
+    .filter(Boolean);
 
 requireConfiguredRecords(config.d1Databases, "D1 database", ["binding", "databaseName", "databaseId"]);
 requireConfiguredRecords(config.r2Buckets, "R2 bucket", ["binding", "bucketName"]);
@@ -104,6 +127,21 @@ assert.ok(
   `Worker ${config.workerName} must have at least one Cloudflare deployment`,
 );
 
+const secretNames = extractSecretNames(
+  parseJson(
+    runWrangler(["secret", "list", "--name", config.workerName, "--format", "json"], {
+      label: "wrangler secret list",
+    }),
+    "wrangler secret list",
+  ),
+);
+requiredWorkerSecrets.forEach((secretName) => {
+  assert.ok(
+    secretNames.includes(secretName),
+    `Worker ${config.workerName} must have Cloudflare secret ${secretName}`,
+  );
+});
+
 config.d1Databases.forEach((database) => {
   const migrations = runWrangler(["d1", "migrations", "list", database.databaseName, "--remote"], {
     label: `wrangler d1 migrations list ${database.databaseName}`,
@@ -117,4 +155,4 @@ config.d1Databases.forEach((database) => {
   );
 });
 
-console.log("ok Cloudflare live resources and worker deployment are visible");
+console.log("ok Cloudflare live resources, worker deployment, and worker secrets are visible");
