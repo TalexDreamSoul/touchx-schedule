@@ -72,7 +72,7 @@ export default function TodayPage() {
     if (!getSessionToken()) {
       setEvents([]);
       setTodoItems([]);
-      setMessage("请先到“我的”完成学号登录。");
+      setMessage("请先到“我的”完成账号密码登录。");
       return;
     }
     setLoading(true);
@@ -112,7 +112,7 @@ export default function TodayPage() {
 
   const saveTodo = async () => {
     if (!getSessionToken()) {
-      setMessage("请先到“我的”完成学号登录。");
+      setMessage("请先到“我的”完成账号密码登录。");
       return;
     }
     if (!todoTitle.trim()) {

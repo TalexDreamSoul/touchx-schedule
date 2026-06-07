@@ -39,6 +39,22 @@ const assertImports = (file, names) => {
 
 const assertApiWrapperDelegates = (file) => {
   [
+    "listMyEffectiveCalendar(params",
+    "apiClient.listMyEffectiveCalendar(params)",
+    "listPersonalEvents()",
+    "apiClient.listPersonalEvents()",
+    "createPersonalEvent(input",
+    "apiClient.createPersonalEvent(input)",
+    "updatePersonalEvent(eventId",
+    "apiClient.updatePersonalEvent(eventId, input)",
+    "markPersonalEventDone(eventId",
+    "apiClient.markPersonalEventDone(eventId)",
+    "archivePersonalEvent(eventId",
+    "apiClient.archivePersonalEvent(eventId)",
+    "getCalendarSettings()",
+    "apiClient.getCalendarSettings()",
+    "updateCalendarSettings(input",
+    "apiClient.updateCalendarSettings(input)",
     "register(input",
     "apiClient.register(input)",
     "login(input",
@@ -69,6 +85,101 @@ const assertApiWrapperDelegates = (file) => {
     "Taro.uploadFile",
     "calendar/me/pdf-import/preview",
   ].forEach((needle) => assertContains(file, needle));
+};
+
+const assertTodayScheduleParity = (file) => {
+  assertImports(file, [
+    "archivePersonalEvent",
+    "createPersonalEvent",
+    "getSessionToken",
+    "listMyEffectiveCalendar",
+    "listPersonalEvents",
+    "markPersonalEventDone",
+    "updatePersonalEvent",
+    "type EffectiveCalendarItem",
+    "type PersonalEventRow",
+  ]);
+
+  [
+    "const [events, setEvents]",
+    "const [todoItems, setTodoItems]",
+    "const [loading, setLoading]",
+    "const [message, setMessage]",
+    "const load = async ()",
+    "if (!getSessionToken())",
+    "setEvents([])",
+    "setTodoItems([])",
+    "完成账号密码登录",
+    "setLoading(true)",
+    "Promise.all([",
+    "listMyEffectiveCalendar({ date: todayInfo.dateKey })",
+    "listPersonalEvents()",
+    "setEvents(calendar.items || [])",
+    "setTodoItems(activeTodos)",
+    "setMessage(`今天 ${calendar.items?.length || 0} 条日程，${activeTodos.length} 个待办`)",
+    "catch (error)",
+    "error instanceof Error ? error.message : \"加载失败\"",
+    "setLoading(false)",
+    "今日待上课程",
+    "待授权",
+    "去“我的”登录后同步课表",
+    "今天暂无待上课程",
+    "今日课程",
+    "今天没有安排课程",
+    "今日优先事项",
+    "新增 Todo",
+    "await createPersonalEvent(payload)",
+    "await updatePersonalEvent(editingTodoId, payload)",
+    "await markPersonalEventDone(id)",
+    "await archivePersonalEvent(id)",
+    "暂无待办",
+  ].forEach((needle) => assertContains(file, needle));
+
+  assertMatches(file, /useEffect\(\(\) => \{ void load\(\); \}, \[\]\)/, "must load today schedule on first render");
+  assertNotContains(file, "学号登录");
+};
+
+const assertWeekScheduleParity = (file) => {
+  assertImports(file, [
+    "getCalendarSettings",
+    "getSessionToken",
+    "listMyEffectiveCalendar",
+    "updateCalendarSettings",
+    "type EffectiveCalendarItem",
+  ]);
+
+  [
+    "const [events, setEvents]",
+    "const [message, setMessage]",
+    "const [loading, setLoading]",
+    "const [mode, setMode]",
+    "const [showSettings, setShowSettings]",
+    "const load = async (targetWeekNo = weekNo)",
+    "if (!getSessionToken())",
+    "setEvents([])",
+    "完成账号密码登录",
+    "setLoading(true)",
+    "Promise.all([",
+    "listMyEffectiveCalendar({ week: targetWeekNo })",
+    "getCalendarSettings().catch(() => null)",
+    "setEvents(calendar.items || [])",
+    "setReminderEnabled(Boolean(settings.reminderEnabled))",
+    "setReminderOffsetsText((settings.reminderWindowMinutes || [30, 15]).join(\",\"))",
+    "catch (error)",
+    "error instanceof Error ? error.message : \"加载失败\"",
+    "Taro.stopPullDownRefresh()",
+    "usePullDownRefresh(() => { void load(weekNo); })",
+    "日程表配置",
+    "await updateCalendarSettings({ reminderEnabled, reminderWindowMinutes: offsets.length > 0 ? offsets : [30, 15] })",
+    "日程表",
+    "课表模式",
+    "暂无日程。登录后订阅/发布日程源或新增 Todo 即可展示。",
+    "点击展开详情",
+  ].forEach((needle) => assertContains(file, needle));
+
+  assertMatches(file, /useEffect\(\(\) => \{ void load\(weekIndex \+ 1\); \}, \[\]\)/, "must load week schedule on first render");
+  assertMatches(file, /mode === "course"[\s\S]*tx-schedule-card/, "must keep course-grid mode");
+  assertMatches(file, /mode === "timeline"[\s\S]*tx-timeline-scroll|tx-timeline-scroll[\s\S]*groupedTimeline/, "must keep timeline mode");
 };
 
 const assertProfileAccountParity = (file) => {
@@ -184,15 +295,19 @@ const assertSourcePublishParity = (file) => {
 };
 
 const api = readSource("apps/miniapp/src/lib/api.ts");
+const today = readSource("apps/miniapp/src/pages/today/index.tsx");
+const week = readSource("apps/miniapp/src/pages/week/index.tsx");
 const profile = readSource("apps/miniapp/src/pages/profile/index.tsx");
 const sources = readSource("apps/miniapp/src/pages/sources/index.tsx");
 
 assertApiWrapperDelegates(api);
 
-[profile, sources].forEach(assertNoDemoFallbacks);
+[today, week, profile, sources].forEach(assertNoDemoFallbacks);
+assertTodayScheduleParity(today);
+assertWeekScheduleParity(week);
 assertProfileAccountParity(profile);
 assertProfileNotificationParity(profile);
 assertProfilePdfParity(profile);
 assertSourcePublishParity(sources);
 
-console.log("ok miniapp profile, notification, PDF import and custom source parity gates");
+console.log("ok miniapp schedule, profile, notification, PDF import and custom source parity gates");
