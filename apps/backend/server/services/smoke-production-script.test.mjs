@@ -94,6 +94,13 @@ const classifyProductionUrl = (baseUrl) =>
 test("production smoke rejects weak fallback session secrets by default", () => {
   assert.match(script, /reject_raw_token_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(script, /reject_raw_token_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
+  assert.match(script, /reject_optional_plain_env "TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO"/);
+  assert.match(script, /reject_optional_text_env "TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD"/);
+  assert.match(script, /reject_placeholder_env\(\)/);
+  assert.match(script, /\*__REPLACE_WITH_\*/);
+  assert.match(script, /reject_optional_plain_env\(\)/);
+  assert.match(script, /reject_optional_text_env\(\)/);
+  assert.match(script, /reject_student_no_env\(\)/);
   assert.match(script, /reject_known_nonproduction_env\(\)/);
   assert.match(script, /request_session_secret_security\(\)/);
   assert.match(script, /create_signed_smoke_token\(\)/);
@@ -129,6 +136,100 @@ test("production smoke rejects malformed opt-in flags before network checks", ()
   });
 });
 
+test("production smoke rejects enabled opt-ins with missing dependencies before network checks", () => {
+  [
+    {
+      env: { TOUCHX_SMOKE_AUTH_LOGOUT: "1" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN is required for admin logout revocation smoke/,
+    },
+    {
+      env: { TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE: "1" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN is required for notification queue mode smoke/,
+    },
+    {
+      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK: "1" },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN is required for ClawDBot webhook smoke/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK: "1",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
+      },
+      pattern: /TOUCHX_SMOKE_STUDENT_NO is required for ClawDBot webhook smoke/,
+    },
+    {
+      env: { TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN is required for external notification delivery smoke/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNELS must include wechat_clawdbot and\/or feishu/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNEL: "feishu",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNEL must be empty when TOUCHX_SMOKE_NOTIFICATION_CHANNELS is set/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNEL: "wechat_clawdbot,feishu",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNEL must contain exactly one channel/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "email",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNELS entries must be wechat_clawdbot or feishu/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,,feishu",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain empty entries/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "feishu,feishu",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain duplicate entries/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_AUTH_TOKEN: "",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "",
+        TOUCHX_SMOKE_STUDENT_NO: "",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "",
+        TOUCHX_SMOKE_NOTIFICATION_CHANNEL: "",
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
 test("production smoke rejects malformed supplied tokens before network checks", () => {
   [
     {
@@ -138,6 +239,26 @@ test("production smoke rejects malformed supplied tokens before network checks",
     {
       env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret" },
       pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_AUTH_TOKEN: "Dummy-Admin-Token-2026" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_AUTH_TOKEN: "production-test-token-local" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "EXAMPLE-webhook-secret-local" },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_AUTH_TOKEN: "__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "__REPLACE_WITH_CLAWDBOT_WEBHOOK_TOKEN__" },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real value/,
     },
   ].forEach(({ env, pattern }) => {
     const result = spawnSync("bash", [scriptPath], {
@@ -152,6 +273,174 @@ test("production smoke rejects malformed supplied tokens before network checks",
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, pattern);
     assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
+test("production smoke rejects unreplaced optional message placeholders before network checks", () => {
+  [
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot",
+        TOUCHX_SMOKE_NOTIFICATION_TITLE: "smoke __REPLACE_WITH_SMOKE_TITLE__",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_TITLE must be replaced with a real value/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "feishu",
+        TOUCHX_SMOKE_NOTIFICATION_BODY: "__REPLACE_WITH_SMOKE_BODY__",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_BODY must be replaced with a real value/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK: "1",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT: "__REPLACE_WITH_CLAWDBOT_TEXT__",
+      },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT must be replaced with a real value/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
+test("production smoke rejects blank optional message values before network checks", () => {
+  [
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot",
+        TOUCHX_SMOKE_NOTIFICATION_TITLE: "   ",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_TITLE must not be blank/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_EXTERNAL_DELIVERY: "1",
+        TOUCHX_SMOKE_AUTH_TOKEN: validProductionAuthToken,
+        TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "feishu",
+        TOUCHX_SMOKE_NOTIFICATION_BODY: "\t",
+      },
+      pattern: /TOUCHX_SMOKE_NOTIFICATION_BODY must not be blank/,
+    },
+    {
+      env: {
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK: "1",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: validClawdbotWebhookToken,
+        TOUCHX_SMOKE_STUDENT_NO: "2305100613",
+        TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT: "   ",
+      },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT must not be blank/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
+test("production smoke rejects malformed fallback admin password candidate before network checks", () => {
+  [
+    {
+      env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "fallback-__REPLACE_WITH_FALLBACK_ADMIN_PASSWORD__" },
+      pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must be replaced with a real value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "   " },
+      pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must not be blank/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
+test("production smoke rejects malformed bootstrap expectation before network checks", () => {
+  [
+    {
+      env: { TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO: "__REPLACE_WITH_BOOTSTRAP_STUDENT_NO__" },
+      pattern: /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO must be replaced with a real value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO: "admin@schedule.com " },
+      pattern: /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO must not contain whitespace/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /ok \/health/);
+  });
+});
+
+test("production smoke rejects malformed student numbers before network checks", () => {
+  [
+    {
+      studentNo: "student-2305100613",
+      pattern: /TOUCHX_SMOKE_STUDENT_NO must be a 6-32 digit student number/,
+    },
+    {
+      studentNo: "__REPLACE_WITH_6_TO_32_DIGIT_STUDENT_NO__",
+      pattern: /TOUCHX_SMOKE_STUDENT_NO must be replaced with a real value/,
+    },
+  ].forEach(({ studentNo, pattern }) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        TOUCHX_SMOKE_STUDENT_NO: studentNo,
+      },
+    });
+    assert.notEqual(result.status, 0, studentNo);
+    assert.match(result.stderr, pattern, studentNo);
+    assert.doesNotMatch(result.stdout, /ok \/health/, studentNo);
   });
 });
 
@@ -189,12 +478,20 @@ test("production smoke refuses non-production base URLs before network checks", 
     "http://schedule-backend.tagzxia.com",
     "http://127.0.0.1:9986",
     "https://192.168.2.1",
-    "https://schedule-backend.tagzxia.com@192.168.2.1",
-    "https://prod.example@100.64.0.1",
-    "https://[::ffff:192.168.2.1]",
-    "https://[FD00::1]",
-    "https://prod.example@[FD00::1]",
-  ].forEach((baseUrl) => {
+    "https://203.0.113.1",
+      "https://224.0.0.1",
+      "https://prod",
+      "https://api_tagzxia.com",
+      "https://api..tagzxia.com",
+      "https://-api.tagzxia.com",
+      "https://api-.tagzxia.com",
+      "https://api.example.com",
+      "https://touchx.test",
+      "https://touchx.local",
+      "https://[::ffff:192.168.2.1]",
+      "https://[2001:db8::1]",
+      "https://[FD00::1]",
+    ].forEach((baseUrl) => {
     const result = spawnSync("bash", [scriptPath], {
       cwd: join(import.meta.dirname, "../../.."),
       encoding: "utf8",
@@ -213,23 +510,43 @@ test("production smoke refuses non-production base URLs before network checks", 
 });
 
 test("production URL guard stays shared and parser-based", () => {
-  [script, v1ProductionVerify].forEach((source) => {
-    assert.match(source, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
-    assert.doesNotMatch(source, /from urllib\.parse import urlsplit/);
-  });
-  assert.match(v1LocalVerify, /production-url-guard\.sh/);
+  assert.match(script, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
+  assert.match(v1ProductionVerify, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
+  assert.doesNotMatch(script, /from urllib\.parse import urlsplit/);
+  assert.match(v1LocalVerify, /check_shell_syntax\(\)/);
+  assert.match(v1LocalVerify, /for script in "apps\/backend\/scripts"\/\*\.sh; do/);
+  assert.match(v1LocalVerify, /bash -n "\$\{script\}"/);
+  assert.doesNotMatch(v1LocalVerify, /run_step "smoke script syntax" bash -n/);
   assert.match(productionUrlGuard, /urlsplit/);
+  assert.match(productionUrlGuard, /char\.isspace\(\)/);
   assert.match(productionUrlGuard, /parsed\.hostname/);
   assert.match(productionUrlGuard, /parsed\.scheme != "https"/);
+  assert.match(productionUrlGuard, /is_ambiguous_smoke_base_url\(\)/);
+  assert.match(productionUrlGuard, /parsed\.path not in \("", "\/"\)/);
+  assert.match(productionUrlGuard, /parsed\.username/);
+  assert.match(productionUrlGuard, /parsed\.query/);
+  assert.match(productionUrlGuard, /parsed\.fragment/);
+  assert.match(productionUrlGuard, /parsed\.port/);
+  assert.match(productionUrlGuard, /reserved_exact_hosts/);
+  assert.match(productionUrlGuard, /reserved_suffixes/);
+  assert.match(productionUrlGuard, /\.example\.com/);
+  assert.match(productionUrlGuard, /\.test/);
+  assert.match(productionUrlGuard, /"\." not in host/);
+  assert.match(productionUrlGuard, /len\(host\) > 253/);
+  assert.match(productionUrlGuard, /label_pattern = re\.compile/);
   assert.match(productionUrlGuard, /getattr\(ip, "ipv4_mapped", None\) or ip/);
-  assert.match(productionUrlGuard, /ipaddress\.ip_network\("169\.254\.0\.0\/16"\)/);
-  assert.match(productionUrlGuard, /ipaddress\.ip_network\("100\.64\.0\.0\/10"\)/);
-  assert.match(productionUrlGuard, /ipaddress\.ip_network\("fc00::\/7"\)/);
-  assert.match(productionUrlGuard, /ipaddress\.ip_network\("fe80::\/10"\)/);
+  assert.match(productionUrlGuard, /ip\.is_global/);
+  assert.match(productionUrlGuard, /not ip\.is_multicast/);
 });
 
 test("production URL guard allows public HTTPS hosts and blocks unsafe parsed hosts", () => {
-  ["https://schedule-backend.tagzxia.com", "https://api.example.com:443/base", "https://api.example.com."].forEach(
+  [
+    "https://schedule-backend.tagzxia.com",
+    "https://api.tagzxia.com:443/base",
+    "https://api.tagzxia.com.",
+    "https://8.8.8.8",
+    "https://[2606:4700:4700::1111]",
+  ].forEach(
     (baseUrl) => {
       const result = classifyProductionUrl(baseUrl);
       assert.equal(result.status, 0, baseUrl);
@@ -241,14 +558,92 @@ test("production URL guard allows public HTTPS hosts and blocks unsafe parsed ho
     "http://schedule-backend.tagzxia.com",
     "https://localhost",
     "https://127.0.0.1:9986",
+    "https://0.1.2.3",
+    "https://192.0.2.1",
+    "https://198.51.100.1",
+    "https://203.0.113.1",
+    "https://224.0.0.1",
+    "https://255.255.255.255",
+    "https://prod",
+    "https://api_tagzxia.com",
+    "https://api..tagzxia.com",
+    "https://-api.tagzxia.com",
+    "https://api-.tagzxia.com",
+    `https://${"a".repeat(64)}.tagzxia.com`,
+    "https://example.com",
+    "https://api.example.com",
+    "https://example.org",
+    "https://example.net",
+    "https://touchx.example",
+    "https://touchx.test",
+    "https://touchx.invalid",
+    "https://touchx.local",
+    "https://touchx.localhost",
     "https://schedule-backend.tagzxia.com@192.168.2.1",
     "https://[::ffff:192.168.2.1]",
+    "https://[::]",
+    "https://[2001:db8::1]",
     "https://prod.example@[FD00::1]",
     "https://[bad",
   ].forEach((baseUrl) => {
     const result = classifyProductionUrl(baseUrl);
     assert.equal(result.status, 0, baseUrl);
     assert.equal(result.stdout, "non-production", baseUrl);
+  });
+});
+
+test("smoke base URLs reject missing scheme or host, whitespace, paths, userinfo, query, and fragments before network checks", () => {
+  [
+    "https://",
+    "https://schedule-backend.tagzxia.com ",
+    "https://schedule-backend.tagzxia.com/api",
+    "https://schedule-backend.tagzxia.com?debug=1",
+    "https://schedule-backend.tagzxia.com#smoke",
+    "https://user@schedule-backend.tagzxia.com",
+    "https://schedule-backend.tagzxia.com:abc",
+  ].forEach((baseUrl) => {
+    const result = spawnSync("bash", [scriptPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TOUCHX_SMOKE_BASE_URL: baseUrl,
+      },
+    });
+    assert.notEqual(result.status, 0, baseUrl);
+    assert.match(
+      result.stderr,
+      /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port for smoke:production/,
+      baseUrl,
+    );
+    assert.doesNotMatch(result.stdout, /ok \/health/, baseUrl);
+  });
+
+  [
+    "http://",
+    "//127.0.0.1:9986",
+    "http://127.0.0.1:9986 ",
+    "http://127.0.0.1:9986/api",
+    "http://127.0.0.1:9986?debug=1",
+    "http://127.0.0.1:9986#smoke",
+    "http://user@127.0.0.1:9986",
+    "http://127.0.0.1:abc",
+  ].forEach((baseUrl) => {
+    const result = spawnSync("bash", [smokeLocalPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SMOKE_BASE_URL: baseUrl,
+      },
+    });
+    assert.notEqual(result.status, 0, baseUrl);
+    assert.match(
+      result.stderr,
+      /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port for smoke:local/,
+      baseUrl,
+    );
+    assert.doesNotMatch(result.stdout, /Running smoke checks/, baseUrl);
   });
 });
 
@@ -304,6 +699,7 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /--check-env/);
   assert.match(v1ProductionVerify, /CHECK_ENV_ONLY/);
   assert.match(v1ProductionVerify, /reject_placeholder_env\(\)/);
+  assert.match(v1ProductionVerify, /\*__REPLACE_WITH_\*/);
   assert.match(v1ProductionVerify, /reject_known_nonproduction_env\(\)/);
   assert.match(v1ProductionVerify, /reject_bearer_prefix\(\)/);
   assert.match(v1ProductionVerify, /reject_whitespace_env\(\)/);
@@ -327,8 +723,8 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /is_local_smoke_url\(\)/);
   assert.match(v1ProductionVerify, /if is_non_production_smoke_url "\$\{PRODUCTION_SMOKE_BASE_URL\}"; then/);
   assert.match(v1ProductionVerify, /source "\$\{SCRIPT_DIR\}\/production-url-guard\.sh"/);
-  assert.match(v1ProductionVerify, /http:\/\/127\.0\.0\.1:"\*/);
-  assert.match(v1ProductionVerify, /http:\/\/localhost:"\*/);
+  assert.match(v1ProductionVerify, /urlsplit/);
+  assert.match(v1ProductionVerify, /parsed\.hostname/);
   assert.match(v1ProductionVerify, /require_student_no\(\)/);
   assert.match(v1ProductionVerify, /must be a 6-32 digit student number/);
   assert.match(v1ProductionVerify, /has_pdf_magic\(\)/);
@@ -341,18 +737,51 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /reject_bearer_prefix "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_AUTH_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
-  assert.match(v1ProductionVerify, /no auth prefix, whitespace, or dummy\/example value/);
-  assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace or dummy\/example value/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO"/);
+  assert.match(v1ProductionVerify, /reject_whitespace_env "TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD"/);
+  assert.match(v1ProductionVerify, /reject_blank_env "TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD"/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD=.*Optional extra weak fallback password candidate/);
+  assert.match(v1ProductionVerify, /reject_blank_env\(\)/);
+  assert.match(v1ProductionVerify, /reject_blank_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT"/);
+  assert.match(v1ProductionVerify, /reject_blank_env "TOUCHX_SMOKE_NOTIFICATION_TITLE"/);
+  assert.match(v1ProductionVerify, /reject_blank_env "TOUCHX_SMOKE_NOTIFICATION_BODY"/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT=.*Optional webhook smoke text/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_NOTIFICATION_TITLE=.*Optional notification smoke title/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_NOTIFICATION_BODY=.*Optional notification smoke body/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO=.*Optional bootstrap admin account\/student assertion/);
+  assert.match(v1ProductionVerify, /no auth prefix, whitespace, or dummy\/example\/test token value/);
+  assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace or dummy\/example\/test secret value/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"/);
+  assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE"/);
+  assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_EXTERNAL_DELIVERY"/);
+  assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK"/);
   assert.match(v1ProductionVerify, /require_empty_env "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK"/);
+  assert.match(v1ProductionVerify, /require_empty_env "TOUCHX_SMOKE_NOTIFICATION_CHANNEL"/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK must stay unset/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL[\s\S]*Must stay unset/);
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_EXTERNAL_DELIVERY, TOUCHX_SMOKE_CLAWDBOT_WEBHOOK, TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE must be empty or 1/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"/);
   assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_PATH"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_MIN_ENTRIES"/);
+  assert.match(v1ProductionVerify, /reject_placeholder_env "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must be an absolute path/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_PATH must point to a PDF file/);
   assert.match(v1ProductionVerify, /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 8/);
+  assert.match(v1ProductionVerify, /10#\$\{SMOKE_REAL_PDF_MIN_ENTRIES\}/);
   assert.match(v1ProductionVerify, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
-  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/);
+  assert.match(
+    v1ProductionVerify,
+    /is_ambiguous_smoke_base_url "\$\{LOCAL_SMOKE_BASE_URL\}"[\s\S]*elif ! is_local_smoke_url "\$\{LOCAL_SMOKE_BASE_URL\}"/,
+  );
+  assert.match(v1ProductionVerify, /TOUCHX_SMOKE_BASE_URL must point to a public HTTPS production API for verify:v1-production/);
+  assert.match(v1ProductionVerify, /non-global IP literals, single-label\/invalid DNS\/reserved hostnames/);
+  assert.match(v1ProductionVerify, /scheme and host/);
+  assert.match(v1ProductionVerify, /whitespace, path, userinfo, query, fragment, or invalid port/);
+  assert.match(
+    v1ProductionVerify,
+    /is_ambiguous_smoke_base_url "\$\{PRODUCTION_SMOKE_BASE_URL\}"[\s\S]*elif is_non_production_smoke_url "\$\{PRODUCTION_SMOKE_BASE_URL\}"/,
+  );
   assert.match(v1ProductionVerify, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_EXTERNAL_DELIVERY=1/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1/);
@@ -372,6 +801,24 @@ test("V1 production verification rejects invalid logout opt-in flag values", () 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_LOGOUT must be empty or 1/);
     assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
+test("V1 production verification rejects invalid direct smoke opt-in flag values", () => {
+  withTempPdf("touchx-v1-production-direct-smoke-flags-", (pdfPath) => {
+    [
+      "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK",
+      "TOUCHX_SMOKE_EXTERNAL_DELIVERY",
+      "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE",
+    ].forEach((name) => {
+      const result = runV1ProductionPrecheck({
+        [name]: "true",
+        SMOKE_REAL_PDF_PATH: pdfPath,
+      });
+      assert.notEqual(result.status, 0, name);
+      assert.match(result.stderr, new RegExp(`${name} must be empty or 1`), name);
+      assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/, name);
+    });
   });
 });
 
@@ -410,6 +857,30 @@ test("V1 production verification rejects unsupported notification channels", () 
   });
 });
 
+test("V1 production verification rejects empty notification channel entries", () => {
+  withTempPdf("touchx-v1-production-empty-channel-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,,feishu",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain empty entries/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
+test("V1 production verification rejects duplicate notification channel entries", () => {
+  withTempPdf("touchx-v1-production-duplicate-channel-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_NOTIFICATION_CHANNELS: "wechat_clawdbot,wechat_clawdbot,feishu",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain duplicate entries/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
 test("V1 production verification rejects auth token with Bearer prefix", () => {
   withTempPdf("touchx-v1-production-auth-token-", (pdfPath) => {
     const result = runV1ProductionPrecheck({
@@ -436,6 +907,29 @@ test("V1 production verification rejects token values containing whitespace", ()
   });
 });
 
+test("V1 production verification rejects malformed bootstrap expectation", () => {
+  withTempPdf("touchx-v1-production-bootstrap-expectation-", (pdfPath) => {
+    const placeholderResult = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO: "__REPLACE_WITH_BOOTSTRAP_STUDENT_NO__",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(placeholderResult.status, 0);
+    assert.match(
+      placeholderResult.stderr,
+      /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO must be replaced with a real value/,
+    );
+    assert.doesNotMatch(placeholderResult.stdout, /ok V1 production verification inputs/);
+
+    const whitespaceResult = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO: "admin@schedule.com ",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(whitespaceResult.status, 0);
+    assert.match(whitespaceResult.stderr, /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO must not contain whitespace/);
+    assert.doesNotMatch(whitespaceResult.stdout, /ok V1 production verification inputs/);
+  });
+});
+
 test("V1 production verification requires plural notification channels for full gate", () => {
   withTempPdf("touchx-v1-production-channels-", (pdfPath) => {
     const result = runV1ProductionPrecheck({
@@ -449,24 +943,96 @@ test("V1 production verification requires plural notification channels for full 
   });
 });
 
+test("V1 production verification rejects legacy single notification channel env", () => {
+  withTempPdf("touchx-v1-production-legacy-channel-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      TOUCHX_SMOKE_NOTIFICATION_CHANNEL: "wechat_clawdbot",
+      SMOKE_REAL_PDF_PATH: pdfPath,
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL must be empty for verify:v1-production/);
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
 test("V1 production verification rejects unreplaced env template placeholders", () => {
   const result = runV1ProductionPrecheck({
     TOUCHX_SMOKE_AUTH_TOKEN: "__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__",
     TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "__REPLACE_WITH_CLAWDBOT_WEBHOOK_TOKEN__",
+    TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT: "__REPLACE_WITH_CLAWDBOT_TEXT__",
+    TOUCHX_SMOKE_NOTIFICATION_TITLE: "smoke __REPLACE_WITH_SMOKE_TITLE__",
+    TOUCHX_SMOKE_NOTIFICATION_BODY: "__REPLACE_WITH_SMOKE_BODY__",
     SMOKE_REAL_PDF_PATH: "/absolute/path/real-schedule.pdf",
+    SMOKE_REAL_PDF_MIN_ENTRIES: "__REPLACE_WITH_MIN_REAL_PDF_ENTRIES__",
+    SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "__REPLACE_WITH_REAL_PDF_STUDENT_NO__",
   });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real value/);
   assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real value/);
+  assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT must be replaced with a real value/);
+  assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_TITLE must be replaced with a real value/);
+  assert.match(result.stderr, /TOUCHX_SMOKE_NOTIFICATION_BODY must be replaced with a real value/);
   assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must be replaced with a real value/);
+  assert.match(result.stderr, /SMOKE_REAL_PDF_MIN_ENTRIES must be replaced with a real value/);
+  assert.match(result.stderr, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must be replaced with a real value/);
   assert.doesNotMatch(result.stdout, /local real PDF parser smoke/);
+});
+
+test("V1 production verification rejects blank optional message values", () => {
+  withTempPdf("touchx-v1-production-blank-message-", (pdfPath) => {
+    [
+      {
+        env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT: "   " },
+        pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT must not be blank/,
+      },
+      {
+        env: { TOUCHX_SMOKE_NOTIFICATION_TITLE: "\t" },
+        pattern: /TOUCHX_SMOKE_NOTIFICATION_TITLE must not be blank/,
+      },
+      {
+        env: { TOUCHX_SMOKE_NOTIFICATION_BODY: "   " },
+        pattern: /TOUCHX_SMOKE_NOTIFICATION_BODY must not be blank/,
+      },
+    ].forEach(({ env, pattern }) => {
+      const result = runV1ProductionPrecheck({
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        ...env,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+    });
+  });
+});
+
+  test("V1 production verification rejects malformed fallback admin password candidate", () => {
+    withTempPdf("touchx-v1-production-fallback-password-", (pdfPath) => {
+      [
+        {
+          env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "fallback-__REPLACE_WITH_FALLBACK_ADMIN_PASSWORD__" },
+          pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must be replaced with a real value/,
+        },
+        {
+          env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "   " },
+        pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must not be blank/,
+      },
+    ].forEach(({ env, pattern }) => {
+      const result = runV1ProductionPrecheck({
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        ...env,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+    });
+  });
 });
 
 test("V1 production verification rejects known non-production token values", () => {
   withTempPdf("touchx-v1-production-dummy-token-", (pdfPath) => {
     const result = runV1ProductionPrecheck({
-      TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token",
-      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "dummy-webhook-secret",
+      TOUCHX_SMOKE_AUTH_TOKEN: "dummy-admin-token-2026",
+      TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "EXAMPLE-webhook-secret-local",
       SMOKE_REAL_PDF_PATH: pdfPath,
     });
     assert.notEqual(result.status, 0);
@@ -513,6 +1079,7 @@ test("V1 production verification can precheck env without network smoke", () => 
   withTempPdf("touchx-v1-production-env-", (pdfPath) => {
     const result = runV1ProductionPrecheck({
       SMOKE_REAL_PDF_PATH: pdfPath,
+      SMOKE_REAL_PDF_MIN_ENTRIES: "08",
     });
     assert.equal(result.status, 0);
     assert.match(result.stdout, /ok V1 production verification inputs/);
@@ -562,6 +1129,37 @@ test("V1 production verification rejects malformed student numbers before networ
   assert.match(result.stderr, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must be a 6-32 digit student number/);
 });
 
+test("V1 production verification keeps real PDF owner aligned with import student", () => {
+  withTempPdf("touchx-v1-production-pdf-owner-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      SMOKE_REAL_PDF_PATH: pdfPath,
+      SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100614",
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must match SMOKE_SCHEDULE_IMPORT_STUDENT_NO for real PDF smoke/,
+    );
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
+test("V1 production verification keeps import student aligned with production student", () => {
+  withTempPdf("touchx-v1-production-import-owner-", (pdfPath) => {
+    const result = runV1ProductionPrecheck({
+      SMOKE_REAL_PDF_PATH: pdfPath,
+      SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100614",
+      SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "2305100614",
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(
+      result.stderr,
+      /SMOKE_SCHEDULE_IMPORT_STUDENT_NO must match TOUCHX_SMOKE_STUDENT_NO for verify:v1-production real PDF smoke/,
+    );
+    assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
 test("V1 production verification docs mention required student number format", () => {
   [rootReadme, backendReadme, todoDoc, v1CloseoutStatus].forEach((doc) => {
     assert.match(doc, /6-32 位数字/);
@@ -571,14 +1169,45 @@ test("V1 production verification docs mention required student number format", (
   });
   assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
   assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(backendReadme, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO[^。]*TOUCHX_SMOKE_STUDENT_NO/);
+  assert.match(backendReadme, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO[^。]*SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
+  assert.match(backendReadme, /SMOKE_REAL_PDF_MIN_ENTRIES[^。]*不能使用未替换占位符/);
   assert.match(backendReadme, /绝对 PDF 文件路径|真实 PDF 路径必须是绝对 PDF 文件路径/);
   assert.match(backendReadme, /不能包含空白字符/);
+  assert.match(backendReadme, /纯空白值/);
   assert.match(backendReadme, /完整生产聚合 gate 会拒绝该变量/);
   assert.match(todoDoc, /完整生产 gate 会拒绝 `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK`/);
+  assert.match(todoDoc, /纯空白值/);
   assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /SMOKE_SCHEDULE_IMPORT_STUDENT_NO[^；。]*TOUCHX_SMOKE_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_EXPECT_STUDENT_NO[^；。]*SMOKE_SCHEDULE_IMPORT_STUDENT_NO/);
+  assert.match(v1CloseoutStatus, /SMOKE_REAL_PDF_MIN_ENTRIES[^。]*不能使用未替换占位符/);
   assert.match(v1CloseoutStatus, /绝对 PDF 文件路径|真实 PDF 路径必须是绝对 PDF 文件路径/);
   assert.match(v1CloseoutStatus, /不能包含空白字符/);
+  assert.match(v1CloseoutStatus, /纯空白值/);
+  assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD/);
   assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空/);
+  assert.match(backendReadme, /非 global IP literal/);
+  assert.match(todoDoc, /非 global IP literal/);
+  assert.match(v1CloseoutStatus, /非 global IP literal/);
+  assert.match(backendReadme, /scheme(?: 和 |\/)host/);
+  assert.match(todoDoc, /scheme\/host/);
+  assert.match(v1CloseoutStatus, /scheme\/host/);
+  assert.match(backendReadme, /legacy 变量只能包含一个通道/);
+  assert.match(todoDoc, /legacy `TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 只允许一个通道/);
+  assert.match(v1CloseoutStatus, /legacy 变量只能包含一个通道/);
+  assert.match(backendReadme, /保留域名/);
+  assert.match(todoDoc, /保留域名/);
+  assert.match(v1CloseoutStatus, /保留域名/);
+    assert.match(backendReadme, /单标签/);
+    assert.match(todoDoc, /单标签/);
+    assert.match(v1CloseoutStatus, /单标签/);
+    assert.match(backendReadme, /非法 DNS hostname/);
+    assert.match(todoDoc, /非法 DNS hostname/);
+    assert.match(v1CloseoutStatus, /非法 DNS hostname/);
+    assert.match(backendReadme, /非法端口/);
+  assert.match(todoDoc, /非法端口/);
+  assert.match(v1CloseoutStatus, /非法端口/);
   assert.match(backendReadme, /始终检查默认 `fallback:123456`/);
   assert.match(todoDoc, /始终检查默认 `fallback:123456` 候选/);
 });
@@ -589,24 +1218,52 @@ test("V1 production verification env template avoids committing real smoke secre
     "TOUCHX_SMOKE_AUTH_TOKEN",
     "TOUCHX_SMOKE_STUDENT_NO",
     "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN",
+    "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT",
     "TOUCHX_SMOKE_NOTIFICATION_CHANNELS",
+    "TOUCHX_SMOKE_NOTIFICATION_CHANNEL",
+    "TOUCHX_SMOKE_NOTIFICATION_TITLE",
+    "TOUCHX_SMOKE_NOTIFICATION_BODY",
     "SMOKE_BASE_URL",
     "SMOKE_SCHEDULE_IMPORT_STUDENT_NO",
     "SMOKE_REAL_PDF_PATH",
     "SMOKE_REAL_PDF_MIN_ENTRIES",
     "SMOKE_REAL_PDF_EXPECT_STUDENT_NO",
     "TOUCHX_SMOKE_AUTH_LOGOUT",
+    "TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD",
+    "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK",
+    "TOUCHX_SMOKE_EXTERNAL_DELIVERY",
+    "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK",
+    "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE",
   ].forEach((name) => {
     assert.match(productionSmokeEnvExample, new RegExp(`^${name}=`, "m"));
   });
 
-  assert.match(productionSmokeEnvExample, /\.env\.production-smoke\.local/);
-  assert.match(productionSmokeEnvExample, /set -a; source apps\/backend\/\.env\.production-smoke\.local; set \+a/);
+    assert.match(productionSmokeEnvExample, /\.env\.production-smoke\.local/);
+    assert.match(productionSmokeEnvExample, /invalid DNS/);
+    assert.match(productionSmokeEnvExample, /set -a; source apps\/backend\/\.env\.production-smoke\.local; set \+a/);
   assert.match(productionSmokeEnvExample, /check:v1-production-env/);
   assert.match(productionSmokeEnvExample, /__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__/);
   assert.match(productionSmokeEnvExample, /wechat_clawdbot,feishu/);
-  assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix, whitespace, or dummy\/example value/);
-  assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace or dummy\/example value/);
+  assert.match(productionSmokeEnvExample, /bootstrap admin account\/student[\s\S]*Do not include whitespace or a placeholder value/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO=$/m);
+  assert.match(productionSmokeEnvExample, /Legacy single-channel direct smoke variable; keep empty for verify:v1-production/);
+  assert.match(productionSmokeEnvExample, /use TOUCHX_SMOKE_NOTIFICATION_CHANNELS for multiple channels/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_NOTIFICATION_CHANNEL=$/m);
+  assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix, whitespace, or dummy\/example\/test token value/);
+  assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace or dummy\/example\/test secret value/);
+  assert.match(productionSmokeEnvExample, /webhook smoke text[\s\S]*do not use a placeholder or blank value/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT=$/m);
+  assert.match(productionSmokeEnvExample, /external notification smoke message[\s\S]*do not use placeholder or blank values/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_NOTIFICATION_TITLE=$/m);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_NOTIFICATION_BODY=$/m);
+  assert.match(productionSmokeEnvExample, /extra weak fallback admin password candidate[\s\S]*do not use a placeholder or blank value/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD=$/m);
+  assert.match(productionSmokeEnvExample, /Session-secret bypass must stay empty for verify:v1-production/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=$/m);
+  assert.match(productionSmokeEnvExample, /Direct smoke opt-in flags are set by verify:v1-production/);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_EXTERNAL_DELIVERY=$/m);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=$/m);
+  assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE=$/m);
   assert.doesNotMatch(productionSmokeEnvExample, /txs1\./);
   assert.doesNotMatch(productionSmokeEnvExample, /Bearer\s+/);
   assert.match(rootGitignore, /apps\/backend\/\.env\.\*/);
@@ -638,10 +1295,96 @@ test("V1 production verification keeps local PDF smoke off production URLs", () 
   assert.match(result.stderr, /SMOKE_BASE_URL must stay local for verify:v1-production smoke:local/);
 });
 
+test("V1 production verification rejects ambiguous smoke base URLs before network checks", () => {
+  withTempPdf("touchx-v1-production-ambiguous-base-url-", (pdfPath) => {
+    [
+      {
+        env: { SMOKE_BASE_URL: "http://" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "//127.0.0.1:9986" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "http://127.0.0.1:9986?debug=1" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "http://127.0.0.1:9986 " },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "http://127.0.0.1:abc" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "http://127.0.0.1:9986@evil.test" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { SMOKE_BASE_URL: "http://localhost:9986@evil.test" },
+        pattern: /SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "//schedule-backend.tagzxia.com" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com/api" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com#smoke" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: " https://schedule-backend.tagzxia.com" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://user@schedule-backend.tagzxia.com" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com@192.168.2.1" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://prod.example@[FD00::1]" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+      {
+        env: { TOUCHX_SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com:abc" },
+        pattern: /TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port/,
+      },
+    ].forEach(({ env, pattern }) => {
+      const result = runV1ProductionPrecheck({
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        ...env,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+    });
+  });
+});
+
 test("local smoke URL checks require localhost host boundaries", () => {
-  assert.match(smokeLocal, /http:\/\/127\.0\.0\.1:"\*/);
-  assert.match(smokeLocal, /http:\/\/localhost:"\*/);
-  ["http://localhost.evil.test:9986", "http://127.0.0.1.evil.test:9986"].forEach((baseUrl) => {
+  [v1ProductionVerify, smokeLocal].forEach((source) => {
+    assert.match(source, /urlsplit/);
+    assert.match(source, /parsed\.hostname/);
+    assert.doesNotMatch(source, /http:\/\/127\.0\.0\.1:"\*/);
+    assert.doesNotMatch(source, /http:\/\/localhost:"\*/);
+  });
+    [
+      "http://localhost.evil.test:9986",
+      "http://127.0.0.1.evil.test:9986",
+    ].forEach((baseUrl) => {
     const result = spawnSync("bash", [v1ProductionVerifyPath], {
       cwd: join(import.meta.dirname, "../../.."),
       encoding: "utf8",
@@ -661,6 +1404,217 @@ test("local smoke URL checks require localhost host boundaries", () => {
   });
 });
 
+test("smoke-local refuses local-only write flows on non-local base URLs before network checks", () => {
+  [
+    {
+      env: { SMOKE_STUDENT_NO_LOGIN: "2305100613" },
+      pattern: /SMOKE_STUDENT_NO_LOGIN requires local SMOKE_BASE_URL for smoke:local/,
+    },
+    {
+      env: { SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613" },
+      pattern: /SMOKE_SCHEDULE_IMPORT_STUDENT_NO requires local SMOKE_BASE_URL for smoke:local/,
+    },
+    {
+      env: { SMOKE_SOCIAL_P0: "1" },
+      pattern: /SMOKE_SOCIAL_P0 requires local SMOKE_BASE_URL for smoke:local/,
+    },
+    {
+      env: { SMOKE_HEARTBEAT_TOKEN: "local-heartbeat-token" },
+      pattern: /SMOKE_HEARTBEAT_TOKEN requires local SMOKE_BASE_URL for smoke:local/,
+    },
+    {
+      env: { SMOKE_BOT_DELIVERY_TOKEN: "local-bot-token" },
+      pattern: /SMOKE_BOT_DELIVERY_TOKEN requires local SMOKE_BASE_URL for smoke:local/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [smokeLocalPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SMOKE_BASE_URL: "https://schedule-backend.tagzxia.com",
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /Running smoke checks/);
+  });
+});
+
+test("smoke-local rejects malformed local-only flags before network checks", () => {
+  const result = spawnSync("bash", [smokeLocalPath], {
+    cwd: join(import.meta.dirname, "../../.."),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      SMOKE_SOCIAL_P0: "true",
+    },
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SMOKE_SOCIAL_P0 must be empty or 1/);
+  assert.doesNotMatch(result.stdout, /Running smoke checks/);
+});
+
+test("smoke-local rejects malformed direct smoke inputs before network checks", () => {
+  assert.match(smokeLocal, /10#\$\{SMOKE_REAL_PDF_MIN_ENTRIES:-1\}/);
+  assert.match(smokeLocal, /10#\$\{SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS:-20\}/);
+  [
+    {
+      env: { SMOKE_HEARTBEAT_TOKEN: "Bearer local-heartbeat-token" },
+      pattern: /SMOKE_HEARTBEAT_TOKEN must be the raw token without a Bearer prefix/,
+    },
+    {
+      env: { SMOKE_BOT_DELIVERY_TOKEN: "local bot token" },
+      pattern: /SMOKE_BOT_DELIVERY_TOKEN must not contain whitespace/,
+    },
+    {
+      env: { SMOKE_HEARTBEAT_TOKEN: "local-__REPLACE_WITH_LOCAL_HEARTBEAT_TOKEN__" },
+      pattern: /SMOKE_HEARTBEAT_TOKEN must be replaced with a real value/,
+    },
+    {
+      env: { SMOKE_STUDENT_NO_LOGIN: "student-2305100613" },
+      pattern: /SMOKE_STUDENT_NO_LOGIN must be a 6-32 digit student number/,
+    },
+    {
+      env: { SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "import-student" },
+      pattern: /SMOKE_SCHEDULE_IMPORT_STUDENT_NO must be a 6-32 digit student number/,
+    },
+    {
+      env: { SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "__REPLACE_WITH_6_TO_32_DIGIT_STUDENT_NO__" },
+      pattern: /SMOKE_SCHEDULE_IMPORT_STUDENT_NO must be replaced with a real value/,
+    },
+    {
+      env: { SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "expected-student" },
+      pattern: /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must be a 6-32 digit student number/,
+    },
+    {
+      env: { SMOKE_REAL_PDF_MIN_ENTRIES: "0" },
+      pattern: /SMOKE_REAL_PDF_MIN_ENTRIES must be an integer >= 1/,
+    },
+    {
+      env: { SMOKE_REAL_PDF_MIN_ENTRIES: "__REPLACE_WITH_MIN_REAL_PDF_ENTRIES__" },
+      pattern: /SMOKE_REAL_PDF_MIN_ENTRIES must be replaced with a real value/,
+    },
+    {
+      env: { SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS: "never" },
+      pattern: /SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS must be an integer >= 1/,
+    },
+  ].forEach(({ env, pattern }) => {
+    const result = spawnSync("bash", [smokeLocalPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ...env,
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, pattern);
+    assert.doesNotMatch(result.stdout, /Running smoke checks/);
+  });
+});
+
+test("smoke-local rejects unusable real PDF inputs before network checks", () => {
+  withTempPdf("touchx-local-real-pdf-inputs-", (pdfPath) => {
+    [
+      {
+        env: { SMOKE_REAL_PDF_PATH: pdfPath },
+        pattern: /SMOKE_REAL_PDF_PATH requires SMOKE_SCHEDULE_IMPORT_STUDENT_NO for smoke:local/,
+      },
+      {
+        env: { SMOKE_REAL_PDF_MIN_ENTRIES: "8" },
+        pattern: /SMOKE_REAL_PDF_MIN_ENTRIES requires SMOKE_REAL_PDF_PATH for smoke:local/,
+      },
+      {
+        env: { SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "2305100613" },
+        pattern: /SMOKE_REAL_PDF_EXPECT_STUDENT_NO requires SMOKE_REAL_PDF_PATH for smoke:local/,
+      },
+      {
+        env: {
+          SMOKE_REAL_PDF_PATH: "/tmp/touchx-missing-real-schedule.pdf",
+          SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+        },
+        pattern: /SMOKE_REAL_PDF_PATH must exist: \/tmp\/touchx-missing-real-schedule\.pdf/,
+      },
+      {
+        env: {
+          SMOKE_REAL_PDF_PATH: "/absolute/path/real-schedule.pdf",
+          SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+        },
+        pattern: /SMOKE_REAL_PDF_PATH must be replaced with a real value/,
+      },
+      {
+        env: {
+          SMOKE_REAL_PDF_PATH: "/tmp/__REPLACE_WITH_REAL_PDF_PATH__.pdf",
+          SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+        },
+        pattern: /SMOKE_REAL_PDF_PATH must be replaced with a real value/,
+      },
+      {
+        env: {
+          SMOKE_REAL_PDF_PATH: pdfPath,
+          SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+          SMOKE_REAL_PDF_EXPECT_STUDENT_NO: "2305100614",
+        },
+        pattern: /SMOKE_REAL_PDF_EXPECT_STUDENT_NO must match SMOKE_SCHEDULE_IMPORT_STUDENT_NO for real PDF smoke/,
+      },
+    ].forEach(({ env, pattern }) => {
+      const result = spawnSync("bash", [smokeLocalPath], {
+        cwd: join(import.meta.dirname, "../../.."),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...env,
+        },
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stdout, /Running smoke checks/);
+    });
+  });
+
+  const relativeTempDir = mkdtempSync(join(tmpdir(), "touchx-local-real-pdf-relative-"));
+  const relativePdfPath = join(relativeTempDir, "real-schedule.pdf");
+  writeFileSync(relativePdfPath, "%PDF-1.4\n");
+  try {
+    const result = spawnSync("bash", [smokeLocalPath], {
+      cwd: relativeTempDir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SMOKE_REAL_PDF_PATH: "real-schedule.pdf",
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must be an absolute path/);
+    assert.doesNotMatch(result.stdout, /Running smoke checks/);
+  } finally {
+    rmSync(relativeTempDir, { recursive: true, force: true });
+  }
+
+  const tempDir = mkdtempSync(join(tmpdir(), "touchx-local-real-pdf-nonpdf-"));
+  const textPath = join(tempDir, "real-schedule.txt");
+  writeFileSync(textPath, "not a pdf");
+  try {
+    const result = spawnSync("bash", [smokeLocalPath], {
+      cwd: join(import.meta.dirname, "../../.."),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        SMOKE_REAL_PDF_PATH: textPath,
+        SMOKE_SCHEDULE_IMPORT_STUDENT_NO: "2305100613",
+      },
+    });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /SMOKE_REAL_PDF_PATH must point to a PDF file/);
+    assert.doesNotMatch(result.stdout, /Running smoke checks/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("V1 production verification keeps production smoke off local URLs", () => {
   const result = spawnSync("bash", [v1ProductionVerifyPath], {
     cwd: join(import.meta.dirname, "../../.."),
@@ -677,7 +1631,7 @@ test("V1 production verification keeps production smoke off local URLs", () => {
     },
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/);
+  assert.match(result.stderr, /TOUCHX_SMOKE_BASE_URL must point to a public HTTPS production API for verify:v1-production/);
 });
 
 test("V1 production verification keeps production smoke off private network URLs", () => {
@@ -689,14 +1643,29 @@ test("V1 production verification keeps production smoke off private network URLs
     "https://169.254.1.1",
     "https://100.64.0.1",
     "https://100.127.255.1",
-    "https://schedule-backend.tagzxia.com@10.0.0.8",
-    "https://schedule-backend.tagzxia.com@192.168.2.1",
-    "https://prod.example@100.64.0.1",
+    "https://0.1.2.3",
+    "https://192.0.2.1",
+    "https://198.51.100.1",
+    "https://203.0.113.1",
+    "https://224.0.0.1",
+    "https://255.255.255.255",
+    "https://prod",
+    "https://api_tagzxia.com",
+    "https://api..tagzxia.com",
+    "https://-api.tagzxia.com",
+    "https://api-.tagzxia.com",
+    "https://api.example.com",
+    "https://touchx.example",
+    "https://touchx.test",
+    "https://touchx.invalid",
+    "https://touchx.local",
+    "https://touchx.localhost",
     "https://[::ffff:192.168.2.1]",
+    "https://[::]",
     "http://[::1]:9986",
+    "https://[2001:db8::1]",
     "https://[fd00::1]",
     "https://[FD00::1]",
-    "https://prod.example@[FD00::1]",
     "https://[fe80::1]",
     "https://[FEBF::1]",
   ].forEach((baseUrl) => {
@@ -717,7 +1686,7 @@ test("V1 production verification keeps production smoke off private network URLs
     assert.notEqual(result.status, 0, baseUrl);
     assert.match(
       result.stderr,
-      /TOUCHX_SMOKE_BASE_URL must point to the production API for verify:v1-production/,
+      /TOUCHX_SMOKE_BASE_URL must point to a public HTTPS production API for verify:v1-production/,
       baseUrl,
     );
   });
@@ -742,6 +1711,9 @@ test("production smoke can verify multiple external notification channels", () =
   assert.match(script, /request_external_notification_channel\(\)/);
   assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNELS/);
   assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-/);
+  assert.match(script, /reject_legacy_notification_channel_list\(\)/);
+  assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL must be empty when TOUCHX_SMOKE_NOTIFICATION_CHANNELS is set/);
+  assert.match(script, /TOUCHX_SMOKE_NOTIFICATION_CHANNEL must contain exactly one channel/);
   assert.match(script, /default_title = "TouchX 生产 smoke"/);
   assert.match(script, /default_body = "这是一条 TouchX 生产外部通知链路 smoke。"/);
   assert.match(script, /os\.environ\.get\("TOUCHX_SMOKE_NOTIFICATION_TITLE"\) or default_title/);
