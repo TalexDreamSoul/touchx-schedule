@@ -2,12 +2,174 @@
 set -euo pipefail
 
 BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:9986}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/production-url-guard.sh"
+
+if is_ambiguous_smoke_base_url "${BASE_URL}"; then
+  echo "SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port for smoke:local" >&2
+  exit 1
+fi
+BASE_URL="${BASE_URL%/}"
 
 is_local_base_url() {
-  [[ "${BASE_URL}" == "http://127.0.0.1" || "${BASE_URL}" == "http://127.0.0.1/"* || "${BASE_URL}" == "http://127.0.0.1:"* ]] && return 0
-  [[ "${BASE_URL}" == "http://localhost" || "${BASE_URL}" == "http://localhost/"* || "${BASE_URL}" == "http://localhost:"* ]] && return 0
-  return 1
+  python - "${BASE_URL}" <<'PY'
+import sys
+from urllib.parse import urlsplit
+
+try:
+  parsed = urlsplit(sys.argv[1])
+except ValueError:
+  sys.exit(1)
+
+host = (parsed.hostname or "").rstrip(".").lower()
+if parsed.scheme.lower() == "http" and host in {"127.0.0.1", "localhost"}:
+  sys.exit(0)
+sys.exit(1)
+PY
 }
+
+require_empty_or_one_flag() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" && "${value}" != "1" ]]; then
+    echo "${name} must be empty or 1" >&2
+    exit 1
+  fi
+}
+
+require_local_base_url_for_env() {
+  local name="$1"
+  if [[ -n "${!name:-}" ]] && ! is_local_base_url; then
+    echo "${name} requires local SMOKE_BASE_URL for smoke:local" >&2
+    exit 1
+  fi
+}
+
+require_local_base_url_for_flag() {
+  local name="$1"
+  if [[ "${!name:-}" == "1" ]] && ! is_local_base_url; then
+    echo "${name} requires local SMOKE_BASE_URL for smoke:local" >&2
+    exit 1
+  fi
+}
+
+require_env_for_env() {
+  local name="$1"
+  local required_name="$2"
+  if [[ -n "${!name:-}" && -z "${!required_name:-}" ]]; then
+    echo "${name} requires ${required_name} for smoke:local" >&2
+    exit 1
+  fi
+}
+
+require_student_no_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" == *__REPLACE_WITH_* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+  if [[ -n "${value}" && ! "${value}" =~ ^[0-9]{6,32}$ ]]; then
+    echo "${name} must be a 6-32 digit student number" >&2
+    exit 1
+  fi
+}
+
+reject_header_token_env() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return
+  if [[ "${value}" == *__REPLACE_WITH_* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+  if [[ "${value}" == "Bearer "* || "${value}" == "bearer "* ]]; then
+    echo "${name} must be the raw token without a Bearer prefix" >&2
+    exit 1
+  fi
+  if [[ "${value}" =~ [[:space:]] ]]; then
+    echo "${name} must not contain whitespace" >&2
+    exit 1
+  fi
+}
+
+require_positive_integer_env() {
+  local name="$1"
+  local minimum="$2"
+  local value="${!name:-}"
+  if [[ -z "${value}" ]]; then
+    return
+  fi
+  if [[ "${value}" == *__REPLACE_WITH_* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+  if [[ ! "${value}" =~ ^[0-9]+$ ]] || (( 10#${value} < minimum )); then
+    echo "${name} must be an integer >= ${minimum}" >&2
+    exit 1
+  fi
+}
+
+has_pdf_magic() {
+  local path="$1"
+  python - "${path}" <<'PY'
+from pathlib import Path
+import sys
+
+try:
+  with Path(sys.argv[1]).open("rb") as file:
+    sys.exit(0 if file.read(5) == b"%PDF-" else 1)
+except OSError:
+  sys.exit(1)
+PY
+}
+
+require_pdf_file_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "${value}" ]]; then
+    return
+  fi
+  if [[ "${value}" == *__REPLACE_WITH_* || "${value}" == "/absolute/path/"* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+  if [[ "${value}" != /* ]]; then
+    echo "${name} must be an absolute path" >&2
+    exit 1
+  fi
+  if [[ ! -f "${value}" ]]; then
+    echo "${name} must exist: ${value}" >&2
+    exit 1
+  fi
+  if ! has_pdf_magic "${value}"; then
+    echo "${name} must point to a PDF file" >&2
+    exit 1
+  fi
+}
+
+require_empty_or_one_flag "SMOKE_SOCIAL_P0"
+reject_header_token_env "SMOKE_HEARTBEAT_TOKEN"
+reject_header_token_env "SMOKE_BOT_DELIVERY_TOKEN"
+require_student_no_env "SMOKE_STUDENT_NO_LOGIN"
+require_student_no_env "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+require_student_no_env "SMOKE_REAL_PDF_EXPECT_STUDENT_NO"
+require_positive_integer_env "SMOKE_REAL_PDF_MIN_ENTRIES" 1
+require_positive_integer_env "SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS" 1
+require_env_for_env "SMOKE_REAL_PDF_PATH" "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+require_env_for_env "SMOKE_REAL_PDF_MIN_ENTRIES" "SMOKE_REAL_PDF_PATH"
+require_env_for_env "SMOKE_REAL_PDF_EXPECT_STUDENT_NO" "SMOKE_REAL_PDF_PATH"
+require_pdf_file_env "SMOKE_REAL_PDF_PATH"
+if [[ -n "${SMOKE_REAL_PDF_PATH:-}" && -n "${SMOKE_REAL_PDF_EXPECT_STUDENT_NO:-}" && "${SMOKE_REAL_PDF_EXPECT_STUDENT_NO}" != "${SMOKE_SCHEDULE_IMPORT_STUDENT_NO:-}" ]]; then
+  echo "SMOKE_REAL_PDF_EXPECT_STUDENT_NO must match SMOKE_SCHEDULE_IMPORT_STUDENT_NO for real PDF smoke" >&2
+  exit 1
+fi
+require_local_base_url_for_env "SMOKE_HEARTBEAT_TOKEN"
+require_local_base_url_for_env "SMOKE_BOT_DELIVERY_TOKEN"
+require_local_base_url_for_env "SMOKE_STUDENT_NO_LOGIN"
+require_local_base_url_for_env "SMOKE_SCHEDULE_IMPORT_STUDENT_NO"
+require_local_base_url_for_env "SMOKE_REAL_PDF_PATH"
+require_local_base_url_for_flag "SMOKE_SOCIAL_P0"
 
 check_exact() {
   local path="$1"
@@ -246,7 +408,7 @@ PY
   fi
 
   terminal_status=""
-  import_poll_attempts="${SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS:-20}"
+  import_poll_attempts="$((10#${SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS:-20}))"
   for ((poll_index = 1; poll_index <= import_poll_attempts; poll_index += 1)); do
     detail_code="$(curl -sS -o /tmp/touchx_schedule_import_detail.json -w "%{http_code}" \
       "${BASE_URL}/api/v1/admin/schedule-import/jobs/${job_id}" \
@@ -318,7 +480,7 @@ PY
 )"
     real_pdf_total="$(printf '%s\n' "${real_pdf_result}" | sed -n '1p')"
     real_pdf_student_no="$(printf '%s\n' "${real_pdf_result}" | sed -n '2p')"
-    min_real_pdf_entries="${SMOKE_REAL_PDF_MIN_ENTRIES:-1}"
+    min_real_pdf_entries="$((10#${SMOKE_REAL_PDF_MIN_ENTRIES:-1}))"
     if [[ "${real_pdf_total}" -lt "${min_real_pdf_entries}" ]]; then
       echo "❌ real PDF preview expected at least ${min_real_pdf_entries} entries, got ${real_pdf_total}" >&2
       cat /tmp/touchx_real_pdf_preview.json >&2 || true

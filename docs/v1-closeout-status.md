@@ -67,6 +67,8 @@ pnpm verify:v1-release
 
 最近通过的本地 release-candidate gate（2026-06-08）：`pnpm verify:v1-release`。该次验证覆盖后端 V1 本地 gate、Taro weapp 产物构建、旧 uni-app type-check 与微信小程序构建。
 
+最近通过的 V1 生产 smoke gate 增量验证（2026-06-08）：`node --test "apps/backend/server/services/smoke-production-script.test.mjs"` 共 62 个用例通过；`for script in "apps/backend/scripts"/*.sh; do bash -n "$script" || exit 1; done` 通过；`git diff --check` 通过；`pnpm --filter "@touchx/backend" verify:v1-local` 通过并输出 `ok V1 local verification gate`。该次增量验证覆盖生产/local smoke base URL parser guard、token/学生号/PDF/通知通道预检、真实 PDF 三个学生号一致性、生产验收文档和 env 示例同步。
+
 ## 仍需生产验收
 
 V1 还不能算完整验收，必须使用真实生产材料执行：
@@ -79,7 +81,7 @@ pnpm --filter @touchx/backend check:v1-production-env
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-其中 `check:v1-production-env` 只校验本地材料完整性和安全边界，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符和已知 dummy/example token；正式验收仍必须运行 `verify:v1-production`。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀，且不能包含空白字符或 dummy/example 值；`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN` 不能包含空白字符或 dummy/example 值；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给单通道 smoke 排障；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 未显式设置时默认使用 `TOUCHX_SMOKE_STUDENT_NO`；真实 PDF 路径必须是绝对 PDF 文件路径；`smoke:production` 的 opt-in flag 只接受空值或 `1`，避免拼错值被静默当作关闭；`TOUCHX_SMOKE_AUTH_LOGOUT` 只能留空或设为 `1`；`TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空，完整生产 gate 不允许跳过弱 fallback session token 拒绝检查。`TOUCHX_SMOKE_BASE_URL` 必须是公网 HTTPS 生产 API，不能指向本地、link-local、CGNAT 或私网地址。
+其中 `check:v1-production-env` 只校验本地材料完整性和安全边界，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符和已知 dummy/example/test token 或 secret 值；正式验收仍必须运行 `verify:v1-production`。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀，且不能包含空白字符或 dummy/example/test token 值；`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN` 不能包含空白字符或 dummy/example/test secret 值；可选 smoke 文案变量不能使用未替换占位符或纯空白值；可选 bootstrap 管理员账号/学号期望值 `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO` 不能包含空白字符或未替换占位符；可选弱 fallback 管理员密码候选 `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD` 不能使用未替换占位符或纯空白值；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，且不能包含空通道段或重复通道，并会拒绝 legacy 单通道 `TOUCHX_SMOKE_NOTIFICATION_CHANNEL`；`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给 direct `smoke:production` 单通道排障，但 direct 外部投递 smoke 不允许和 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 同时设置，且该 legacy 变量只能包含一个通道；多通道排障请使用 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS`；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号且不能使用未替换占位符，且完整生产 gate 要求 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 匹配 `TOUCHX_SMOKE_STUDENT_NO`，`SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 同时匹配 `TOUCHX_SMOKE_STUDENT_NO` 和 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO`；真实 PDF 路径必须是绝对 PDF 文件路径；`SMOKE_REAL_PDF_MIN_ENTRIES` 不能使用未替换占位符且完整生产 gate 要求大于等于 8；`smoke:production` 的 opt-in flag 只接受空值或 `1`，token 会拒绝未替换占位符，学生号会在网络请求前校验为 6-32 位数字，已开启 opt-in 的必需 token、学生号、通知通道和可选文案也会在网络请求前校验，避免拼错值或 example env 被静默带进生产请求；`TOUCHX_SMOKE_AUTH_LOGOUT`、`TOUCHX_SMOKE_EXTERNAL_DELIVERY`、`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK` 和 `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE` 只能留空或设为 `1`，完整 gate 会自动开启后三者；`TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空，完整生产 gate 不允许跳过弱 fallback session token 拒绝检查。`TOUCHX_SMOKE_BASE_URL` 必须是公网 HTTPS 生产 API，不能指向非 global IP literal、单标签 hostname、非法 DNS hostname、保留域名（example/test/invalid/local/localhost）、本地、link-local、CGNAT、私网、保留或文档地址；`SMOKE_BASE_URL` 和 `TOUCHX_SMOKE_BASE_URL` 都必须包含 scheme/host，且不能包含空白字符、path、userinfo、query、fragment 或非法端口。
 
 生产 gate 需要覆盖：
 
@@ -90,14 +92,11 @@ pnpm --filter @touchx/backend verify:v1-production
 - 生产旧学号登录策略。
 - Cloudflare D1 / R2 / Queue / Worker live 资源可见性、管理员/session/heartbeat/bot/提醒队列 Worker secret 名称可见性与 migration 状态。
 
-该 gate 会拒绝非公网 HTTPS、本地、link-local、CGNAT 或私网 `TOUCHX_SMOKE_BASE_URL`，并要求真实 PDF 导入 smoke 只打 localhost，避免本地导入检查误写生产数据。
+该 gate 会拒绝非公网 HTTPS、非 global IP literal、单标签 hostname、非法 DNS hostname、保留域名（example/test/invalid/local/localhost）、本地、link-local、CGNAT、私网、保留或文档地址的 `TOUCHX_SMOKE_BASE_URL`，并要求真实 PDF 导入 smoke 只打 localhost，避免本地导入检查误写生产数据。
 
 ## 建议提交批次
 
-1. 后端 API 模块化与 focused handler tests。
-2. 通知投递模型收口、smoke gates 和生产验收脚本。
-3. miniapp / mobile 共享 API client 收敛。
-4. Nexus 后台 shell / UI 边界统一。
-5. 文档、roadmap、release 命令和 V1 收口说明。
+1. `chore(backend): harden v1 smoke production gates`：提交 smoke / verify 脚本、production smoke env 示例、README / TODO / closeout 文档，覆盖 base URL parser guard、token/学生号/PDF/通知通道预检、真实 PDF 三个学生号一致性和本地 gate shell 语法检查。
+2. `test(backend): cover v1 smoke gate preflight regressions`：提交 `apps/backend/server/services/smoke-production-script.test.mjs` 的回归覆盖，锁住 direct smoke 和完整生产 gate 的输入拒绝、文档断言与边界 smoke 约束。
 
 除非明确要求，`.spec-workflow/`、`.playwright-mcp/` 和 `.serena/` 不进入提交。

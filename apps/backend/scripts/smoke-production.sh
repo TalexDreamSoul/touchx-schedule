@@ -9,27 +9,66 @@ SMOKE_BOOTSTRAP_STUDENT_NO=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/production-url-guard.sh"
 
+if is_ambiguous_smoke_base_url "${BASE_URL}"; then
+  echo "TOUCHX_SMOKE_BASE_URL must include a scheme and host and must not include whitespace, path, userinfo, query, fragment, or invalid port for smoke:production" >&2
+  exit 1
+fi
 if is_non_production_smoke_url "${BASE_URL}"; then
   echo "TOUCHX_SMOKE_BASE_URL must point to a public HTTPS production API for smoke:production" >&2
   exit 1
 fi
+BASE_URL="${BASE_URL%/}"
 
 reject_known_nonproduction_env() {
   local name="$1"
   local value="${!name:-}"
   [[ -z "${value}" ]] && return
-  case "${value}" in
-    "dummy" | "dummy-admin-token" | "dummy-webhook-secret" | "webhook-secret" | "test-token" | "test-secret" | "example-token" | "example-secret")
+  local normalized
+  normalized="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
+  case "${normalized}" in
+    *dummy* | *example* | "webhook-secret" | "admin-token" | "test-token" | "test-secret" | test-token-* | test-secret-* | *-test-token | *-test-secret | *-test-token-* | *-test-secret-*)
       echo "${name} must be replaced with a real production value" >&2
       exit 1
       ;;
   esac
 }
 
+reject_placeholder_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" == *__REPLACE_WITH_* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+}
+
+reject_optional_plain_env() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return
+  reject_placeholder_env "${name}"
+  if [[ "${value}" =~ [[:space:]] ]]; then
+    echo "${name} must not contain whitespace" >&2
+    exit 1
+  fi
+}
+
+reject_optional_text_env() {
+  local name="$1"
+  local value="${!name:-}"
+  [[ -z "${value}" ]] && return
+  reject_placeholder_env "${name}"
+  if [[ ! "${value}" =~ [^[:space:]] ]]; then
+    echo "${name} must not be blank" >&2
+    exit 1
+  fi
+}
+
 reject_raw_token_env() {
   local name="$1"
   local value="${!name:-}"
   [[ -z "${value}" ]] && return
+  reject_placeholder_env "${name}"
   if [[ "${value}" == "Bearer "* || "${value}" == "bearer "* ]]; then
     echo "${name} must be the raw token without a Bearer prefix" >&2
     exit 1
@@ -50,13 +89,144 @@ require_empty_or_one_flag() {
   fi
 }
 
+reject_student_no_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ "${value}" == *__REPLACE_WITH_* ]]; then
+    echo "${name} must be replaced with a real value" >&2
+    exit 1
+  fi
+  if [[ -n "${value}" && ! "${value}" =~ ^[0-9]{6,32}$ ]]; then
+    echo "${name} must be a 6-32 digit student number" >&2
+    exit 1
+  fi
+}
+
+require_env_for_flag() {
+  local flag_name="$1"
+  local env_name="$2"
+  local message="$3"
+  if [[ "${!flag_name:-}" == "1" && -z "${!env_name:-}" ]]; then
+    echo "${message}" >&2
+    exit 1
+  fi
+}
+
+reject_empty_notification_channel_entries() {
+  local channels="$1"
+  [[ -z "${channels}" ]] && return
+  if [[ "${channels}" =~ (^|,)[[:space:]]*(,|$) ]]; then
+    echo "TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain empty entries" >&2
+    exit 1
+  fi
+}
+
+reject_duplicate_notification_channel_entries() {
+  local channels="${1//,/ }"
+  local seen_wechat_clawdbot=0
+  local seen_feishu=0
+  local channel_type
+  for channel_type in ${channels}; do
+    case "${channel_type}" in
+      "wechat_clawdbot")
+        if (( seen_wechat_clawdbot > 0 )); then
+          echo "TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain duplicate entries" >&2
+          exit 1
+        fi
+        seen_wechat_clawdbot=1
+        ;;
+      "feishu")
+        if (( seen_feishu > 0 )); then
+          echo "TOUCHX_SMOKE_NOTIFICATION_CHANNELS must not contain duplicate entries" >&2
+          exit 1
+        fi
+        seen_feishu=1
+        ;;
+    esac
+  done
+}
+
+reject_legacy_notification_channel_list() {
+  local channels="${1//,/ }"
+  local channel_count=0
+  local channel_type
+  for channel_type in ${channels}; do
+    channel_count=$((channel_count + 1))
+  done
+  if (( channel_count != 1 )); then
+    echo "TOUCHX_SMOKE_NOTIFICATION_CHANNEL must contain exactly one channel; use TOUCHX_SMOKE_NOTIFICATION_CHANNELS for multiple channels" >&2
+    exit 1
+  fi
+}
+
+require_external_notification_preflight() {
+  if [[ "${TOUCHX_SMOKE_EXTERNAL_DELIVERY:-}" != "1" ]]; then
+    return
+  fi
+  reject_optional_text_env "TOUCHX_SMOKE_NOTIFICATION_TITLE"
+  reject_optional_text_env "TOUCHX_SMOKE_NOTIFICATION_BODY"
+  require_env_for_flag \
+    "TOUCHX_SMOKE_EXTERNAL_DELIVERY" \
+    "TOUCHX_SMOKE_AUTH_TOKEN" \
+    "TOUCHX_SMOKE_AUTH_TOKEN is required for external notification delivery smoke"
+
+  if [[ -n "${TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-}" && -n "${TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-}" ]]; then
+    echo "TOUCHX_SMOKE_NOTIFICATION_CHANNEL must be empty when TOUCHX_SMOKE_NOTIFICATION_CHANNELS is set" >&2
+    exit 1
+  fi
+
+  local channels="${TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-${TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-}}"
+  reject_empty_notification_channel_entries "${channels}"
+  if [[ -z "${TOUCHX_SMOKE_NOTIFICATION_CHANNELS:-}" && -n "${TOUCHX_SMOKE_NOTIFICATION_CHANNEL:-}" ]]; then
+    reject_legacy_notification_channel_list "${TOUCHX_SMOKE_NOTIFICATION_CHANNEL}"
+  fi
+  reject_duplicate_notification_channel_entries "${channels}"
+  channels="${channels//,/ }"
+  local channel_count=0
+  local channel_type
+  for channel_type in ${channels}; do
+    channel_count=$((channel_count + 1))
+    if [[ "${channel_type}" != "wechat_clawdbot" && "${channel_type}" != "feishu" ]]; then
+      echo "TOUCHX_SMOKE_NOTIFICATION_CHANNELS entries must be wechat_clawdbot or feishu" >&2
+      exit 1
+    fi
+  done
+  if (( channel_count <= 0 )); then
+    echo "TOUCHX_SMOKE_NOTIFICATION_CHANNELS must include wechat_clawdbot and/or feishu" >&2
+    exit 1
+  fi
+}
+
 reject_raw_token_env "TOUCHX_SMOKE_AUTH_TOKEN"
 reject_raw_token_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"
+reject_optional_plain_env "TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO"
+reject_optional_text_env "TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD"
+reject_student_no_env "TOUCHX_SMOKE_STUDENT_NO"
 require_empty_or_one_flag "TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK"
 require_empty_or_one_flag "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE"
 require_empty_or_one_flag "TOUCHX_SMOKE_EXTERNAL_DELIVERY"
 require_empty_or_one_flag "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK"
 require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"
+require_env_for_flag \
+  "TOUCHX_SMOKE_AUTH_LOGOUT" \
+  "TOUCHX_SMOKE_AUTH_TOKEN" \
+  "TOUCHX_SMOKE_AUTH_TOKEN is required for admin logout revocation smoke"
+require_env_for_flag \
+  "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE" \
+  "TOUCHX_SMOKE_AUTH_TOKEN" \
+  "TOUCHX_SMOKE_AUTH_TOKEN is required for notification queue mode smoke"
+require_env_for_flag \
+  "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK" \
+  "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN" \
+  "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN is required for ClawDBot webhook smoke"
+require_env_for_flag \
+  "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK" \
+  "TOUCHX_SMOKE_STUDENT_NO" \
+  "TOUCHX_SMOKE_STUDENT_NO is required for ClawDBot webhook smoke"
+if [[ "${TOUCHX_SMOKE_CLAWDBOT_WEBHOOK:-}" == "1" ]]; then
+  reject_optional_text_env "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT"
+fi
+require_external_notification_preflight
 
 request() {
   local path="$1"
@@ -262,10 +432,7 @@ request_student_legacy_login() {
     echo "skip student legacy login smoke; set TOUCHX_SMOKE_STUDENT_NO to enable"
     return
   fi
-  if [[ ! "${TOUCHX_SMOKE_STUDENT_NO}" =~ ^[0-9]{6,32}$ ]]; then
-    echo "TOUCHX_SMOKE_STUDENT_NO must be a 6-32 digit student number" >&2
-    exit 1
-  fi
+  reject_student_no_env "TOUCHX_SMOKE_STUDENT_NO"
   local student_login_file="/tmp/touchx-smoke-student-login.json"
   local student_me_file="/tmp/touchx-smoke-student-me.json"
   local login_payload

@@ -166,7 +166,7 @@ pnpm --filter @touchx/backend check:v1-production-env
 pnpm --filter @touchx/backend verify:v1-production
 ```
 
-真实生产材料建议先复制 `apps/backend/.env.production-smoke.example` 到被忽略的 `apps/backend/.env.production-smoke.local`，再填入真实值并通过 `source` 导入，避免把 token 或真实 PDF 路径写进 tracked 文档。`check:v1-production-env` 只做本地材料预检，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符和已知 dummy/example token；该预检通过后再执行完整生产聚合 gate。该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀，且不能包含空白字符或 dummy/example 值；`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN` 不能包含空白字符或 dummy/example 值；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给单通道 smoke 排障；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号；真实 PDF 路径必须是绝对 PDF 文件路径，默认要求至少解析 8 条课程，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝非公网 HTTPS、localhost / 127.0.0.1 / link-local / CGNAT / 私网地址的 `TOUCHX_SMOKE_BASE_URL`，避免把本地或内网 API 当作生产 API 验收；`TOUCHX_SMOKE_AUTH_LOGOUT` 只能留空或设为 `1`，设为 `1` 时会在最后额外验证 admin logout 并撤销当前 token。
+真实生产材料建议先复制 `apps/backend/.env.production-smoke.example` 到被忽略的 `apps/backend/.env.production-smoke.local`，再填入真实值并通过 `source` 导入，避免把 token 或真实 PDF 路径写进 tracked 文档。`check:v1-production-env` 只做本地材料预检，不访问生产 API、Cloudflare 或本地 smoke 服务，并会拒绝 example 中尚未替换的占位符和已知 dummy/example/test token 或 secret 值；该预检通过后再执行完整生产聚合 gate。该聚合 gate 会先跑带真实 PDF 的本地 `smoke:local`，再串起 `smoke:cloudflare-live` 和 `smoke:production`；缺少管理员 token、真实学生学号、ClawDBot webhook token、ClawDBot + 飞书双通知通道、真实 PDF 或 Wrangler 登录态时会失败。`TOUCHX_SMOKE_AUTH_TOKEN` 必须填原始 token，不带 `Bearer` 前缀，且不能包含空白字符或 dummy/example/test token 值；`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN` 不能包含空白字符或 dummy/example/test secret 值；完整生产 gate 必须通过 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 提供 `wechat_clawdbot` 和 `feishu`，支持逗号或空格分隔，不能包含空通道段或重复通道，并会拒绝 legacy 单通道 `TOUCHX_SMOKE_NOTIFICATION_CHANNEL`；`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仅保留给 direct `smoke:production` 单通道排障；`TOUCHX_SMOKE_STUDENT_NO`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 必须是 6-32 位数字学生号且不能使用未替换占位符，其中完整生产 gate 要求 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 与 `TOUCHX_SMOKE_STUDENT_NO` 一致；真实 PDF 路径必须是绝对 PDF 文件路径，默认要求至少解析 8 条课程，`SMOKE_REAL_PDF_MIN_ENTRIES` 不能使用未替换占位符且完整生产 gate 要求大于等于 8，并默认要求 PDF 内学号匹配 `TOUCHX_SMOKE_STUDENT_NO`，且真实 PDF 期望学号必须同时匹配 `TOUCHX_SMOKE_STUDENT_NO` 和 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO`；为避免本地导入 smoke 误写生产数据，该脚本会拒绝非 localhost / 127.0.0.1 的 `SMOKE_BASE_URL`，也会拒绝非公网 HTTPS、非 global IP literal、单标签 hostname、非法 DNS hostname、保留域名（example/test/invalid/local/localhost）、localhost / 127.0.0.1 / link-local / CGNAT / 私网 / 保留或文档地址的 `TOUCHX_SMOKE_BASE_URL`，两个 smoke base URL 都必须包含 scheme 和 host，且不能包含空白字符、path、userinfo、query、fragment 或非法端口，避免把本地或内网 API 当作生产 API 验收，也避免路径拼接后请求目标不明确；`TOUCHX_SMOKE_AUTH_LOGOUT`、`TOUCHX_SMOKE_EXTERNAL_DELIVERY`、`TOUCHX_SMOKE_CLAWDBOT_WEBHOOK` 和 `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE` 只能留空或设为 `1`，完整 gate 会自动开启后三者，`TOUCHX_SMOKE_AUTH_LOGOUT=1` 会在最后额外验证 admin logout 并撤销当前 token。
 
 ## 运行时自检（防回归）
 
@@ -176,7 +176,7 @@ pnpm --filter @touchx/backend verify:v1-production
 pnpm --filter @touchx/backend smoke:local
 ```
 
-可通过 `SMOKE_BASE_URL` 覆盖目标地址（默认 `http://127.0.0.1:9986`）。
+可通过 `SMOKE_BASE_URL` 覆盖目标地址（默认 `http://127.0.0.1:9986`）。基础健康检查可以打自定义地址；但旧学号登录、提醒 token 检查、导入、社交 P0、提醒入队/ack 这些会写会话/数据、读取本地队列或依赖本地 mock 状态的链路只允许 `SMOKE_BASE_URL` 保持 `localhost` / `127.0.0.1`，脚本会在任何请求前拒绝把这些本地专用 smoke 打到远端。`SMOKE_BASE_URL` 必须包含 scheme 和 host，且不能包含空白字符、path、userinfo、query、fragment 或非法端口，避免 `${SMOKE_BASE_URL}` 与 smoke path 拼接后请求目标不明确。
 
 如果要把提醒与导入链路一起跑通，建议同时传这些环境变量：
 
@@ -189,9 +189,9 @@ pnpm --filter @touchx/backend smoke:local
 
 说明：
 
-- 当同时提供 `SMOKE_HEARTBEAT_TOKEN` 和 `SMOKE_BOT_DELIVERY_TOKEN` 时，脚本会在本地执行一次真实入队、重复去重验证，以及一条投递 ack。
-- 当提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 时，脚本会以 mock 用户会话跑一次单文件 PDF 导入，并验证任务进入终态且失败场景带 `errorCode`。
-- 当同时提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_PATH` 时，脚本会额外调用用户侧 PDF 预览接口验证真实 PDF 至少解析出 `SMOKE_REAL_PDF_MIN_ENTRIES` 条课程。本地默认 1 条，`verify:v1-production` 会强制提升到至少 8 条；可用 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 校验 PDF 内学号，生产聚合 gate 默认使用 `TOUCHX_SMOKE_STUDENT_NO` 校验。
+- 当同时提供 `SMOKE_HEARTBEAT_TOKEN` 和 `SMOKE_BOT_DELIVERY_TOKEN` 时，脚本会在本地执行一次真实入队、重复去重验证，以及一条投递 ack；这两个 header token 必须是原始值，不能带 `Bearer` 前缀、空白字符或未替换占位符。
+- 当提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 时，脚本会以 mock 用户会话跑一次单文件 PDF 导入，并验证任务进入终态且失败场景带 `errorCode`；`SMOKE_STUDENT_NO_LOGIN`、`SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 会在网络请求前校验为 6-32 位数字。
+- 当同时提供 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 和 `SMOKE_REAL_PDF_PATH` 时，脚本会额外调用用户侧 PDF 预览接口验证真实 PDF 至少解析出 `SMOKE_REAL_PDF_MIN_ENTRIES` 条课程；`SMOKE_REAL_PDF_PATH` 不能单独设置，必须是绝对路径，文件必须存在且具备 PDF 文件头，且不能是未替换占位符或 `/absolute/path/...` 模板路径，避免真实 PDF 质量门禁被静默跳过。本地默认 1 条，`verify:v1-production` 会强制提升到至少 8 条；可用 `SMOKE_REAL_PDF_EXPECT_STUDENT_NO` 校验 PDF 内学号，设置后必须和 `SMOKE_SCHEDULE_IMPORT_STUDENT_NO` 一致，生产聚合 gate 默认使用 `TOUCHX_SMOKE_STUDENT_NO` 校验。`SMOKE_REAL_PDF_MIN_ENTRIES` 和 `SMOKE_SCHEDULE_IMPORT_POLL_ATTEMPTS` 必须是大于等于 1 的整数且不能是未替换占位符。
 
 真实 PDF 样本验收示例：
 
@@ -236,20 +236,20 @@ pnpm --filter @touchx/backend smoke:production
 
 可选变量：
 
-- `TOUCHX_SMOKE_BASE_URL`：公网 HTTPS 生产 API 地址，默认 `https://schedule-backend.tagzxia.com`；`smoke:production` 和完整生产验收都会拒绝非 HTTPS、本地、link-local、CGNAT 和私网地址。
-- `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO`：校验生产 bootstrap 管理员账号/学号是否符合预期。
-- `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD`：额外用于生成弱 fallback session token 的候选管理员密码；脚本始终检查默认 `fallback:123456`。
+- `TOUCHX_SMOKE_BASE_URL`：公网 HTTPS 生产 API 地址，默认 `https://schedule-backend.tagzxia.com`；`smoke:production` 和完整生产验收都会拒绝非 HTTPS、非 global IP literal、单标签 hostname、非法 DNS hostname、本地、link-local、CGNAT、私网、保留或文档地址、保留域名（example/test/invalid/local/localhost），以及带空白字符、path、userinfo、query、fragment 或非法端口的地址。
+- `TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO`：校验生产 bootstrap 管理员账号/学号是否符合预期；不能包含空白字符或未替换占位符。
+- `TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD`：额外用于生成弱 fallback session token 的候选管理员密码；脚本始终检查默认 `fallback:123456`，显式设置时不能使用未替换占位符或纯空白值。
 - `TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK=1`：跳过弱 fallback session token 拒绝检查，仅用于临时排障；`smoke:production` 只接受空值或 `1`，完整生产聚合 gate 会拒绝该变量，不能用于 V1 生产验收。
-- `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。必须是原始 token，不能带 `Bearer` 前缀、空白字符或 dummy/example 值。
-- `TOUCHX_SMOKE_AUTH_LOGOUT=1`：额外验证 admin logout 撤销当前 token。该检查会让传入 token 失效，默认关闭；`smoke:production` 和完整生产预检都只接受空值或 `1`。
-- `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式；完整生产验收要求 6-32 位数字。
-- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1`：显式开启真实 ClawDBot webhook 入站 smoke；该检查会发送不 commit 的测试消息并要求至少解析出一个候选；`smoke:production` 只接受空值或 `1`。
-- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。不能包含空白字符或 dummy/example 值。
-- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT`：ClawDBot webhook smoke 文本，留空时使用默认 `周三下午3点复习数据结构`。
+- `TOUCHX_SMOKE_AUTH_TOKEN`：管理员 token；提供后会校验 `/api/v1/admin/me`。必须是原始 token，不能带 `Bearer` 前缀、空白字符、未替换占位符或 dummy/example/test token 值。
+- `TOUCHX_SMOKE_AUTH_LOGOUT=1`：额外验证 admin logout 撤销当前 token，需要管理员 token。该检查会让传入 token 失效，默认关闭；`smoke:production` 和完整生产预检都只接受空值或 `1`。
+- `TOUCHX_SMOKE_STUDENT_NO`：可选真实学生学号；提供后会验证生产 `/api/v1/auth/login` 和 `/api/v1/auth/me` 仍返回 `legacy_student_no` 登录模式；`smoke:production` 会在网络请求前拒绝非 6-32 位数字。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK=1`：显式开启真实 ClawDBot webhook 入站 smoke，需要 webhook token 和真实学生学号；该检查会发送不 commit 的测试消息并要求至少解析出一个候选；`smoke:production` 只接受空值或 `1`。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN`：真实 ClawDBot webhook token；完整生产验收必填。不能包含空白字符、未替换占位符或 dummy/example/test secret 值。
+- `TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT`：ClawDBot webhook smoke 文本，留空时使用默认 `周三下午3点复习数据结构`；显式设置时不能使用未替换占位符或纯空白值。
 - `TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE=1`：可选只读检查；需要管理员 token，验证生产已有 `sourceQueue=notification` 的通用通知投递记录；`smoke:production` 只接受空值或 `1`。
-- `TOUCHX_SMOKE_EXTERNAL_DELIVERY=1`：显式开启真实外部通知投递 smoke；`smoke:production` 只接受空值或 `1`。
-- `TOUCHX_SMOKE_NOTIFICATION_CHANNELS`：逗号或空格分隔的通知通道列表；完整生产验收必须同时包含 `wechat_clawdbot` 和 `feishu`。`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仍可用于单通道排障。
-- `TOUCHX_SMOKE_NOTIFICATION_TITLE` / `TOUCHX_SMOKE_NOTIFICATION_BODY`：测试消息内容；留空时使用默认生产 smoke 文案。
+- `TOUCHX_SMOKE_EXTERNAL_DELIVERY=1`：显式开启真实外部通知投递 smoke，需要管理员 token 和通知通道；`smoke:production` 只接受空值或 `1`。
+- `TOUCHX_SMOKE_NOTIFICATION_CHANNELS`：逗号或空格分隔的通知通道列表；完整生产验收必须同时包含 `wechat_clawdbot` 和 `feishu`，且不能包含空通道段或重复通道。`TOUCHX_SMOKE_NOTIFICATION_CHANNEL` 仍可用于单通道排障，但 direct 外部投递 smoke 不允许和 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS` 同时设置，且该 legacy 变量只能包含一个通道；多通道排障请使用 `TOUCHX_SMOKE_NOTIFICATION_CHANNELS`。
+- `TOUCHX_SMOKE_NOTIFICATION_TITLE` / `TOUCHX_SMOKE_NOTIFICATION_BODY`：测试消息内容；留空时使用默认生产 smoke 文案，显式设置时不能使用未替换占位符或纯空白值。
 
 生产完整验收建议直接跑：
 

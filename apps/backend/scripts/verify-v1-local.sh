@@ -11,6 +11,13 @@ run_step() {
   "$@"
 }
 
+check_shell_syntax() {
+  local script
+  for script in "apps/backend/scripts"/*.sh; do
+    bash -n "${script}"
+  done
+}
+
 run_step "backend type-check" pnpm --filter "@touchx/backend" type-check
 run_step "backend node tests" node --test "apps/backend/server/services"/*.test.mjs
 run_step "workspace package tests" pnpm test:packages
@@ -22,7 +29,7 @@ run_step "client boundary smoke" pnpm --filter "@touchx/backend" smoke:client-bo
 run_step "miniapp parity smoke" pnpm --filter "@touchx/backend" smoke:miniapp-parity
 run_step "data boundary smoke" pnpm --filter "@touchx/backend" smoke:data-boundaries
 run_step "Cloudflare config smoke" pnpm --filter "@touchx/backend" smoke:cloudflare-config
-run_step "smoke script syntax" bash -n "apps/backend/scripts/smoke-production.sh" "apps/backend/scripts/smoke-local.sh" "apps/backend/scripts/verify-v1-production.sh" "apps/backend/scripts/production-url-guard.sh"
+run_step "backend shell script syntax" check_shell_syntax
 run_step "diff whitespace check" git diff --check
 
 echo "ok V1 local verification gate"
