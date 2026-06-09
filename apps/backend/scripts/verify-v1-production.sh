@@ -46,7 +46,7 @@ reject_known_nonproduction_env() {
   local normalized
   normalized="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
   case "${normalized}" in
-    *dummy* | *example* | "webhook-secret" | "admin-token" | "test-token" | "test-secret" | test-token-* | test-secret-* | *-test-token | *-test-secret | *-test-token-* | *-test-secret-*)
+    *dummy* | *example* | "test" | "testing" | "local" | "placeholder" | "changeme" | "change-me" | "replace-me" | "token" | "secret" | "password" | "webhook-secret" | "admin-token" | "test-token" | "test-secret" | test-token-* | test-secret-* | *-test-token | *-test-secret | *-test-token-* | *-test-secret-*)
       missing+=("${name} must be replaced with a real production value")
       ;;
   esac
@@ -274,9 +274,9 @@ if (( ${#missing[@]} > 0 )); then
   cat >&2 <<'EOF'
 
 Required inputs:
-  TOUCHX_SMOKE_AUTH_TOKEN              Raw admin token for protected production checks; no auth prefix, whitespace, or dummy/example/test token value.
+  TOUCHX_SMOKE_AUTH_TOKEN              Raw admin token for protected production checks; no auth prefix, whitespace, or dummy/example/test token value; bare placeholder/changeme values are also refused.
   TOUCHX_SMOKE_STUDENT_NO              Real production student number for legacy login verification; must be 6-32 digits.
-  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN  Real ClawDBot webhook token for inbound production smoke; no whitespace or dummy/example/test secret value.
+  TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN  Real ClawDBot webhook token for inbound production smoke; no whitespace or dummy/example/test secret value; bare placeholder/changeme values are also refused.
   TOUCHX_SMOKE_NOTIFICATION_CHANNELS   Must include both wechat_clawdbot and feishu.
   SMOKE_REAL_PDF_PATH                  Real schedule PDF sample on this machine; must be an absolute PDF file path.
   SMOKE_SCHEDULE_IMPORT_STUDENT_NO     Student number used by local PDF import smoke; must be 6-32 digits and match TOUCHX_SMOKE_STUDENT_NO.

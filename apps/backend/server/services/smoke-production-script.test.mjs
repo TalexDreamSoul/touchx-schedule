@@ -253,6 +253,14 @@ test("production smoke rejects malformed supplied tokens before network checks",
       pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
     },
     {
+      env: { TOUCHX_SMOKE_AUTH_TOKEN: "test" },
+      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
+    },
+    {
+      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "changeme" },
+      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
+    },
+    {
       env: { TOUCHX_SMOKE_AUTH_TOKEN: "__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__" },
       pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real value/,
     },
@@ -1005,15 +1013,15 @@ test("V1 production verification rejects blank optional message values", () => {
   });
 });
 
-  test("V1 production verification rejects malformed fallback admin password candidate", () => {
-    withTempPdf("touchx-v1-production-fallback-password-", (pdfPath) => {
-      [
-        {
-          env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "fallback-__REPLACE_WITH_FALLBACK_ADMIN_PASSWORD__" },
-          pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must be replaced with a real value/,
-        },
-        {
-          env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "   " },
+test("V1 production verification rejects malformed fallback admin password candidate", () => {
+  withTempPdf("touchx-v1-production-fallback-password-", (pdfPath) => {
+    [
+      {
+        env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "fallback-__REPLACE_WITH_FALLBACK_ADMIN_PASSWORD__" },
+        pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must be replaced with a real value/,
+      },
+      {
+        env: { TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD: "   " },
         pattern: /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD must not be blank/,
       },
     ].forEach(({ env, pattern }) => {
@@ -1039,6 +1047,29 @@ test("V1 production verification rejects known non-production token values", () 
     assert.match(result.stderr, /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/);
     assert.match(result.stderr, /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/);
     assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+  });
+});
+
+test("V1 production verification rejects bare placeholder token values", () => {
+  withTempPdf("touchx-v1-production-placeholder-token-", (pdfPath) => {
+    [
+      {
+        env: { TOUCHX_SMOKE_AUTH_TOKEN: "test" },
+        pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
+      },
+      {
+        env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "changeme" },
+        pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
+      },
+    ].forEach(({ env, pattern }) => {
+      const result = runV1ProductionPrecheck({
+        SMOKE_REAL_PDF_PATH: pdfPath,
+        ...env,
+      });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stdout, /ok V1 production verification inputs/);
+    });
   });
 });
 

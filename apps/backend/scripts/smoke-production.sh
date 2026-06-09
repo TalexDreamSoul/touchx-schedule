@@ -26,7 +26,7 @@ reject_known_nonproduction_env() {
   local normalized
   normalized="$(printf '%s' "${value}" | tr '[:upper:]' '[:lower:]')"
   case "${normalized}" in
-    *dummy* | *example* | "webhook-secret" | "admin-token" | "test-token" | "test-secret" | test-token-* | test-secret-* | *-test-token | *-test-secret | *-test-token-* | *-test-secret-*)
+    *dummy* | *example* | "test" | "testing" | "local" | "placeholder" | "changeme" | "change-me" | "replace-me" | "token" | "secret" | "password" | "webhook-secret" | "admin-token" | "test-token" | "test-secret" | test-token-* | test-secret-* | *-test-token | *-test-secret | *-test-token-* | *-test-secret-*)
       echo "${name} must be replaced with a real production value" >&2
       exit 1
       ;;
