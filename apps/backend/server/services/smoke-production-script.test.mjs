@@ -759,6 +759,7 @@ test("V1 production verification gate requires real external inputs", () => {
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_NOTIFICATION_BODY=.*Optional notification smoke body/);
   assert.match(v1ProductionVerify, /TOUCHX_SMOKE_EXPECT_BOOTSTRAP_STUDENT_NO=.*Optional bootstrap admin account\/student assertion/);
   assert.match(v1ProductionVerify, /no auth prefix, whitespace, or dummy\/example\/test token value/);
+  assert.match(v1ProductionVerify, /bare placeholder\/changeme values are also refused/);
   assert.match(v1ProductionVerify, /ClawDBot webhook token[\s\S]*no whitespace or dummy\/example\/test secret value/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_AUTH_LOGOUT"/);
   assert.match(v1ProductionVerify, /require_empty_or_one_flag "TOUCHX_SMOKE_NOTIFICATION_QUEUE_MODE"/);
@@ -1218,6 +1219,9 @@ test("V1 production verification docs mention required student number format", (
   assert.match(v1CloseoutStatus, /纯空白值/);
   assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_FALLBACK_ADMIN_PASSWORD/);
   assert.match(v1CloseoutStatus, /TOUCHX_SMOKE_SKIP_SESSION_SECRET_CHECK` 必须为空/);
+  [backendReadme, todoDoc, v1CloseoutStatus].forEach((doc) => {
+    assert.match(doc, /placeholder` \/ `changeme/);
+  });
   assert.match(backendReadme, /非 global IP literal/);
   assert.match(todoDoc, /非 global IP literal/);
   assert.match(v1CloseoutStatus, /非 global IP literal/);
@@ -1281,6 +1285,7 @@ test("V1 production verification env template avoids committing real smoke secre
   assert.match(productionSmokeEnvExample, /use TOUCHX_SMOKE_NOTIFICATION_CHANNELS for multiple channels/);
   assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_NOTIFICATION_CHANNEL=$/m);
   assert.match(productionSmokeEnvExample, /do not include the auth scheme prefix, whitespace, or dummy\/example\/test token value/);
+  assert.match(productionSmokeEnvExample, /Bare placeholder\/changeme values are also refused/);
   assert.match(productionSmokeEnvExample, /webhook token[\s\S]*do not include whitespace or dummy\/example\/test secret value/);
   assert.match(productionSmokeEnvExample, /webhook smoke text[\s\S]*do not use a placeholder or blank value/);
   assert.match(productionSmokeEnvExample, /^TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TEXT=$/m);
