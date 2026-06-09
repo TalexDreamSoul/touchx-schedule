@@ -41,6 +41,16 @@ const rootGitignore = readFileSync(join(import.meta.dirname, "../../../../.gitig
 const backendRoot = join(import.meta.dirname, "../../..");
 const validProductionAuthToken = "production-admin-token-value";
 const validClawdbotWebhookToken = "production-clawdbot-webhook-token-value";
+const bareNonProductionTokenValues = ["test", "placeholder", "changeme"];
+const productionTokenEnvNames = ["TOUCHX_SMOKE_AUTH_TOKEN", "TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN"];
+
+const bareNonProductionTokenCases = () =>
+  productionTokenEnvNames.flatMap((name) =>
+    bareNonProductionTokenValues.map((value) => ({
+      env: { [name]: value },
+      pattern: new RegExp(`${name} must be replaced with a real production value`),
+    })),
+  );
 
 const productionPrecheckEnv = (overrides = {}) => ({
   ...process.env,
@@ -252,14 +262,7 @@ test("production smoke rejects malformed supplied tokens before network checks",
       env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "EXAMPLE-webhook-secret-local" },
       pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
     },
-    {
-      env: { TOUCHX_SMOKE_AUTH_TOKEN: "test" },
-      pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
-    },
-    {
-      env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "changeme" },
-      pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
-    },
+    ...bareNonProductionTokenCases(),
     {
       env: { TOUCHX_SMOKE_AUTH_TOKEN: "__REPLACE_WITH_PRODUCTION_ADMIN_TOKEN__" },
       pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real value/,
@@ -1053,16 +1056,7 @@ test("V1 production verification rejects known non-production token values", () 
 
 test("V1 production verification rejects bare placeholder token values", () => {
   withTempPdf("touchx-v1-production-placeholder-token-", (pdfPath) => {
-    [
-      {
-        env: { TOUCHX_SMOKE_AUTH_TOKEN: "test" },
-        pattern: /TOUCHX_SMOKE_AUTH_TOKEN must be replaced with a real production value/,
-      },
-      {
-        env: { TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN: "changeme" },
-        pattern: /TOUCHX_SMOKE_CLAWDBOT_WEBHOOK_TOKEN must be replaced with a real production value/,
-      },
-    ].forEach(({ env, pattern }) => {
+    bareNonProductionTokenCases().forEach(({ env, pattern }) => {
       const result = runV1ProductionPrecheck({
         SMOKE_REAL_PDF_PATH: pdfPath,
         ...env,
