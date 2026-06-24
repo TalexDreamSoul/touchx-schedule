@@ -85,39 +85,39 @@
         <view class="sub">确认前可修正课程名、节次、周次、单双周、教室和教师；确认后才会写入正式课表。</view>
         <view class="preview-toolbar">
           <view class="preview-count">共 {{ editablePreviewEntries.length }} 条课程</view>
-          <view class="link-btn" @click="restorePreviewEntries">恢复原始识别</view>
+          <view v-if="!lastConfirmResult" class="link-btn" @click="restorePreviewEntries">恢复原始识别</view>
         </view>
         <view v-for="(entry, index) in editablePreviewEntries" :key="entry.previewEntryId" class="preview-item">
           <view class="preview-head">
             <view class="preview-index">#{{ index + 1 }}</view>
-            <view class="link-btn danger" @click="removePreviewEntry(index)">删除</view>
+            <view v-if="!lastConfirmResult" class="link-btn danger" @click="removePreviewEntry(index)">删除</view>
           </view>
           <view class="form-field compact">
             <view class="label">课程名</view>
-            <input v-model.trim="entry.courseName" class="input" placeholder="课程名" />
+            <input v-model.trim="entry.courseName" class="input" placeholder="课程名" :disabled="Boolean(lastConfirmResult)" />
           </view>
           <view class="preview-grid">
             <view class="form-field compact">
               <view class="label">周几</view>
-              <input v-model.number="entry.day" class="input" type="number" placeholder="1-7" />
+              <input v-model.number="entry.day" class="input" type="number" placeholder="1-7" :disabled="Boolean(lastConfirmResult)" />
             </view>
             <view class="form-field compact">
               <view class="label">开始节</view>
-              <input v-model.number="entry.startSection" class="input" type="number" placeholder="1" />
+              <input v-model.number="entry.startSection" class="input" type="number" placeholder="1" :disabled="Boolean(lastConfirmResult)" />
             </view>
             <view class="form-field compact">
               <view class="label">结束节</view>
-              <input v-model.number="entry.endSection" class="input" type="number" placeholder="2" />
+              <input v-model.number="entry.endSection" class="input" type="number" placeholder="2" :disabled="Boolean(lastConfirmResult)" />
             </view>
           </view>
           <view class="preview-grid two">
             <view class="form-field compact">
               <view class="label">周次</view>
-              <input v-model.trim="entry.weekExpr" class="input" placeholder="1-16" />
+              <input v-model.trim="entry.weekExpr" class="input" placeholder="1-16" :disabled="Boolean(lastConfirmResult)" />
             </view>
             <view class="form-field compact">
               <view class="label">单双周</view>
-              <picker :range="parityOptions" range-key="label" :value="getParityIndex(entry.parity)" @change="updatePreviewParity(index, $event)">
+              <picker :range="parityOptions" range-key="label" :value="getParityIndex(entry.parity)" :disabled="Boolean(lastConfirmResult)" @change="updatePreviewParity(index, $event)">
                 <view class="input picker-input">{{ formatParity(entry.parity) }}</view>
               </picker>
             </view>
@@ -125,39 +125,54 @@
           <view class="preview-grid two">
             <view class="form-field compact">
               <view class="label">教室</view>
-              <input v-model.trim="entry.classroom" class="input" placeholder="教室" />
+              <input v-model.trim="entry.classroom" class="input" placeholder="教室" :disabled="Boolean(lastConfirmResult)" />
             </view>
             <view class="form-field compact">
               <view class="label">教师</view>
-              <input v-model.trim="entry.teacher" class="input" placeholder="教师" />
+              <input v-model.trim="entry.teacher" class="input" placeholder="教师" :disabled="Boolean(lastConfirmResult)" />
             </view>
           </view>
         </view>
         <view class="actions">
-          <view class="btn" :class="{ disabled: confirmPending || editablePreviewEntries.length <= 0 }" @click="confirmImport">
+          <view class="btn" :class="{ disabled: confirmPending || editablePreviewEntries.length <= 0 || Boolean(lastConfirmResult) }" @click="confirmImport">
             {{ confirmPending ? "确认中..." : "确认导入" }}
           </view>
+          <view v-if="lastConfirmResult" class="btn ghost" @click="goToScheduleHome">返回课表</view>
         </view>
+        <view v-if="lastConfirmResult" class="status">已写入 {{ lastConfirmResult.entryCount }} 条课程，可回流修正样本或返回课表。</view>
       </view>
 
       <view class="card">
         <view class="title small">识别修正回流</view>
-        <view class="sub">把 AI/OCR 原始识别和你修正后的结果一起提交，后续用于本校模型优化。</view>
-        <view class="form-field">
-          <view class="label">任务 ID（可选）</view>
-          <input v-model.trim="correctionJobId" class="input" placeholder="可填导入任务 ID" />
+        <view class="sub">当前预览会自动生成原始识别与修正结果，无需粘贴 JSON。</view>
+        <view v-if="correctionSummary.hasPayload" class="correction-panel">
+          <view class="summary-grid correction-grid">
+            <view class="summary-item">
+              <view class="summary-label">来源</view>
+              <view class="summary-value">{{ correctionSummary.sourceLabel }}</view>
+            </view>
+            <view class="summary-item">
+              <view class="summary-label">任务 ID</view>
+              <view class="summary-value mono">{{ correctionSummary.jobId }}</view>
+            </view>
+            <view class="summary-item">
+              <view class="summary-label">原始/当前</view>
+              <view class="summary-value">{{ correctionSummary.originalCount }}/{{ correctionSummary.correctedCount }} 条</view>
+            </view>
+            <view class="summary-item">
+              <view class="summary-label">变更</view>
+              <view class="summary-value">
+                改 {{ correctionSummary.changedCount }} · 新 {{ correctionSummary.addedCount }} · 删 {{ correctionSummary.removedCount }}
+              </view>
+            </view>
+          </view>
+          <view v-if="correctionSummary.confirmed" class="status">确认结果已纳入回流 payload。</view>
+          <view v-if="correctionSubmittedAt" class="status">最近回流：{{ formatDateTime(correctionSubmittedAt) }}</view>
         </view>
-        <view class="form-field">
-          <view class="label">原始识别结果</view>
-          <textarea v-model="originalPayloadText" class="textarea" maxlength="1200" placeholder="可粘贴 JSON 或纯文本" />
-        </view>
-        <view class="form-field">
-          <view class="label">修正后结果</view>
-          <textarea v-model="correctedPayloadText" class="textarea" maxlength="1200" placeholder="可粘贴 JSON 或纯文本" />
-        </view>
+        <view v-else class="empty-text">完成识别后会自动准备修正样本。</view>
         <view class="actions">
-          <view class="btn" :class="{ disabled: correctionPending }" @click="submitCorrection">
-            {{ correctionPending ? "提交中..." : "提交修正样本" }}
+          <view class="btn" :class="{ disabled: correctionPending || !correctionSummary.hasPayload }" @click="submitCorrection">
+            {{ correctionPending ? "提交中..." : lastConfirmResult ? "一键回流确认结果" : "一键回流当前修正" }}
           </view>
         </view>
       </view>
@@ -166,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import { onShow } from "@dcloudio/uni-app";
 import PageContainer from "@/components/PageContainer.vue";
 import { useSocialDashboard, type SocialDashboardResponse } from "@/composables/useSocialDashboard";
@@ -263,6 +278,13 @@ interface ScheduleImportCreateResponse {
   totalFiles: number;
 }
 
+interface ScheduleImportConfirmResult {
+  scheduleId: string;
+  versionNo: number;
+  entryCount: number;
+  alreadyConfirmed?: boolean;
+}
+
 interface AiAttachmentUploadResponse {
   asset?: {
     assetId?: string;
@@ -271,12 +293,26 @@ interface AiAttachmentUploadResponse {
 }
 
 interface AiScheduleOcrPreviewResponse {
+  provider?: string;
   assetUrl?: string;
   rawText?: string;
   studentNo?: string;
   term?: string;
   parsedName?: string;
   previewEntries?: ScheduleImportPreviewEntry[];
+}
+
+interface ScheduleCorrectionContext {
+  source: "pdf_preview" | "ai_ocr";
+  jobId: string;
+  fileName: string;
+  studentNo: string;
+  term: string;
+  parsedName: string;
+  parsedStudentNo: string;
+  assetUrl: string;
+  rawText: string;
+  provider: string;
 }
 
 const themeKey = ref<ThemeKey>("black");
@@ -297,9 +333,9 @@ const historyPending = ref(false);
 const originalPreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
 const editablePreviewEntries = ref<ScheduleImportPreviewEntry[]>([]);
 const confirmPending = ref(false);
-const correctionJobId = ref("");
-const originalPayloadText = ref("");
-const correctedPayloadText = ref("");
+const correctionContext = ref<ScheduleCorrectionContext | null>(null);
+const lastConfirmResult = ref<ScheduleImportConfirmResult | null>(null);
+const correctionSubmittedAt = ref("");
 const correctionPending = ref(false);
 const imagePreviewContext = ref<AiScheduleOcrPreviewResponse | null>(null);
 const { refreshDashboard, hydrateDashboardFromStorage, clearDashboard } = useSocialDashboard();
@@ -496,20 +532,131 @@ const clonePreviewEntries = (entries: ScheduleImportPreviewEntry[]) => {
   return entries.map((entry) => ({ ...entry }));
 };
 
+const resetCorrectionDraft = () => {
+  originalPreviewEntries.value = [];
+  editablePreviewEntries.value = [];
+  correctionContext.value = null;
+  lastConfirmResult.value = null;
+  correctionSubmittedAt.value = "";
+};
+
+const compactPayload = (payload: Record<string, unknown>) => {
+  return Object.entries(payload).reduce<Record<string, unknown>>((result, [key, value]) => {
+    if (value !== "" && value !== null && value !== undefined) {
+      result[key] = value;
+    }
+    return result;
+  }, {});
+};
+
+const getCorrectionEntryKey = (entry: ScheduleImportPreviewEntry, index: number) => {
+  return String(entry.previewEntryId || `source_${entry.sourceIndex ?? index}`);
+};
+
+const toComparablePreviewEntry = (entry: ScheduleImportPreviewEntry) => ({
+  courseName: String(entry.courseName || "").trim(),
+  day: Number(entry.day),
+  startSection: Number(entry.startSection),
+  endSection: Number(entry.endSection),
+  weekExpr: String(entry.weekExpr || "").trim(),
+  parity: entry.parity || "all",
+  classroom: String(entry.classroom || "").trim(),
+  teacher: String(entry.teacher || "").trim(),
+});
+
+const buildCorrectionStats = () => {
+  const originalEntries = originalPreviewEntries.value;
+  const correctedEntries = editablePreviewEntries.value;
+  const originalByKey = new Map(originalEntries.map((entry, index) => [getCorrectionEntryKey(entry, index), entry]));
+  const correctedByKey = new Map(correctedEntries.map((entry, index) => [getCorrectionEntryKey(entry, index), entry]));
+  const changedCount = correctedEntries.filter((entry, index) => {
+    const original = originalByKey.get(getCorrectionEntryKey(entry, index));
+    return original && JSON.stringify(toComparablePreviewEntry(original)) !== JSON.stringify(toComparablePreviewEntry(entry));
+  }).length;
+  const addedCount = correctedEntries.filter((entry, index) => !originalByKey.has(getCorrectionEntryKey(entry, index))).length;
+  const removedCount = originalEntries.filter((entry, index) => !correctedByKey.has(getCorrectionEntryKey(entry, index))).length;
+  return {
+    originalCount: originalEntries.length,
+    correctedCount: correctedEntries.length,
+    changedCount,
+    addedCount,
+    removedCount,
+  };
+};
+
+const correctionSummary = computed(() => {
+  const context = correctionContext.value;
+  const stats = buildCorrectionStats();
+  return {
+    hasPayload: Boolean(context && stats.originalCount > 0 && stats.correctedCount > 0),
+    sourceLabel: context?.source === "ai_ocr" ? "AI/OCR" : "PDF 预览",
+    jobId: context?.jobId || "--",
+    confirmed: Boolean(lastConfirmResult.value),
+    ...stats,
+  };
+});
+
+const buildCorrectionPayload = () => {
+  const context = correctionContext.value;
+  if (!context || originalPreviewEntries.value.length <= 0 || editablePreviewEntries.value.length <= 0) {
+    return null;
+  }
+  const stats = buildCorrectionStats();
+  const originalPayload = compactPayload({
+    source: context.source,
+    jobId: context.jobId,
+    fileName: context.fileName,
+    studentNo: context.studentNo,
+    term: context.term,
+    parsedName: context.parsedName,
+    parsedStudentNo: context.parsedStudentNo,
+    assetUrl: context.assetUrl,
+    rawText: context.rawText,
+    provider: context.provider,
+    previewEntries: clonePreviewEntries(originalPreviewEntries.value),
+  });
+  const correctedPayload = compactPayload({
+    source: context.source,
+    jobId: context.jobId,
+    fileName: context.fileName,
+    studentNo: context.studentNo,
+    term: context.term,
+    previewEntries: clonePreviewEntries(editablePreviewEntries.value),
+    summary: stats,
+    confirmation: lastConfirmResult.value ? { ...lastConfirmResult.value } : undefined,
+  });
+  return {
+    jobId: context.jobId,
+    originalPayload,
+    correctedPayload,
+  };
+};
+
 const syncPreviewEntriesFromJob = (detail: ScheduleImportJobDetail) => {
   imagePreviewContext.value = null;
   const previewItem = detail.results.find((item) => !item.confirmed && Array.isArray(item.previewEntries) && item.previewEntries.length > 0);
   if (!previewItem?.previewEntries?.length) {
-    if (detail.status === "confirmed" || detail.status === "completed" || detail.status === "failed") {
-      originalPreviewEntries.value = [];
-      editablePreviewEntries.value = [];
+    if (!lastConfirmResult.value && (detail.status === "confirmed" || detail.status === "completed" || detail.status === "failed")) {
+      resetCorrectionDraft();
     }
     return;
   }
   originalPreviewEntries.value = clonePreviewEntries(previewItem.previewEntries);
   editablePreviewEntries.value = clonePreviewEntries(previewItem.previewEntries);
-  correctionJobId.value = detail.jobId;
-  originalPayloadText.value = JSON.stringify({ previewEntries: previewItem.previewEntries }, null, 2);
+  correctionContext.value = {
+    source: "pdf_preview",
+    jobId: detail.jobId,
+    fileName: previewItem.fileName,
+    studentNo: previewItem.studentNo,
+    term: previewItem.term || term.value || "2025-2026-2",
+    parsedName: "",
+    parsedStudentNo: "",
+    assetUrl: "",
+    rawText: "",
+    provider: "",
+  };
+  lastConfirmResult.value = null;
+  correctionSubmittedAt.value = "";
 };
 
 const removePreviewEntry = (index: number) => {
@@ -540,7 +687,7 @@ const fetchRecentJobs = async () => {
   }
 };
 
-const fetchJobDetail = async (jobId: string) => {
+const fetchJobDetail = async (jobId: string, options: { syncPreview?: boolean } = {}) => {
   const detail = await requestBackendGet<ScheduleImportJobDetail>(
     backendBaseUrl.value,
     `/api/v1/schedule-import/jobs/${encodeURIComponent(jobId)}`,
@@ -548,7 +695,9 @@ const fetchJobDetail = async (jobId: string) => {
     authToken.value,
   );
   jobDetail.value = detail;
-  syncPreviewEntriesFromJob(detail);
+  if (options.syncPreview !== false) {
+    syncPreviewEntriesFromJob(detail);
+  }
   statusText.value = `任务 ${formatJobStatus(detail.status)}：${detail.processedFiles}/${detail.totalFiles}`;
   return detail;
 };
@@ -623,6 +772,7 @@ const submitImageOcrPreview = async () => {
   if (!Array.isArray(preview.previewEntries) || preview.previewEntries.length <= 0) {
     throw new Error("AI/OCR 未识别到可导入课程");
   }
+  const correctionJobId = `ai_ocr_${Date.now()}`;
   imagePreviewContext.value = {
     ...preview,
     assetUrl,
@@ -633,17 +783,20 @@ const submitImageOcrPreview = async () => {
   pollingPending.value = false;
   originalPreviewEntries.value = clonePreviewEntries(preview.previewEntries);
   editablePreviewEntries.value = clonePreviewEntries(preview.previewEntries);
-  correctionJobId.value = `ai_ocr_${Date.now()}`;
-  originalPayloadText.value = JSON.stringify(
-    {
-      source: "ai_ocr",
-      assetUrl,
-      rawText: preview.rawText || "",
-      previewEntries: preview.previewEntries,
-    },
-    null,
-    2,
-  );
+  correctionContext.value = {
+    source: "ai_ocr",
+    jobId: correctionJobId,
+    fileName: selectedFileName.value,
+    studentNo: String(preview.studentNo || studentNo.value).trim(),
+    term: String(preview.term || term.value || "2025-2026-2").trim(),
+    parsedName: String(preview.parsedName || "").trim(),
+    parsedStudentNo: "",
+    assetUrl,
+    rawText: String(preview.rawText || ""),
+    provider: String(preview.provider || "openai-compatible"),
+  };
+  lastConfirmResult.value = null;
+  correctionSubmittedAt.value = "";
   statusText.value = `AI/OCR 识别完成：${preview.previewEntries.length} 条课程，请确认导入`;
   uni.showToast({ title: "识别完成，请确认导入", icon: "none", duration: 1600 });
 };
@@ -663,8 +816,7 @@ const submitImport = async () => {
   submitPending.value = true;
   pageError.value = "";
   statusText.value = "正在提交导入任务...";
-  originalPreviewEntries.value = [];
-  editablePreviewEntries.value = [];
+  resetCorrectionDraft();
   try {
     if (selectedFileKind.value === "image") {
       await submitImageOcrPreview();
@@ -733,7 +885,7 @@ const confirmImport = async () => {
     uni.showToast({ title: "请先完成上传识别", icon: "none", duration: 1600 });
     return;
   }
-  if (confirmPending.value) {
+  if (confirmPending.value || lastConfirmResult.value) {
     return;
   }
   const validationError = validatePreviewEntries();
@@ -746,40 +898,42 @@ const confirmImport = async () => {
   try {
     const correctedPreviewEntries = clonePreviewEntries(editablePreviewEntries.value);
     const imageContext = imagePreviewContext.value;
+    const correctionPayload = buildCorrectionPayload();
     const result = imageContext
-      ? await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
+      ? await requestBackendPost<ScheduleImportConfirmResult>(
           backendBaseUrl.value,
           "/api/v1/ai/schedule/ocr-confirm",
           {
+            jobId: correctionPayload?.jobId,
             studentNo: String(imageContext.studentNo || studentNo.value).trim(),
             term: String(imageContext.term || term.value || "2025-2026-2").trim(),
             parsedName: String(imageContext.parsedName || "").trim(),
             rawText: String(imageContext.rawText || ""),
             assetUrl: String(imageContext.assetUrl || ""),
             previewEntries: correctedPreviewEntries,
+            originalPayload: correctionPayload?.originalPayload,
           },
           authToken.value,
         )
-      : await requestBackendPost<{ scheduleId: string; versionNo: number; entryCount: number }>(
+      : await requestBackendPost<ScheduleImportConfirmResult>(
           backendBaseUrl.value,
           `/api/v1/schedule-import/jobs/${encodeURIComponent(jobDetail.value?.jobId || "")}/confirm`,
           {
             previewEntries: correctedPreviewEntries,
+            originalPayload: correctionPayload?.originalPayload,
           },
           authToken.value,
         );
-    correctedPayloadText.value = JSON.stringify({ previewEntries: correctedPreviewEntries, result }, null, 2);
+    lastConfirmResult.value = result;
+    editablePreviewEntries.value = correctedPreviewEntries;
     const confirmedStudentNo = String(imageContext?.studentNo || jobDetail.value?.results?.[0]?.studentNo || "").trim();
     invalidateScheduleCacheAfterConfirm(confirmedStudentNo);
     if (jobDetail.value) {
-      await fetchJobDetail(jobDetail.value.jobId);
+      await fetchJobDetail(jobDetail.value.jobId, { syncPreview: false });
     }
     await fetchRecentJobs();
     imagePreviewContext.value = null;
     uni.showToast({ title: `已写入 ${result.entryCount} 条课程`, icon: "none", duration: 1600 });
-    setTimeout(() => {
-      uni.reLaunch({ url: "/pages/index/index" });
-    }, 700);
   } catch (error) {
     pageError.value = error instanceof Error ? error.message : "确认导入失败";
   } finally {
@@ -787,32 +941,17 @@ const confirmImport = async () => {
   }
 };
 
-const parseCorrectionPayload = (text: string) => {
-  const trimmed = String(text || "").trim();
-  if (!trimmed) {
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>;
-    }
-  } catch (error) {
-    // 纯文本样本也需要保留，便于后续人工/模型复盘。
-  }
-  return { rawText: trimmed };
-};
-
 const submitCorrection = async () => {
   if (!authToken.value) {
     uni.showToast({ title: "请先登录", icon: "none", duration: 1600 });
     return;
   }
-  if (!originalPayloadText.value.trim() && !correctedPayloadText.value.trim()) {
-    uni.showToast({ title: "请填写修正内容", icon: "none", duration: 1600 });
+  if (correctionPending.value) {
     return;
   }
-  if (correctionPending.value) {
+  const correctionPayload = buildCorrectionPayload();
+  if (!correctionPayload) {
+    uni.showToast({ title: "暂无可回流的修正样本", icon: "none", duration: 1600 });
     return;
   }
   correctionPending.value = true;
@@ -821,20 +960,23 @@ const submitCorrection = async () => {
       backendBaseUrl.value,
       "/api/v1/schedule-import/corrections",
       {
-        jobId: correctionJobId.value.trim(),
-        originalPayload: parseCorrectionPayload(originalPayloadText.value),
-        correctedPayload: parseCorrectionPayload(correctedPayloadText.value),
+        jobId: correctionPayload.jobId,
+        originalPayload: correctionPayload.originalPayload,
+        correctedPayload: correctionPayload.correctedPayload,
       },
       authToken.value,
     );
-    originalPayloadText.value = "";
-    correctedPayloadText.value = "";
+    correctionSubmittedAt.value = new Date().toISOString();
     uni.showToast({ title: "修正样本已提交", icon: "none", duration: 1200 });
   } catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : "提交失败", icon: "none", duration: 1800 });
   } finally {
     correctionPending.value = false;
   }
+};
+
+const goToScheduleHome = () => {
+  uni.reLaunch({ url: "/pages/index/index" });
 };
 
 onShow(() => {
@@ -908,19 +1050,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   box-sizing: border-box;
-}
-
-.textarea {
-  margin-top: 8rpx;
-  width: 100%;
-  min-height: 150rpx;
-  padding: 16rpx;
-  box-sizing: border-box;
-  border-radius: 10rpx;
-  border: 1rpx solid var(--line);
-  background: var(--muted-bg);
-  color: var(--text-main);
-  font-size: 24rpx;
 }
 
 .picker-row {

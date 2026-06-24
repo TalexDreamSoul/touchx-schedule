@@ -224,6 +224,8 @@ export const handleLegacyAiScheduleApi = async (context: LegacyAiScheduleHandler
       rawText?: string;
       assetUrl?: string;
       previewEntries?: unknown[];
+      originalPayload?: Record<string, unknown>;
+      jobId?: string;
     }>(event);
     const studentNo = asString(body.studentNo || user.studentNo || user.studentId);
     const previewEntries = Array.isArray(body.previewEntries) ? body.previewEntries : [];
@@ -234,11 +236,15 @@ export const handleLegacyAiScheduleApi = async (context: LegacyAiScheduleHandler
         parsedName: asString(body.parsedName || user.name || user.nickname),
         previewEntries: previewEntries as Parameters<typeof confirmScheduleImportPreviewEntries>[2]["previewEntries"],
         sourceLabel: "AI/OCR 导入",
-        originalPayload: {
-          source: "ai_ocr",
-          rawText: asString(body.rawText),
-          assetUrl: asString(body.assetUrl),
-        },
+        jobId: asString(body.jobId),
+        originalPayload:
+          body.originalPayload && typeof body.originalPayload === "object" && !Array.isArray(body.originalPayload)
+            ? body.originalPayload
+            : {
+                source: "ai_ocr",
+                rawText: asString(body.rawText),
+                assetUrl: asString(body.assetUrl),
+              },
       });
       return {
         ok: true,

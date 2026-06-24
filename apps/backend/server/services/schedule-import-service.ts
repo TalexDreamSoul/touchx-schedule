@@ -109,6 +109,10 @@ interface CreateScheduleImportJobOptions {
   mode?: "direct" | "preview";
 }
 
+interface ConfirmScheduleImportJobOptions {
+  originalPayload?: Record<string, unknown>;
+}
+
 interface PreparedScheduleImportItem {
   fileName: string;
   studentNo: string;
@@ -188,6 +192,10 @@ const COURSE_NAME_REPLACE_MAP: Record<string, string> = {
 };
 
 const asString = (value: unknown) => String(value || "").trim();
+
+const asRecord = (value: unknown): Record<string, unknown> | null => {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+};
 
 const createScheduleImportStructuredError = (
   code: string,
@@ -1434,6 +1442,7 @@ export const confirmScheduleImportJob = async (
   jobId: string,
   actorUserId: string,
   correctedEntries: ScheduleImportPreviewEntry[],
+  options: ConfirmScheduleImportJobOptions = {},
 ) => {
   const db = resolveNexusDb(event);
   if (!db) {
@@ -1532,7 +1541,7 @@ export const confirmScheduleImportJob = async (
         id: storeHelpers.createId("schedule_correction"),
         userId: actorUserId,
         jobId,
-        originalPayload: {
+        originalPayload: asRecord(options.originalPayload) || {
           previewEntries: originalPreview.previewEntries,
           parsedName: originalPreview.parsedName,
           parsedStudentNo: originalPreview.parsedStudentNo,

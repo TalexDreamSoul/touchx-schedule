@@ -84,6 +84,8 @@ const loadLegacyAiScheduleHandler = async () => {
             userId,
             importedCount: input.previewEntries.length,
             previewEntries: input.previewEntries,
+            correctionJobId: input.jobId,
+            originalPayload: input.originalPayload,
           });
         `))};`,
       ],
@@ -290,8 +292,10 @@ test("confirms OCR preview entries through the import service", async () => {
   const { context, handleLegacyAiScheduleApi } = createContext(handler, {
     path: "ai/schedule/ocr-confirm",
     body: {
+      jobId: "ai_ocr_client_1",
       term: "2025-2026-2",
       previewEntries: [{ courseName: "高等数学" }],
+      originalPayload: { source: "ai_ocr", previewEntries: [{ courseName: "高等数学 原始" }] },
     },
   });
 
@@ -300,5 +304,7 @@ test("confirms OCR preview entries through the import service", async () => {
   assert.equal(response.ok, true);
   assert.equal(response.jobId, "import_job_1");
   assert.equal(response.importedCount, 1);
+  assert.equal(response.correctionJobId, "ai_ocr_client_1");
+  assert.deepEqual(response.originalPayload, { source: "ai_ocr", previewEntries: [{ courseName: "高等数学 原始" }] });
   assert.equal(response.stateRevision, 9);
 });

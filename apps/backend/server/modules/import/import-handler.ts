@@ -346,14 +346,16 @@ export const handleImportApi = async (context: ImportHandlerContext) => {
     if (status.createdByUserId !== user.userId && !isAdminRole(user)) {
       return toApiError(403, "SCHEDULE_IMPORT_JOB_FORBIDDEN", "无权确认该导入任务");
     }
-    const body = await readJsonBody<{ previewEntries?: unknown[]; entries?: unknown[] }>(event);
+    const body = await readJsonBody<{ previewEntries?: unknown[]; entries?: unknown[]; originalPayload?: Record<string, unknown> }>(event);
     const previewEntries = Array.isArray(body.previewEntries)
       ? body.previewEntries
       : Array.isArray(body.entries)
         ? body.entries
         : [];
     try {
-      const result = await confirmScheduleImportJob(event, jobId, user.userId, previewEntries as ScheduleImportPreviewEntry[]);
+      const result = await confirmScheduleImportJob(event, jobId, user.userId, previewEntries as ScheduleImportPreviewEntry[], {
+        originalPayload: body.originalPayload && typeof body.originalPayload === "object" && !Array.isArray(body.originalPayload) ? body.originalPayload : undefined,
+      });
       appendAudit("schedule_import_job_confirm", user.userId, {
         jobId,
         scheduleId: result.scheduleId,

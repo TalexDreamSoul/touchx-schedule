@@ -60,13 +60,13 @@ const loadImportHandler = async () => {
       if (jobId === 'missing') return null;
       return { jobId, createdByUserId: jobId === 'foreign' ? 'user-3' : 'user-1', results: [{ itemId: 'row-1', previewEntries: [{ courseName: '旧导入课程', day: 1, startSection: 1, endSection: 2 }] }] };
     };
-    export const confirmScheduleImportJob = async (_event, jobId, userId, previewEntries = []) => {
+    export const confirmScheduleImportJob = async (_event, jobId, userId, previewEntries = [], options = {}) => {
       if (jobId === 'bad-confirm') {
         const error = new Error('确认失败');
         error.payload = { code: 'SCHEDULE_IMPORT_CONFIRM_INVALID', message: '确认失败', details: { previewCount: previewEntries.length } };
         throw error;
       }
-      return { jobId, userId, scheduleId: 'schedule-1', versionNo: 2, entryCount: previewEntries.length };
+      return { jobId, userId, scheduleId: 'schedule-1', versionNo: 2, entryCount: previewEntries.length, originalPayload: options.originalPayload || null };
     };
     export const toScheduleImportErrorPayload = (error) => error.payload || { code: 'SCHEDULE_IMPORT_CONFIRM_FAILED', message: error.message || '确认导入失败' };
   `;
@@ -276,6 +276,17 @@ test("enforces schedule import ownership and maps confirm errors", async () => {
     assert.deepEqual(error.details, { previewCount: 1 });
     return true;
   });
+
+  const confirmContext = createContext(handler, {
+    method: "POST",
+    path: "schedule-import/jobs/legacy-1/confirm",
+    body: {
+      previewEntries: [{ courseName: "旧导入课程", day: 1, startSection: 1, endSection: 2 }],
+      originalPayload: { source: "pdf_preview", previewEntries: [{ courseName: "原课程" }] },
+    },
+  });
+  const confirmed = await confirmContext.handleImportApi(confirmContext.context);
+  assert.deepEqual(confirmed.data.originalPayload, { source: "pdf_preview", previewEntries: [{ courseName: "原课程" }] });
 });
 
 test("allows operator sessions to access schedule import admin routes when admin token check fails", async () => {
